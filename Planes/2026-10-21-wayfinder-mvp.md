@@ -802,3 +802,12 @@ Los hooks obtienen `WAYFINDER_HOME` y el idioma de `CLAUDE_PLUGIN_OPTION_HOME` y
   - Stop: con una tarea en curso y sin bitácora del día, bloquea una vez; Claude escribe la bitácora con `wf_log` y el segundo Stop no bloquea (sin bucle). ✔
   - Idioma: con `language` en `en`, el contexto y los errores del MCP salen en inglés. ✔
   - **No verificado:** si `UserPromptSubmit` permite distinguir los turnos que inicia Claude Code por su cuenta. La documentación no indica ningún campo y en `-p` no se pueden provocar esos turnos. Se documenta como límite (P5). Tampoco se han ejercitado el diálogo interactivo de `/plugin install` ni `claude plugin marketplace add`, porque modifican tu configuración; el marketplace solo pasa `claude plugin validate`.
+- **Incremento 4 (2026-10-21), parte de servidor:**
+  - `src/server.ts` (`node:http`) y `src/markdown.ts` (`markdown-it` 15.0.3 con `html:false`).
+  - Seguridad: escucha en 127.0.0.1 por defecto; lista blanca de `Host` con el puerto real y `WAYFINDER_PUBLIC_PORT`; CSP del plan, `nosniff`, `no-referrer`, `no-store` y sin CORS; solo `GET`/`HEAD` (los `POST` llegan en el incremento 5, con el token por arranque, que ya se genera).
+  - Markdown: enlaces solo `http(s)`, `mailto` o relativos; las imágenes solo pueden apuntar a `assets/` del proyecto (las remotas se muestran como texto); los encabezados bajan un nivel. Los títulos se devuelven como datos, para que el cliente los pinte con `textContent`.
+  - Los assets se sirven solo con nombres validados y `realpath` dentro de `assets/`.
+  - Autorefresco por SSE (`/api/events`) con `fs.watch` recursivo y debounce de 150 ms, o polling de mtime cada 1,5 s con `--poll` o `WAYFINDER_POLL=1`. Latido cada 25 s.
+  - `wayfinder serve [--port] [--host] [--poll]`: avisa si `--host` no es loopback y falla con un mensaje claro si la carpeta de datos no está inicializada.
+  - Validación: `npm test` con 61/61 en Node 24.12.0 y 22.23.3 (7 tests del servidor: cabeceras, Host ajeno → 403, puerto público, XSS neutralizado, traversal de assets → 404, bitácora, `POST` → 405, cambio externo emitido con `fs.watch` y con polling). Prueba manual con el bundle: carpeta sin inicializar → código 1; `/api/projects` → 200; `Host: evil.test` → 403.
+  - **Pendiente:** la interfaz (`web/`). Las reglas `frontend-design.md` e `implementar-front` exigen una dirección de diseño aprobada (`docs/design/DESIGN.md`) antes de implementar una interfaz no trivial, y el plan aprobado no la incluye.

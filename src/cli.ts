@@ -4,6 +4,10 @@ import { initHome } from './store/init.ts';
 import { getHome } from './store/paths.ts';
 import { runMcp } from './mcp.ts';
 import { HOOK_EVENTS, readStdin, runHook } from './hook.ts';
+import { startServer } from './server.ts';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Replaced at build time by esbuild; the fallback covers running the sources directly.
 declare const __WAYFINDER_VERSION__: string | undefined;
@@ -67,6 +71,7 @@ export async function main(argv: string[], io: Io = defaultIo, env: NodeJS.Proce
       }
       return runHook(event, { stdin: readStdin, out: io.out }, env);
     }
+    if (command === 'serve') return await runServe(argv.slice(1), lang, io, env);
     if (command === 'mcp') {
       await runMcp(VERSION, env);
       return 0;
@@ -81,6 +86,47 @@ export async function main(argv: string[], io: Io = defaultIo, env: NodeJS.Proce
   // The remaining subcommands are implemented in later increments of the plan.
   io.err(t(lang, 'cli.notImplemented', { command }));
   return 1;
+}
+
+function option(args: string[], name: string): string | undefined {
+  const i = args.indexOf(name);
+  return i === -1 ? undefined : args[i + 1];
+}
+
+function webDir(): string {
+  // Bundle: dist/wayfinder.mjs → dist/web. Sources: src/cli.ts → web/.
+  const bundled = fileURLToPath(new URL('./web', import.meta.url));
+  return existsSync(join(bundled, 'index.html')) ? bundled : fileURLToPath(new URL('../web', import.meta.url));
+}
+
+async function runServe(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessEnv): Promise<number> {
+  const home = getHome(env);
+  if (!existsSync(join(home, 'projects'))) {
+    io.err(t(lang, 'cli.error', { message: t(lang, 'serve.notInitialized', { path: home }) }));
+    return 1;
+  }
+  const parsePort = (value: string | undefined, fallback?: number) => {
+    if (value === undefined || value === '') return fallback;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 && n <= 65535 ? n : NaN;
+  };
+  const port = parsePort(option(args, '--port') ?? env.WAYFINDER_PORT, 4321);
+  const publicPort = parsePort(env.WAYFINDER_PUBLIC_PORT);
+  if (Number.isNaN(port) || Number.isNaN(publicPort)) {
+    io.err(t(lang, 'serve.invalidPort', { value: option(args, '--port') ?? env.WAYFINDER_PORT ?? env.WAYFINDER_PUBLIC_PORT ?? '' }));
+    return 2;
+  }
+  const host = option(args, '--host') ?? '127.0.0.1';
+  if (!['127.0.0.1', 'localhost', '::1'].includes(host)) io.err(t(lang, 'cli.warning', { message: t(lang, 'serve.nonLoopback', { host }) }));
+  const poll = args.includes('--poll') || env.WAYFINDER_POLL === '1';
+  const server = await startServer({ home, lang, host, port, publicPort, poll, webDir: webDir() });
+  io.out(t(lang, 'serve.listening', { url: server.url }));
+  const stop = () => {
+    void server.close().then(() => process.exit(0));
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  return 0;
 }
 
 function runInit(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessEnv): number {
