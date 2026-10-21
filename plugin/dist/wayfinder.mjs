@@ -42486,16 +42486,30 @@ function makePlanExists(consumerRoot) {
 
 // src/hook.ts
 import { readFileSync as readFileSync9 } from "node:fs";
-import { resolve as resolve4 } from "node:path";
+import { join as join10, resolve as resolve4 } from "node:path";
 var HOOK_EVENTS = ["session-start", "prompt", "pre-tool", "stop"];
 var MAX_CONTEXT = 4e3;
 var MAX_TITLE2 = 80;
+function manifestDefaults(env) {
+  if (!env.CLAUDE_PLUGIN_ROOT) return {};
+  try {
+    const manifest = JSON.parse(readFileSync9(join10(env.CLAUDE_PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+    const value = (key) => {
+      const v = manifest?.userConfig?.[key]?.default;
+      return typeof v === "string" ? v : void 0;
+    };
+    return { home: value("home"), language: value("language") };
+  } catch {
+    return {};
+  }
+}
 function hookEnv(env) {
   const pick2 = (...values) => values.find((v) => v !== void 0 && v.trim() !== "" && !v.includes("${"));
+  const defaults = manifestDefaults(env);
   return {
     ...env,
-    WAYFINDER_HOME: pick2(env.WAYFINDER_HOME, env.CLAUDE_PLUGIN_OPTION_HOME),
-    WAYFINDER_LANG: pick2(env.WAYFINDER_LANG, env.CLAUDE_PLUGIN_OPTION_LANGUAGE)
+    WAYFINDER_HOME: pick2(env.WAYFINDER_HOME, env.CLAUDE_PLUGIN_OPTION_HOME, defaults.home),
+    WAYFINDER_LANG: pick2(env.WAYFINDER_LANG, env.CLAUDE_PLUGIN_OPTION_LANGUAGE, defaults.language)
   };
 }
 var clean = (text, max) => {

@@ -122,6 +122,12 @@ test('plugin options reach the hooks; unset placeholders are ignored', () => {
   assert.equal(env.WAYFINDER_LANG, 'en');
   assert.equal(getHome(env), join(homedir(), 'wf-data'));
   assert.equal(hookEnv({ WAYFINDER_HOME: '${user_config.home}' }).WAYFINDER_HOME, undefined);
+  // Unsaved options are not exported to hooks: the plugin's manifest defaults apply.
+  const pluginRoot = fileURLToPath(new URL('../plugin', import.meta.url));
+  const fallback = hookEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot });
+  assert.equal(fallback.WAYFINDER_HOME, '~/.wayfinder');
+  assert.equal(fallback.WAYFINDER_LANG, 'es');
+  assert.equal(hookEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PLUGIN_OPTION_LANGUAGE: 'en' }).WAYFINDER_LANG, 'en');
 });
 
 test('the bundled hook command works through stdin/stdout', (t) => {

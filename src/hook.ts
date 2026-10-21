@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
 import { hasLogFor } from './store/log.ts';
 import { extractOrders, recordOrders } from './store/mentions.ts';
@@ -19,16 +19,34 @@ export interface HookIo {
 const MAX_CONTEXT = 4000;
 const MAX_TITLE = 80;
 
+/** userConfig defaults declared by the plugin itself (CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json). */
+function manifestDefaults(env: NodeJS.ProcessEnv): { home?: string; language?: string } {
+  if (!env.CLAUDE_PLUGIN_ROOT) return {};
+  try {
+    const manifest = JSON.parse(readFileSync(join(env.CLAUDE_PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
+    const value = (key: string) => {
+      const v = manifest?.userConfig?.[key]?.default;
+      return typeof v === 'string' ? v : undefined;
+    };
+    return { home: value('home'), language: value('language') };
+  } catch {
+    return {};
+  }
+}
+
 /**
- * Plugin options reach command hooks as CLAUDE_PLUGIN_OPTION_<KEY>; WAYFINDER_* wins when set
- * explicitly (tests, manual use). Empty values mean "not configured".
+ * Plugin options reach command hooks as CLAUDE_PLUGIN_OPTION_<KEY> only once the person saved them;
+ * unsaved options are neither exported nor substituted in hook args (verified in a real session),
+ * so the manifest defaults are the last fallback, matching what .mcp.json receives.
+ * WAYFINDER_* wins when set explicitly (tests, manual use). Empty or unexpanded values are ignored.
  */
 export function hookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const pick = (...values: Array<string | undefined>) => values.find((v) => v !== undefined && v.trim() !== '' && !v.includes('${'));
+  const defaults = manifestDefaults(env);
   return {
     ...env,
-    WAYFINDER_HOME: pick(env.WAYFINDER_HOME, env.CLAUDE_PLUGIN_OPTION_HOME),
-    WAYFINDER_LANG: pick(env.WAYFINDER_LANG, env.CLAUDE_PLUGIN_OPTION_LANGUAGE),
+    WAYFINDER_HOME: pick(env.WAYFINDER_HOME, env.CLAUDE_PLUGIN_OPTION_HOME, defaults.home),
+    WAYFINDER_LANG: pick(env.WAYFINDER_LANG, env.CLAUDE_PLUGIN_OPTION_LANGUAGE, defaults.language),
   };
 }
 
