@@ -1,0 +1,6 @@
+# Keep LF everywhere: plugin/dist is compared byte for byte by check:dist and runs on Linux in Docker.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
