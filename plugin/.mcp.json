@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "wayfinder": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/wayfinder.mjs", "mcp"],
+      "env": {
+        "WAYFINDER_HOME": "${user_config.home}",
+        "WAYFINDER_CAPTURES_DIR": "${user_config.capturesDir}",
+        "WAYFINDER_LANG": "${user_config.language}"
+      }
+    }
+  }
+}

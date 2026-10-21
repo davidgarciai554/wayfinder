@@ -1,0 +1,14 @@
+{
+  "name": "wayfinder",
+  "description": "Wayfinder: personal Markdown task tracker and project memory for Claude Code.",
+  "owner": {
+    "name": "davidgarciai554"
+  },
+  "plugins": [
+    {
+      "name": "wayfinder",
+      "source": "./plugin",
+      "description": "Personal Markdown task tracker and project memory for Claude Code."
+    }
+  ]
+}

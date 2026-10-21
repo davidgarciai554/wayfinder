@@ -1,0 +1,5 @@
+node_modules/
+# The npm/Docker bundle is rebuilt from source; plugin/dist/ is versioned on purpose.
+/dist/
+.tmp-test/
+test-results/

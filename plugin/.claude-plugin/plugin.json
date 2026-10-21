@@ -1,0 +1,30 @@
+{
+  "name": "wayfinder",
+  "version": "0.1.0",
+  "description": "Personal Markdown task tracker and project memory for Claude Code: MCP tools, session context and a local web board.",
+  "author": {
+    "name": "davidgarciai554"
+  },
+  "license": "MIT",
+  "keywords": ["tasks", "kanban", "markdown", "mcp", "memory"],
+  "userConfig": {
+    "home": {
+      "type": "directory",
+      "title": "Data folder",
+      "description": "Folder that holds the Wayfinder data repository (run \"wayfinder init\" once). Default: ~/.wayfinder",
+      "default": "~/.wayfinder"
+    },
+    "capturesDir": {
+      "type": "directory",
+      "title": "Screenshots folder",
+      "description": "Optional folder from which screenshots may be attached, besides the current repository."
+    },
+    "language": {
+      "type": "string",
+      "title": "Language / Idioma",
+      "description": "Language for Wayfinder messages, hooks and web board (es = español, en = English).",
+      "options": ["es", "en"],
+      "default": "es"
+    }
+  }
+}
