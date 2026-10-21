@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "package": "@davidgarciai554/batclaude",
+  "version": "0.1.0",
+  "managedSurfaces": [
+    ".claude",
+    "Plantillas",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Proceso - Creación de planes.md"
+  ],
+  "files": [
+    {
+      "path": ".claude/agents/Accesibilidad-experiencia.md",
+      "sha256": "93b0a99dc7bb0133f0add126199ff161bd12f2883bfde72120e86bbd91abc4c2"
+    },
+    {
+      "path": ".claude/agents/Analista-repositorio.md",
+      "sha256": "7a28a3136aeaaa8e44b7bfcf553e6f902cd40c8cb01b4b74f97b38e93aa4a710"
+    },
+    {
+      "path": ".claude/agents/Calidad-validacion.md",
+      "sha256": "404f47fd2f72e54c66f361d81957e4df969a5f96b128c41d4bda6d24f0e7232c"
+    },
+    {
+      "path": ".claude/agents/Idealista.md",
+      "sha256": "edb3b55a3d2b04d9b502937f2d741d98eec1f49f0bad34ada1587c3f588407bf"
+    },
+    {
+      "path": ".claude/agents/Mediador-sintetizador.md",
+      "sha256": "c46760fb97acb8792623bd7b8a917b9cebba907c510f5408e55b19f5777b4115"
+    },
+    {
+      "path": ".claude/agents/Moderador.md",
+      "sha256": "56e5d05bf849250b86cbe6f123a0c43a98b55dff0a081b20c0b1fa62eb6a150c"
+    },
+    {
+      "path": ".claude/agents/Negador.md",
+      "sha256": "76749730ebf16d50b69adf71c4393e862bf8b49fc36e566c475fa9ae76fdf360"
+    },
+    {
+      "path": ".claude/agents/Programador.md",
+      "sha256": "79c6848dab3f392c93e9f30150c1747def2d056b886fe0feacdbbf43a9cb79aa"
+    },
+    {
+      "path": ".claude/agents/Representante-funcional.md",
+      "sha256": "69c3b5fb5eb19800c4b69d7fe4a6523537c1267182671e9bbdacfeadf0621813"
+    },
+    {
+      "path": ".claude/agents/Revisor-codigo.md",
+      "sha256": "aee07d44a623e43df60c9f5f5c64f81b3a039e35d3f5ca070959888735fc3a2b"
+    },
+    {
+      "path": ".claude/agents/Seguridad-datos.md",
+      "sha256": "5aa21aa37f2b1e411d1532eeee4688d7bc30fdfd2568ba98cb7fb4a8dc77368e"
+    },
+    {
+      "path": ".claude/agents/Tecnico-solucion-minima.md",
+      "sha256": "28b44293cc835cf23e07ae5ef07f34a2db8d4033a73aec283050b17f0ebcaddd"
+    },
+    {
+      "path": ".claude/rules/compatibilidad-y-contratos.md",
+      "sha256": "7dd47e27ce15ed210c64fb258c457fd9a84f992d2a865333fcda981531845d52"
+    },
+    {
+      "path": ".claude/rules/contexto-e-instrucciones-no-confiables.md",
+      "sha256": "ffe4734c1854b038c20e949c8bb5a7b754f53f2057f4f7dc2c43dfe9c0789c78"
+    },
+    {
+      "path": ".claude/rules/desarrollo-y-evidencia.md",
+      "sha256": "7c0eb12948a717a32b2d99a97493a05f2f9165d6549cde4a8ea911b2a6d48925"
+    },
+    {
+      "path": ".claude/rules/frontend-accesibilidad.md",
+      "sha256": "08375811f268a7b95ae781b91f7faf87b37b2dabcc4073a65925c3d9413a5173"
+    },
+    {
+      "path": ".claude/rules/frontend-design.md",
+      "sha256": "49113efba02e73dd468ef4fb2dd25e07e8a4dcb92f7fc24178ca7f070b251e56"
+    },
+    {
+      "path": ".claude/rules/frontend-regresion-visual.md",
+      "sha256": "896d9dfcbbb092424b986a86d5eae74ceb17a90270d1951c6e6986bf67535021"
+    },
+    {
+      "path": ".claude/rules/frontend-tokens-componentes.md",
+      "sha256": "7e911905f14cbc3f98e273342583c7a2287356be08c9526b6d25e0bace2bff6e"
+    },
+    {
+      "path": ".claude/rules/frontend-visual-review.md",
+      "sha256": "203d7e09b9bd22e141755e420d5441608cd53bd5db79901020c21c1af2edd863"
+    },
+    {
+      "path": ".claude/rules/git-y-operaciones-sensibles.md",
+      "sha256": "91ee0aaceb69c880a392e82b345dfb2443304270409dc1cacaf55c00365b71f9"
+    },
+    {
+      "path": ".claude/rules/pruebas-y-validacion.md",
+      "sha256": "5ef3b6c5375ed6adce49abe0f4b52df08e7b9b9bcc823381e8b41edf779c6d23"
+    },
+    {
+      "path": ".claude/rules/seguridad-y-datos.md",
+      "sha256": "e5cdf79fd3610828c12648226a65588cd9221bf340bbf1c33ed6ddd3f7d5e732"
+    },
+    {
+      "path": ".claude/rules/seleccion-y-aviso-de-skills.md",
+      "sha256": "da29468233ba381935b27bfa99d445ab640ac360e6b97367ed55c9b4c32632d8"
+    },
+    {
+      "path": ".claude/skills/auditar-accesibilidad-front/SKILL.md",
+      "sha256": "996e16a006413421c1b640926a558de621d09b4b17f601c45a82f0aa02b018fe"
+    },
+    {
+      "path": ".claude/skills/auditar-deuda-visual/SKILL.md",
+      "sha256": "9db7ead73fdd2443be3988078ece81d4b158a41f8964aa600f55f4bc99b1f1b0"
+    },
+    {
+      "path": ".claude/skills/auditar-seguridad-datos/SKILL.md",
+      "sha256": "1bddc1eecfe9d68a46c46a5c028a34e84151f7bd2a2793cc65ed814610efefab"
+    },
+    {
+      "path": ".claude/skills/implementar-front/SKILL.md",
+      "sha256": "9ec9eb241259cf305370e0b2659dca585d87d4d80713bc9d4ed8da56000fff4c"
+    },
+    {
+      "path": ".claude/skills/iniciar-front/Plantillas/DESIGN.md",
+      "sha256": "c9ca564387b25a27caeb90018d34487855ad0201ed39c7f2610b5352514cfe58"
+    },
+    {
+      "path": ".claude/skills/iniciar-front/Referencias/patrones-apple-web.md",
+      "sha256": "34ac7e53a26ce3643982942331a6575fede7db1c2655230bf5e812bee478fd28"
+    },
+    {
+      "path": ".claude/skills/iniciar-front/Referencias/patrones-frontend.md",
+      "sha256": "7646b4ce36b96512c82b2e36cee1103e22c7145f1e9c42b67cb5badcb2f30e50"
+    },
+    {
+      "path": ".claude/skills/iniciar-front/Referencias/validacion-visual.md",
+      "sha256": "1cc7ad5b8ed4c2a415e1dca9d88baff385aed5014b70aa6616d0224f8e1a7477"
+    },
+    {
+      "path": ".claude/skills/iniciar-front/SKILL.md",
+      "sha256": "a125004d0909090dccf4a56b2d43ce71c8797ee1d87e3bc20c4cd058cdc5f596"
+    },
+    {
+      "path": ".claude/skills/optimizar-rendimiento-front/SKILL.md",
+      "sha256": "a0e30619f9e3715cc8a2c8c0eb335aa3b675135944764a01daf8a9c289fd266f"
+    },
+    {
+      "path": ".claude/skills/probar-web-playwright/Referencias/regresion-visual.md",
+      "sha256": "6821bcd77f1f0e7518a87c406db799f18adab25aa3901716c1283c13dda0187e"
+    },
+    {
+      "path": ".claude/skills/probar-web-playwright/SKILL.md",
+      "sha256": "6a327e4a7a77651ea37189e1c5f4e3496403ab30ae6842fd0dff2282f75e83f5"
+    },
+    {
+      "path": ".claude/skills/revisar-codigo/SKILL.md",
+      "sha256": "ce43122988b20d2d2867ec56578945903c4472e4c4b04e45d511a5ed76fd98bb"
+    },
+    {
+      "path": "Plantillas/componentes-frontend.md",
+      "sha256": "3ff5caf487ab848b0948a9bedf6fdaf7a260bcaff8aaed8ee4ee89b78ff242cf"
+    },
+    {
+      "path": "Plantillas/informe-revision-codigo.md",
+      "sha256": "2e392a03db0afe5a489c2c66db9266ac7bd035daad7b73effaf28d160e533119"
+    },
+    {
+      "path": "Plantillas/regresion-visual-playwright.md",
+      "sha256": "7f029e1d483ae2502e1504fd89f3acaeeec82404d37f64877b74e05073fd8c36"
+    },
+    {
+      "path": "Plantillas/revision-visual-frontend.md",
+      "sha256": "a965c832d2e464d2d4376c1ab0ed99886c23071885158e5e24d3d7f5671e6abd"
+    },
+    {
+      "path": "Plantillas/tokens-frontend.md",
+      "sha256": "3e16a287fb60a6fbc36d09d6c75dfcd4d78528d25805a0eb54d816818a7fd3ad"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "73bbac3e34058c9efe8f69274331a5aa0d7a13ef493e91afc36a1168ffecb5ca"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49"
+    },
+    {
+      "path": "Proceso - Creación de planes.md",
+      "sha256": "e32f839da065441a4204c96f95feb0e3326082e4238e9a9c0e115bd04bcaebb3"
+    }
+  ]
+}
