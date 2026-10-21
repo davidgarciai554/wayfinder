@@ -25,11 +25,13 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "build": "node scripts/build.mjs",
     "check:dist": "node scripts/check-dist.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/server": "2.3.1",
+    "@playwright/test": "1.64.1",
     "@types/markdown-it": "14.2.0",
     "@types/node": "24.19.2",
     "esbuild": "0.28.2",

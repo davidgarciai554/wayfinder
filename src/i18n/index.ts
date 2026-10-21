@@ -31,7 +31,30 @@ export function resolveLang(env: NodeJS.ProcessEnv = process.env): Lang {
   return DEFAULT_LANG;
 }
 
+// The store explains unreadable task files with stable English reasons; translate them at the edges.
+const REASONS: ReadonlyArray<readonly [RegExp, MessageKey, string?]> = [
+  [/^missing frontmatter$/, 'reason.missingFrontmatter'],
+  [/^unterminated frontmatter$/, 'reason.unterminated'],
+  [/^invalid YAML: (.*)$/, 'reason.invalidYaml', 'detail'],
+  [/^frontmatter is not a mapping$/, 'reason.notMapping'],
+  [/^missing or invalid id$/, 'reason.invalidId'],
+  [/^unknown status: (.*)$/, 'reason.unknownStatus', 'value'],
+  [/^missing title$/, 'reason.missingTitle'],
+  [/^id mismatch \((.*)\)$/, 'reason.idMismatch', 'value'],
+];
+
+export function translateReason(lang: Lang, reason: string): string {
+  for (const [re, key, varName] of REASONS) {
+    const m = re.exec(reason);
+    if (m) return t(lang, key, varName ? { [varName]: m[1] } : {});
+  }
+  return reason;
+}
+
 export function t(lang: Lang, key: MessageKey, vars: Record<string, string | number> = {}): string {
+  if ((key === 'store.taskUnreadable' || key === 'mcp.unreadable') && typeof vars.reason === 'string') {
+    vars = { ...vars, reason: translateReason(lang, vars.reason) };
+  }
   const template = dictionaries[lang][key] ?? dictionaries.en[key] ?? key;
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
 }

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { extname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { dictionaries, t, type Lang } from './i18n/index.ts';
+import { dictionaries, t, translateReason, type Lang } from './i18n/index.ts';
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { modifiedOutside } from './store/git.ts';
@@ -131,7 +131,10 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[2] === 'tasks' && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
-      return json(res, 200, { tasks: tasks.map((x) => taskMeta(home, x)), unreadable });
+      return json(res, 200, {
+        tasks: tasks.map((x) => taskMeta(home, x)),
+        unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) })),
+      });
     }
     if (parts[2] === 'tasks' && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
@@ -151,8 +154,17 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[2] === 'assets' && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), 'assets');
-      const assets = existsSync(dir) ? readdirSync(dir).filter((n) => ASSET_NAME.test(n)).sort().reverse() : [];
-      return json(res, 200, { assets });
+      const names = existsSync(dir) ? readdirSync(dir).filter((n) => ASSET_NAME.test(n)).sort().reverse() : [];
+      // The description (alt) of a capture lives in the Markdown link that embeds it.
+      const described = new Map<string, { alt: string; taskId: string | null }>();
+      const collect = (markdown: string, taskId: string | null) => {
+        for (const m of markdown.matchAll(/!\[([^\]]*)\]\((?:\.\.\/)?assets\/([\w.-]+)\)/g)) {
+          if (!described.has(m[2])) described.set(m[2], { alt: m[1], taskId });
+        }
+      };
+      collect(project.body, null);
+      for (const task of listTasks(home, slug).tasks) collect(task.body, task.id);
+      return json(res, 200, { assets: names.map((name) => ({ name, alt: described.get(name)?.alt ?? '', taskId: described.get(name)?.taskId ?? null })) });
     }
     return notFound(res);
   }

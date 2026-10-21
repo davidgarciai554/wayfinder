@@ -7730,7 +7730,81 @@ var es_default = {
   "web.notFound": "No encontrado.",
   "web.forbiddenHost": "Host no permitido.",
   "web.methodNotAllowed": "M\xE9todo no permitido.",
-  "web.serverError": "Error interno de Wayfinder."
+  "web.serverError": "Error interno de Wayfinder.",
+  "web.skip": "Saltar al contenido",
+  "web.project": "Proyecto",
+  "web.chooseProject": "Elige un proyecto",
+  "web.views": "Vistas",
+  "web.tab.board": "Tablero",
+  "web.tab.log": "Bit\xE1cora",
+  "web.tab.assets": "Capturas",
+  "web.tab.project": "Proyecto",
+  "web.loading": "Cargando\u2026",
+  "web.retry": "Reintentar",
+  "web.error": "No se pudo cargar. Comprueba que \xABwayfinder serve\xBB sigue en marcha.",
+  "web.disconnected": "Sin conexi\xF3n con Wayfinder; los datos pueden estar desactualizados.",
+  "web.offline": "Sin conexi\xF3n",
+  "web.reconnected": "Conexi\xF3n recuperada",
+  "web.live": "Actualizaci\xF3n autom\xE1tica activa",
+  "web.updated": "Actualizado \xB7 {n} cambios",
+  "web.time.now": "ahora",
+  "web.time.minutes": "hace {n} min",
+  "web.time.hours": "hace {n} h",
+  "web.time.yesterday": "ayer",
+  "web.time.days": "hace {n} d\xEDas",
+  "web.status.proposed": "Sin aprobar",
+  "web.status.todo": "Por hacer",
+  "web.status.in-progress": "En curso",
+  "web.status.done": "Hecha",
+  "web.status.discarded": "Descartada",
+  "web.flag.unapproved": "Sin aprobar",
+  "web.flag.chat": "Aprobada por chat",
+  "web.flag.risk": "Aprobada pese a aviso",
+  "web.flag.outside": "Modificada fuera de Wayfinder",
+  "web.priority.low": "Baja",
+  "web.priority.medium": "Media",
+  "web.priority.high": "Alta",
+  "web.column.proposed": "Propuestas",
+  "web.column.todo": "Por hacer",
+  "web.column.in-progress": "En curso",
+  "web.column.done": "Hechas",
+  "web.column.discarded": "Descartadas",
+  "web.none": "(ninguna)",
+  "web.showAllDone": "Ver todas las hechas ({n})",
+  "web.showDiscarded": "Mostrar descartadas",
+  "web.jumpTo": "Ir a columna",
+  "web.unreadable": "Tareas ilegibles: {n}",
+  "web.prefix": "prefijo",
+  "web.emptyBoard": "A\xFAn no hay tareas. Pide a Claude que proponga ideas.",
+  "web.taskNotFound": "No existe la tarea {id}.",
+  "web.backToBoard": "Tablero",
+  "web.closeDetail": "Cerrar el detalle",
+  "web.noDescription": "Sin descripci\xF3n.",
+  "web.meta.priority": "Prioridad",
+  "web.meta.origin": "Origen",
+  "web.meta.plan": "Plan",
+  "web.meta.created": "Creada",
+  "web.meta.updated": "Actualizada",
+  "web.origin.user": "Persona",
+  "web.origin.claude": "Claude (propuesta)",
+  "web.origin.routine": "Tarea programada (propuesta)",
+  "web.noLog": "A\xFAn no hay bit\xE1cora.",
+  "web.olderDays": "Cargar d\xEDas anteriores",
+  "web.noAssets": "A\xFAn no hay capturas.",
+  "web.noAltText": "sin descripci\xF3n",
+  "web.enlarge": "Ampliar: {name}",
+  "web.close": "Cerrar",
+  "web.projectsTitle": "Proyectos",
+  "web.noProjects": "A\xFAn no hay proyectos. Pide a Claude que registre un repositorio en Wayfinder.",
+  "web.projectNotFound": "No existe el proyecto \xAB{slug}\xBB.",
+  "reason.missingFrontmatter": "falta el bloque de frontmatter",
+  "reason.unterminated": "el frontmatter no est\xE1 cerrado con ---",
+  "reason.invalidYaml": "YAML no v\xE1lido: {detail}",
+  "reason.notMapping": "el frontmatter no es un mapa de claves",
+  "reason.invalidId": "falta el id o no es v\xE1lido",
+  "reason.unknownStatus": "estado desconocido: {value}",
+  "reason.missingTitle": "falta el t\xEDtulo",
+  "reason.idMismatch": "el id del archivo no coincide ({value})"
 };
 
 // src/i18n/en.json
@@ -7849,7 +7923,81 @@ var en_default = {
   "web.notFound": "Not found.",
   "web.forbiddenHost": "Host not allowed.",
   "web.methodNotAllowed": "Method not allowed.",
-  "web.serverError": "Internal Wayfinder error."
+  "web.serverError": "Internal Wayfinder error.",
+  "web.skip": "Skip to content",
+  "web.project": "Project",
+  "web.chooseProject": "Choose a project",
+  "web.views": "Views",
+  "web.tab.board": "Board",
+  "web.tab.log": "Log",
+  "web.tab.assets": "Screenshots",
+  "web.tab.project": "Project",
+  "web.loading": "Loading\u2026",
+  "web.retry": "Retry",
+  "web.error": 'Could not load. Check that "wayfinder serve" is still running.',
+  "web.disconnected": "No connection to Wayfinder; the data may be out of date.",
+  "web.offline": "Offline",
+  "web.reconnected": "Connection restored",
+  "web.live": "Live updates on",
+  "web.updated": "Updated \xB7 {n} changes",
+  "web.time.now": "just now",
+  "web.time.minutes": "{n} min ago",
+  "web.time.hours": "{n} h ago",
+  "web.time.yesterday": "yesterday",
+  "web.time.days": "{n} days ago",
+  "web.status.proposed": "Not approved",
+  "web.status.todo": "To do",
+  "web.status.in-progress": "In progress",
+  "web.status.done": "Done",
+  "web.status.discarded": "Discarded",
+  "web.flag.unapproved": "Not approved",
+  "web.flag.chat": "Approved via chat",
+  "web.flag.risk": "Approved despite a warning",
+  "web.flag.outside": "Modified outside Wayfinder",
+  "web.priority.low": "Low",
+  "web.priority.medium": "Medium",
+  "web.priority.high": "High",
+  "web.column.proposed": "Proposals",
+  "web.column.todo": "To do",
+  "web.column.in-progress": "In progress",
+  "web.column.done": "Done",
+  "web.column.discarded": "Discarded",
+  "web.none": "(none)",
+  "web.showAllDone": "Show all done ({n})",
+  "web.showDiscarded": "Show discarded",
+  "web.jumpTo": "Jump to column",
+  "web.unreadable": "Unreadable tasks: {n}",
+  "web.prefix": "prefix",
+  "web.emptyBoard": "There are no tasks yet. Ask Claude to propose some ideas.",
+  "web.taskNotFound": "Task {id} does not exist.",
+  "web.backToBoard": "Board",
+  "web.closeDetail": "Close the detail",
+  "web.noDescription": "No description.",
+  "web.meta.priority": "Priority",
+  "web.meta.origin": "Origin",
+  "web.meta.plan": "Plan",
+  "web.meta.created": "Created",
+  "web.meta.updated": "Updated",
+  "web.origin.user": "Person",
+  "web.origin.claude": "Claude (proposal)",
+  "web.origin.routine": "Scheduled task (proposal)",
+  "web.noLog": "There is no log yet.",
+  "web.olderDays": "Load earlier days",
+  "web.noAssets": "There are no screenshots yet.",
+  "web.noAltText": "no description",
+  "web.enlarge": "Enlarge: {name}",
+  "web.close": "Close",
+  "web.projectsTitle": "Projects",
+  "web.noProjects": "There are no projects yet. Ask Claude to register a repository in Wayfinder.",
+  "web.projectNotFound": 'Project "{slug}" does not exist.',
+  "reason.missingFrontmatter": "missing frontmatter",
+  "reason.unterminated": "the frontmatter is not closed with ---",
+  "reason.invalidYaml": "invalid YAML: {detail}",
+  "reason.notMapping": "the frontmatter is not a key mapping",
+  "reason.invalidId": "missing or invalid id",
+  "reason.unknownStatus": "unknown status: {value}",
+  "reason.missingTitle": "missing title",
+  "reason.idMismatch": "the file id does not match ({value})"
 };
 
 // src/i18n/index.ts
@@ -7872,7 +8020,27 @@ function resolveLang(env = process.env) {
   }
   return DEFAULT_LANG;
 }
+var REASONS = [
+  [/^missing frontmatter$/, "reason.missingFrontmatter"],
+  [/^unterminated frontmatter$/, "reason.unterminated"],
+  [/^invalid YAML: (.*)$/, "reason.invalidYaml", "detail"],
+  [/^frontmatter is not a mapping$/, "reason.notMapping"],
+  [/^missing or invalid id$/, "reason.invalidId"],
+  [/^unknown status: (.*)$/, "reason.unknownStatus", "value"],
+  [/^missing title$/, "reason.missingTitle"],
+  [/^id mismatch \((.*)\)$/, "reason.idMismatch", "value"]
+];
+function translateReason(lang, reason) {
+  for (const [re, key, varName] of REASONS) {
+    const m = re.exec(reason);
+    if (m) return t(lang, key, varName ? { [varName]: m[1] } : {});
+  }
+  return reason;
+}
 function t(lang, key, vars = {}) {
+  if ((key === "store.taskUnreadable" || key === "mcp.unreadable") && typeof vars.reason === "string") {
+    vars = { ...vars, reason: translateReason(lang, vars.reason) };
+  }
   const template = dictionaries[lang][key] ?? dictionaries.en[key] ?? key;
   return template.replace(/\{(\w+)\}/g, (match, name) => name in vars ? String(vars[name]) : match);
 }
@@ -48294,7 +48462,10 @@ function startServer(options) {
     }
     if (parts[2] === "tasks" && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
-      return json2(res, 200, { tasks: tasks.map((x) => taskMeta(home, x)), unreadable });
+      return json2(res, 200, {
+        tasks: tasks.map((x) => taskMeta(home, x)),
+        unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) }))
+      });
     }
     if (parts[2] === "tasks" && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
@@ -48313,8 +48484,16 @@ function startServer(options) {
     }
     if (parts[2] === "assets" && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), "assets");
-      const assets = existsSync7(dir) ? readdirSync4(dir).filter((n) => ASSET_NAME.test(n)).sort().reverse() : [];
-      return json2(res, 200, { assets });
+      const names = existsSync7(dir) ? readdirSync4(dir).filter((n) => ASSET_NAME.test(n)).sort().reverse() : [];
+      const described = /* @__PURE__ */ new Map();
+      const collect = (markdown, taskId) => {
+        for (const m of markdown.matchAll(/!\[([^\]]*)\]\((?:\.\.\/)?assets\/([\w.-]+)\)/g)) {
+          if (!described.has(m[2])) described.set(m[2], { alt: m[1], taskId });
+        }
+      };
+      collect(project.body, null);
+      for (const task of listTasks(home, slug).tasks) collect(task.body, task.id);
+      return json2(res, 200, { assets: names.map((name) => ({ name, alt: described.get(name)?.alt ?? "", taskId: described.get(name)?.taskId ?? null })) });
     }
     return notFound(res);
   }

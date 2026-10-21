@@ -85,7 +85,7 @@
   | Por hacer | `#3D3D3A` / `#F0EEE6` | `#DEDCD1` / `#30302E` |
   | En curso | `#A04E31` / `#F5E6DF` | `#E89A7E` / `#33241E` |
   | Hecha | `#4E5E39` / `#E9EEE1` | `#A9BE8A` / `#2A3222` |
-  | Descartada (tachada) | `#73726C` / `#F0EEE6` | `#B0AEA5` / `#262624` |
+  | Descartada (tachada) | `#5E5D59` / `#F0EEE6` (ajustado de `#73726C`, que daba 4,15:1) | `#B0AEA5` / `#262624` |
   | Aprobada por chat (azul para no confundirse con el acento) | `#1F5FAE` / `#FFFFFF` / borde `#B9D0EE` | `#8BB6EC` / borde `#35507A` |
   | Aprobada pese a aviso (con icono de advertencia) | `#A63D2E` / `#F8E1DC` / borde `#E4B5AB` | `#F0A08F` / `#3E2420` |
   | Modificada fuera de Wayfinder | `#5E5D59` / `#FFFFFF` / borde `#87867F` | — |
@@ -177,6 +177,7 @@
 ## Evidencia de revisión en ejecución
 | Fecha | Cambio o flujo | Entorno y ruta | Evidencia | Resultado | Desviación aprobada o seguimiento |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-21 | Incremento 4: tablero, detalle, bitácora, capturas, proyecto (es/en) | `wayfinder serve` con datos de prueba; Chromium headless (Playwright 1.64.1); Windows 11 | `npm run test:e2e` 11/11; capturas `test-results/review/` a 320, 768 y 1280 px en claro y oscuro; `test/contrast.test.ts` | Coincide con el lienzo v8. Contraste medido: todos los textos ≥ 4,5:1 y foco, bordes y arcilla ≥ 3:1 en los dos temas | «Descartada» en claro ajustada de `#73726C` a `#5E5D59` (4,15 → 5,67:1). Sin verificar: prueba manual con NVDA y zoom real al 200 % del navegador (aproximado con un viewport de 640 px) |
 
 ## Regresión visual automatizada
 - **Herramienta:** Playwright, prevista en el plan (incremento 4) como devDependency.
