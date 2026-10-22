@@ -25,7 +25,9 @@ const TEXT: Array<[string, string]> = [
   ['text', 'bg'], ['text', 'surface'], ['text', 'column'],
   ['muted', 'bg'], ['muted', 'surface'], ['muted', 'column'],
   ['accent', 'surface'], ['accent', 'bg'], ['accent', 'accent-soft'], ['on-accent', 'accent'],
-  ['danger', 'surface'],
+  ['danger', 'surface'], ['on-accent', 'danger'],
+  // Result message under the top bar sits on the page background.
+  ['status-done-fg', 'bg'], ['flag-risk-fg', 'bg'],
   ...['proposed', 'todo', 'progress', 'done', 'discarded'].map((s) => [`status-${s}-fg`, `status-${s}-bg`] as [string, string]),
   ...['chat', 'risk', 'outside'].map((f) => [`flag-${f}-fg`, `flag-${f}-bg`] as [string, string]),
 ];

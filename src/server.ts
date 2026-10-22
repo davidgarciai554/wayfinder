@@ -1,14 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { extname, join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { dictionaries, t, translateReason, type Lang } from './i18n/index.ts';
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { modifiedOutside } from './store/git.ts';
 import { isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
-import { listTasks, readTask, type Task } from './store/tasks.ts';
+import { findSecrets } from './store/secrets.ts';
+import { createTask, listTasks, readTask, setStatus, type Task, type WriteResult } from './store/tasks.ts';
 
 export interface ServeOptions {
   home: string;
@@ -25,6 +26,8 @@ export interface ServeOptions {
 
 export interface RunningServer {
   url: string;
+  /** `url` plus the per-start key; opening it enables writes in that browser. */
+  writeUrl: string;
   port: number;
   token: string;
   close: () => Promise<void>;
@@ -59,6 +62,10 @@ const MIME: Record<string, string> = {
 const ASSET_NAME = /^[\w.-]+\.(png|jpe?g|gif|webp)$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
+const MAX_JSON = 256 * 1024;
+/** Store errors caused by the current state of the task rather than by the request. */
+const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition']);
+const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound']);
 
 function taskMeta(home: string, task: Task) {
   return {
@@ -91,8 +98,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     return out;
   };
 
-  const send = (res: ServerResponse, status: number, body: string | Buffer, type: string) => {
+  const send = (res: ServerResponse, status: number, body: string | Buffer, type: string, extra: Record<string, string> = {}) => {
     res.writeHead(status, {
+      ...extra,
       'Content-Type': type,
       'Content-Security-Policy': CSP,
       'X-Content-Type-Options': 'nosniff',
@@ -104,9 +112,27 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const json = (res: ServerResponse, status: number, value: unknown) => send(res, status, JSON.stringify(value), 'application/json; charset=utf-8');
   const notFound = (res: ServerResponse) => json(res, 404, { error: t(lang, 'web.notFound') });
 
+  // Writes need the per-start key. Opening `/?k=<key>` (printed by `serve`) stores it in an
+  // HttpOnly, SameSite=Strict cookie; the name carries the port because cookies ignore ports.
+  const cookieName = () => `wayfinder_${options.publicPort ?? boundPort}`;
+  const tokenBuffer = Buffer.from(token);
+  const sameToken = (value: string | undefined) => {
+    const candidate = Buffer.from(value ?? '');
+    return candidate.length === tokenBuffer.length && timingSafeEqual(candidate, tokenBuffer);
+  };
+  const cookieToken = (req: IncomingMessage) => {
+    for (const part of (req.headers.cookie ?? '').split(';')) {
+      const [name, ...rest] = part.trim().split('=');
+      if (name === cookieName()) return rest.join('=');
+    }
+    return undefined;
+  };
+  const canWrite = (req: IncomingMessage) => sameToken(cookieToken(req));
+
   const renderFor = (slug: string) => createRenderer(`/api/projects/${encodeURIComponent(slug)}/assets`);
 
-  function handleApi(res: ServerResponse, parts: string[]): void {
+  function handleApi(req: IncomingMessage, res: ServerResponse, parts: string[]): void {
+    if (parts[0] === 'session' && parts.length === 1) return json(res, 200, { canWrite: canWrite(req) });
     if (parts[0] === 'i18n' && parts.length === 1) {
       const messages = Object.fromEntries(Object.entries(dictionaries[lang]).filter(([k]) => k.startsWith('web.') || k.startsWith('status.')));
       return json(res, 200, { lang, messages });
@@ -180,15 +206,25 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   function handle(req: IncomingMessage, res: ServerResponse): void {
     const hostHeader = (req.headers.host ?? '').toLowerCase();
     if (!allowedHosts().has(hostHeader)) return json(res, 403, { error: t(lang, 'web.forbiddenHost') });
-    if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: t(lang, 'web.methodNotAllowed') });
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') return json(res, 405, { error: t(lang, 'web.methodNotAllowed') });
 
     let pathname: string;
+    let url: URL;
     try {
-      pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
+      url = new URL(req.url ?? '/', 'http://localhost');
+      pathname = decodeURIComponent(url.pathname);
     } catch {
       return notFound(res);
     }
     if (pathname.includes('\0') || pathname.includes('\\')) return notFound(res);
+    if (req.method === 'POST') return handleWrite(req, res, pathname.split('/').filter(Boolean));
+
+    // `/?k=<key>`: remember the key in this browser and drop it from the address bar.
+    if (pathname === '/' && url.searchParams.has('k')) {
+      const headers: Record<string, string> = { Location: '/' };
+      if (sameToken(url.searchParams.get('k') ?? '')) headers['Set-Cookie'] = `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict`;
+      return send(res, 303, '', 'text/plain; charset=utf-8', headers);
+    }
 
     const file = STATIC[pathname];
     if (file) {
@@ -202,14 +238,79 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     if (parts[0] !== 'api') return notFound(res);
     if (parts[1] === 'projects' && parts[3] === 'assets' && parts.length === 5) return serveAsset(res, parts[2], parts[4]);
     try {
-      handleApi(res, parts.slice(1));
+      handleApi(req, res, parts.slice(1));
     } catch (error) {
-      if (error instanceof WayfinderError) {
-        const status = error.key === 'store.projectNotFound' || error.key === 'store.taskNotFound' ? 404 : 400;
-        return json(res, status, { error: t(lang, error.key, error.vars) });
-      }
-      json(res, 500, { error: t(lang, 'web.serverError') });
+      fail(res, error);
     }
+  }
+
+  function fail(res: ServerResponse, error: unknown, field?: string): void {
+    if (error instanceof WayfinderError) {
+      const status = NOT_FOUND_KEYS.has(error.key) ? 404 : CONFLICT_KEYS.has(error.key) ? 409 : 400;
+      return json(res, status, { error: t(lang, error.key, error.vars), ...(field ? { field } : {}) });
+    }
+    json(res, 500, { error: t(lang, 'web.serverError') });
+  }
+
+  // ---------- writes ----------
+  // CSRF and DNS rebinding: Host is already allow-listed; a write also needs our own Origin,
+  // a JSON body (cross-site JSON needs a CORS preflight, which is never granted) and the key.
+  function handleWrite(req: IncomingMessage, res: ServerResponse, parts: string[]): void {
+    const route = writeRoute(parts);
+    if (!route) return json(res, 405, { error: t(lang, 'web.methodNotAllowed') });
+    if (req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: t(lang, 'web.forbiddenOrigin') });
+    if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] ?? '')) return json(res, 415, { error: t(lang, 'web.jsonOnly') });
+    if (!canWrite(req)) return json(res, 401, { error: t(lang, 'web.needsKey') });
+
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= MAX_JSON) chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (size > MAX_JSON) return json(res, 413, { error: t(lang, 'web.tooLarge') });
+      let input: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+        input = parsed as Record<string, unknown>;
+      } catch {
+        return json(res, 400, { error: t(lang, 'web.badJson') });
+      }
+      const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : undefined);
+      try {
+        let result: WriteResult;
+        if (route.action === 'create') {
+          result = createTask(home, route.slug, { title: str('title') ?? '', body: str('body') ?? '', priority: str('priority') }, 'web');
+        } else {
+          const expectedUpdated = str('expectedUpdated');
+          if (!expectedUpdated) return json(res, 400, { error: t(lang, 'web.badJson') });
+          result = setStatus(home, route.slug, route.id, route.action === 'approve' ? 'todo' : 'discarded', 'web', { expectedUpdated });
+        }
+        json(res, route.action === 'create' ? 201 : 200, {
+          task: taskMeta(home, result.task),
+          warnings: result.warnings.map((w) => t(lang, w.key, w.vars)),
+        });
+      } catch (error) {
+        fail(res, error, route.action === 'create' ? formField(error, str('title') ?? '') : undefined);
+      }
+    });
+  }
+
+  /** The store says what failed, not where: name the form field so the page can mark it. */
+  function formField(error: unknown, title: string): string | undefined {
+    if (!(error instanceof WayfinderError)) return undefined;
+    if (error.key === 'store.secretRejected') return findSecrets(title).length > 0 ? 'title' : 'body';
+    return ({ 'store.invalidTitle': 'title', 'store.bodyTooLong': 'body', 'store.invalidPriority': 'priority' } as Record<string, string>)[error.key];
+  }
+
+  function writeRoute(parts: string[]): { action: 'create' | 'approve' | 'discard'; slug: string; id: string } | null {
+    // /api/projects/:slug/tasks and /api/projects/:slug/tasks/:id/(approve|discard)
+    if (parts[0] !== 'api' || parts[1] !== 'projects' || parts[3] !== 'tasks' || !SLUG_RE.test(parts[2] ?? '')) return null;
+    if (parts.length === 4) return { action: 'create', slug: parts[2], id: '' };
+    if (parts.length === 6 && (parts[5] === 'approve' || parts[5] === 'discard')) return { action: parts[5], slug: parts[2], id: parts[4] };
+    return null;
   }
 
   function openEvents(req: IncomingMessage, res: ServerResponse): void {
@@ -275,8 +376,10 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       const address = server.address();
       boundPort = typeof address === 'object' && address ? address.port : 0;
       const shownHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+      const url = `http://${shownHost}:${options.publicPort ?? boundPort}/`;
       resolvePromise({
-        url: `http://${shownHost}:${options.publicPort ?? boundPort}/`,
+        url,
+        writeUrl: `${url}?k=${token}`,
         port: boundPort,
         token,
         close: () =>

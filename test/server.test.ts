@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { createTask } from '../src/store/tasks.ts';
-import { makeHome, makeProject } from './helpers.ts';
+import { setGitRunner } from '../src/store/git.ts';
+import { commitCount, gitOut, makeHome, makeProject, tree } from './helpers.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 
@@ -161,3 +162,149 @@ for (const poll of [false, true]) {
     assert.equal(await changed, true);
   });
 }
+
+// ---------- writes (increment 5) ----------
+
+interface Reply {
+  status: number;
+  headers: Record<string, unknown>;
+  body: string;
+}
+
+function post(port: number, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Reply> {
+  const payload = typeof body === 'string' ? body : JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method: 'POST', headers: { Host: `127.0.0.1:${port}`, ...headers } }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => (text += d));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }));
+    });
+    // The server may answer (413) before reading the whole body.
+    req.on('error', (error: NodeJS.ErrnoException) => (error.code === 'ECONNRESET' || error.code === 'EPIPE' ? undefined : reject(error)));
+    req.end(payload);
+  });
+}
+
+function getWithCookie(port: number, path: string, cookie: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, headers: { Host: `127.0.0.1:${port}`, Cookie: cookie } }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => (text += d));
+      res.on('end', () => resolve(text));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** Headers of a legitimate write from the page: own Origin, JSON and the key cookie. */
+async function writer(t: Parameters<typeof makeHome>[0], extra: { lang?: 'es' | 'en' } = {}) {
+  const ctx = await serve(t, extra);
+  const landing = await get(ctx.port, `/?k=${ctx.server.token}`);
+  assert.equal(landing.status, 303);
+  assert.equal(landing.headers.location, '/');
+  const setCookie = String((landing.headers['set-cookie'] as string[])[0]);
+  assert.match(setCookie, /; Path=\/; HttpOnly; SameSite=Strict$/);
+  const headers = { Origin: `http://127.0.0.1:${ctx.port}`, 'Content-Type': 'application/json', Cookie: setCookie.split(';')[0] };
+  return { ...ctx, headers };
+}
+
+test('the key link sets an HttpOnly SameSite=Strict cookie; a wrong key sets nothing', async (t) => {
+  const { port, server, headers } = await writer(t);
+  assert.equal(server.writeUrl, `${server.url}?k=${server.token}`);
+  const wrong = await get(port, '/?k=nope');
+  assert.equal(wrong.status, 303);
+  assert.equal(wrong.headers['set-cookie'], undefined);
+  assert.equal(JSON.parse((await get(port, '/api/session')).body).canWrite, false);
+  assert.equal(JSON.parse(await getWithCookie(port, '/api/session', headers.Cookie)).canWrite, true);
+});
+
+test('create, approve and discard from the web: one commit each, approvedVia web', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const before = commitCount(home);
+  const created = await post(port, '/api/projects/demo/tasks', { title: 'Desde la web', body: 'Detalle', priority: 'high' }, headers);
+  assert.equal(created.status, 201, created.body);
+  const task = JSON.parse(created.body).task;
+  assert.equal(task.status, 'todo');
+  assert.equal(task.origin, 'user');
+  assert.equal(task.priority, 'high');
+  assert.deepEqual(JSON.parse(created.body).warnings, []);
+
+  const proposal = createTask(home, 'demo', { title: 'Idea de Claude' }, 'mcp').task;
+  const approved = await post(port, `/api/projects/demo/tasks/${proposal.id}/approve`, { expectedUpdated: proposal.updated }, headers);
+  assert.equal(approved.status, 200, approved.body);
+  assert.equal(JSON.parse(approved.body).task.status, 'todo');
+  assert.equal(JSON.parse(approved.body).task.approvedVia, 'web');
+
+  const fresh = JSON.parse((await get(port, `/api/projects/demo/tasks/${task.id}`)).body);
+  const discarded = await post(port, `/api/projects/demo/tasks/${task.id}/discard`, { expectedUpdated: fresh.updated }, headers);
+  assert.equal(discarded.status, 200, discarded.body);
+  assert.equal(JSON.parse(discarded.body).task.status, 'discarded');
+
+  // create (web) + create (mcp, above) + approve + discard
+  assert.equal(commitCount(home), before + 4);
+  assert.equal(gitOut(home, 'log', '-3', '--format=%s'), 'wf: set-status WF-1 todo->discarded\nwf: set-status WF-2 proposed->todo\nwf: create WF-2');
+});
+
+test('writes without the key, from another Origin or without JSON are rejected with no effect', async (t) => {
+  const { home, port, headers } = await writer(t, { lang: 'es' });
+  const proposal = createTask(home, 'demo', { title: 'Intacta' }, 'mcp').task;
+  const files = tree(home);
+  const commits = commitCount(home);
+  const approve = `/api/projects/demo/tasks/${proposal.id}/approve`;
+  const body = { expectedUpdated: proposal.updated };
+  const cases: Array<[string, Record<string, string>, number]> = [
+    ['no key', { ...headers, Cookie: '' }, 401],
+    ['wrong key', { ...headers, Cookie: `wayfinder_${port}=${'0'.repeat(48)}` }, 401],
+    ['foreign Origin', { ...headers, Origin: 'http://evil.example.com' }, 403],
+    ['other local port', { ...headers, Origin: 'http://127.0.0.1:1' }, 403],
+    ['no Origin', { 'Content-Type': headers['Content-Type'], Cookie: headers.Cookie }, 403],
+    ['text/plain', { ...headers, 'Content-Type': 'text/plain' }, 415],
+    ['form', { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' }, 415],
+    ['foreign Host', { ...headers, Host: 'evil.example.com' }, 403],
+  ];
+  for (const [name, h, status] of cases) {
+    assert.equal((await post(port, approve, body, h)).status, status, name);
+  }
+  assert.match(JSON.parse((await post(port, approve, body, { ...headers, Cookie: '' })).body).error, /clave de escritura/);
+  assert.equal((await post(port, approve, '{not json', headers)).status, 400);
+  assert.equal((await post(port, approve, {}, headers)).status, 400, 'expectedUpdated is required');
+  assert.equal((await post(port, '/api/projects/demo/tasks', 'x'.repeat(300 * 1024), headers)).status, 413);
+  assert.equal((await post(port, `/api/projects/demo/tasks/${proposal.id}/start`, body, headers)).status, 405);
+  assert.deepEqual(tree(home), files);
+  assert.equal(commitCount(home), commits);
+});
+
+test('stale or invalid state answers 409; invalid input names the field', async (t) => {
+  const { home, port, headers } = await writer(t, { lang: 'es' });
+  const proposal = createTask(home, 'demo', { title: 'Cambiante' }, 'mcp').task;
+  const stale = await post(port, `/api/projects/demo/tasks/${proposal.id}/approve`, { expectedUpdated: '2000-01-01T00:00:00' }, headers);
+  assert.equal(stale.status, 409);
+  assert.match(JSON.parse(stale.body).error, /cambió/);
+  const todo = createTask(home, 'demo', { title: 'Ya aprobada' }, 'web').task;
+  assert.equal((await post(port, `/api/projects/demo/tasks/${todo.id}/approve`, { expectedUpdated: todo.updated }, headers)).status, 409);
+  assert.equal((await post(port, '/api/projects/demo/tasks/WF-99/approve', { expectedUpdated: 'x' }, headers)).status, 404);
+  assert.equal((await post(port, '/api/projects/nope/tasks', { title: 'x' }, headers)).status, 404);
+
+  const empty = await post(port, '/api/projects/demo/tasks', { title: '   ' }, headers);
+  assert.equal(empty.status, 400);
+  assert.equal(JSON.parse(empty.body).field, 'title');
+  const secretBody = await post(port, '/api/projects/demo/tasks', { title: 'Bien', body: 'token ghp_abcdefghijklmnopqrstuvwxyz0123456789' }, headers);
+  assert.equal(secretBody.status, 400);
+  assert.equal(JSON.parse(secretBody.body).field, 'body');
+  assert.equal(JSON.parse((await post(port, '/api/projects/demo/tasks', { title: 'Bien', priority: 'urgent' }, headers)).body).field, 'priority');
+});
+
+test('git missing: the write is kept and answers 201 with a visible warning', async (t) => {
+  const { port, headers } = await writer(t, { lang: 'es' });
+  const restore = setGitRunner(() => ({ ok: false, missing: true, stdout: '', stderr: 'spawn git ENOENT' }));
+  t.after(restore);
+  const res = await post(port, '/api/projects/demo/tasks', { title: 'Sin git' }, headers);
+  assert.equal(res.status, 201);
+  const { task, warnings } = JSON.parse(res.body);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /git/i);
+  assert.equal(JSON.parse((await get(port, `/api/projects/demo/tasks/${task.id}`)).body).title, 'Sin git');
+});

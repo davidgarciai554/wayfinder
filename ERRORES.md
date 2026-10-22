@@ -39,3 +39,13 @@
 - **Solución:** regla global `[hidden] { display: none !important; }`. Los tests comprueban ahora que el banner está oculto con conexión y que aparece al abortar `/api/events`.
 - **Archivos modificados:** `web/styles.css`, `e2e/read.spec.ts`.
 - **Validación:** `npm run test:e2e` → 11/11.
+
+## 2026-10-22 · El test e2e de la bitácora dependía de la fecha del día
+
+- **Contexto:** incremento 5, al volver a ejecutar `npm run test:e2e` un día después del incremento 4.
+- **Reproducción:** ejecutar la suite e2e en un día distinto de 2026-10-21.
+- **Salida observada:** `log, screenshots (with viewer) and project pages` falla: el primer día de la bitácora es `2026-10-22` con «08:38 · WF-6» en lugar de la entrada «Implementado el filtro».
+- **Causa confirmada:** `e2e/fixture-server.ts` pasaba un reloj fijo a `createTask` y `appendLog`, pero no a `setStatus` ni a `updateTask`; esos cambios de estado escriben marcas en la bitácora con la hora real, así que aparecía un día nuevo cada día. El 2026-10-21 coincidía por casualidad con el reloj fijo. No es un defecto del producto.
+- **Solución:** el fixture pasa el mismo reloj fijo a todas las escrituras.
+- **Archivos modificados:** `e2e/fixture-server.ts`.
+- **Validación:** `npm run test:e2e` → 20/20.

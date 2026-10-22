@@ -28,7 +28,7 @@ test.describe('web board (read-only)', () => {
     await expect(page.getByText('Modificada fuera de Wayfinder').first()).toBeVisible();
     await expect(page.getByText(/Tareas ilegibles: 1/)).toBeVisible();
     await expect(page.getByText('projects/wayfinder/tasks/WF-99-rota.md')).toBeVisible();
-    await expect(page.locator('.notice')).toContainText('falta el id o no es válido');
+    await expect(page.locator('main .notice')).toContainText('falta el id o no es válido');
     await expect(page.locator('#column-discarded')).toHaveCount(0);
     await expect(page.locator('#banner')).toBeHidden();
 
@@ -167,7 +167,7 @@ test.describe('web board (read-only)', () => {
     for (const name of ['Proposals', 'To do', 'In progress', 'Done']) {
       await expect(page.getByRole('heading', { level: 2, name: new RegExp(`^${name}`) })).toBeVisible();
     }
-    await expect(page.locator('.notice')).toContainText('missing or invalid id');
+    await expect(page.locator('main .notice')).toContainText('missing or invalid id');
     const text = await page.locator('body').innerText();
     expect(text).not.toMatch(/\b(web|status|reason)\.[a-z]/);
     expect(text).not.toMatch(/Propuestas|Por hacer|Tablero|Bitácora|Mostrar descartadas|Sin aprobar/);

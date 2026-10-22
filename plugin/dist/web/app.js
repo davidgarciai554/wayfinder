@@ -1,6 +1,7 @@
-// Wayfinder web board (read-only, increment 4). Design: docs/design/DESIGN.md.
+// Wayfinder web board. Design: docs/design/DESIGN.md.
 // Everything that comes from data is written with textContent; only Markdown rendered and
 // sanitised by the server (markdown-it, html: false) is inserted as HTML.
+// Writes (create, approve, discard) need the per-start key cookie set by the link `serve` prints.
 
 const WIDE = window.matchMedia('(min-width: 1100px)');
 const DONE_LIMIT = 10;
@@ -16,6 +17,9 @@ let logShown = LOG_PAGE;
 let refreshTimer;
 let pendingChanges = 0;
 let returnFocusTo = null;
+let canWrite = false;
+let lastOwnWrite = 0;
+let flashTimer;
 
 const $ = (id) => document.getElementById(id);
 const main = $('main');
@@ -63,6 +67,34 @@ async function api(path) {
     throw error;
   }
   return body;
+}
+
+async function post(path, payload) {
+  let res;
+  try {
+    res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) });
+  } catch {
+    throw new Error(t('web.disconnected'));
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(body.error || t('web.error'));
+    error.status = res.status;
+    error.field = body.field;
+    throw error;
+  }
+  lastOwnWrite = Date.now();
+  return body;
+}
+
+/** Result message under the top bar. Successes stay 6 s (≥ 5 s); errors stay until the next one. */
+function flash(message, kind = 'ok', warnings = []) {
+  const box = $('flash');
+  clearTimeout(flashTimer);
+  const text = warnings.length ? t('web.withWarning', { message, warning: warnings.join(' ') }) : message;
+  box.dataset.kind = warnings.length ? 'warn' : kind;
+  box.textContent = text;
+  if (kind === 'ok' && !warnings.length) flashTimer = setTimeout(() => { box.textContent = ''; }, 6000);
 }
 
 // ---------- dates ----------
@@ -182,13 +214,166 @@ function card(task, selectedId) {
     ),
     el('a', { class: 'card-title', href: href(view.slug, 'task', task.id), 'data-focus': `task:${task.id}`, text: task.title }),
     tags.length ? el('div', { class: 'tags' }, tags) : null,
+    task.status === 'proposed' ? actions(task, 'card-actions') : null,
   );
+}
+
+// ---------- actions (increment 5) ----------
+/** Approve (proposals) and Discard (anything still open). Buttons are named with the title. */
+function actions(task, className) {
+  if (!canWrite) return null;
+  const buttons = [];
+  if (task.status === 'proposed') {
+    buttons.push(el('button', {
+      type: 'button', class: 'button button-small', 'data-focus': `approve:${task.id}`,
+      'aria-label': t('web.approveLabel', { title: task.title }), text: t('web.approve'),
+      onclick: (e) => approve(task, e.currentTarget),
+    }));
+  }
+  if (['proposed', 'todo', 'in-progress'].includes(task.status)) {
+    buttons.push(el('button', {
+      type: 'button', class: 'button button-small button-danger-quiet', 'data-focus': `discard:${task.id}`,
+      'aria-label': t('web.discardLabel', { title: task.title }), text: t('web.discard'),
+      onclick: (e) => openDiscard(task, e.currentTarget),
+    }));
+  }
+  return buttons.length ? el('div', { class: className }, buttons) : null;
+}
+
+const taskPath = (task, action) => `/api/projects/${encodeURIComponent(view.slug)}/tasks/${encodeURIComponent(task.id)}/${action}`;
+
+async function approve(task, button) {
+  button.disabled = true;
+  try {
+    const result = await post(taskPath(task, 'approve'), { expectedUpdated: task.updated });
+    flash(t('web.approved', { id: task.id }), 'ok', result.warnings);
+    await reload(view.page === 'task' ? 'task-title' : `task:${task.id}`);
+  } catch (error) {
+    button.disabled = false;
+    flash(error.message, 'error');
+    if (error.status === 409 || error.status === 404) await reload(null);
+  }
+}
+
+// Discard: alertdialog with the consequence, initial focus on Cancel, Esc cancels.
+let discarding = null; // { task, done }
+function openDiscard(task, opener) {
+  discarding = { task, done: false };
+  $('discard-title').textContent = t('web.discardTitle', { title: task.title });
+  $('discard-text').textContent = t('web.discardText', { id: task.id });
+  $('discard-error').hidden = true;
+  setBusy($('discard-confirm'), false, 'web.discard');
+  $('discard-cancel').disabled = false;
+  returnFocusTo = opener;
+  $('discard-dialog').showModal();
+  $('discard-cancel').focus();
+}
+
+async function confirmDiscard() {
+  const { task } = discarding;
+  const confirm = $('discard-confirm');
+  setBusy(confirm, true, 'web.discarding');
+  $('discard-cancel').disabled = true;
+  try {
+    const result = await post(taskPath(task, 'discard'), { expectedUpdated: task.updated });
+    discarding.done = true;
+    $('discard-dialog').close();
+    flash(t('web.discarded', { id: task.id }), 'ok', result.warnings);
+    if (view.page === 'task' && view.id === task.id) {
+      await loadProjects();
+      location.hash = href(view.slug); // the router renders the board and focuses its heading
+    } else {
+      await reload(`col-${task.status}`);
+    }
+  } catch (error) {
+    setBusy(confirm, false, 'web.discard');
+    $('discard-cancel').disabled = false;
+    $('discard-error').textContent = error.message;
+    $('discard-error').hidden = false;
+    confirm.focus();
+    if (error.status === 409 || error.status === 404) pendingChanges += 1;
+  }
+}
+
+function setBusy(button, busy, labelKey) {
+  button.disabled = busy;
+  button.textContent = t(labelKey);
+}
+
+// Create: dialog form. The draft survives closing the dialog and failed submits.
+function openCreate(opener) {
+  returnFocusTo = opener;
+  $('create-dialog').showModal();
+  $('create-name').focus();
+}
+
+const FIELDS = { title: 'create-name', body: 'create-body', priority: 'create-priority' };
+
+function showErrors(errors) {
+  const summary = $('create-errors');
+  for (const [field, id] of Object.entries(FIELDS)) {
+    const message = errors.find((e) => e.field === field)?.message;
+    const input = $(id);
+    const note = $(`${id}-error`);
+    note.textContent = message ?? '';
+    note.hidden = !message;
+    if (message) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+  if (errors.length === 0) {
+    summary.hidden = true;
+    summary.replaceChildren();
+    return;
+  }
+  summary.replaceChildren(
+    el('p', { text: t('web.form.errors') }),
+    el('ul', {}, errors.map((e) => el('li', {}, e.field
+      ? el('a', { href: `#${FIELDS[e.field]}`, text: e.message, onclick: (ev) => { ev.preventDefault(); $(FIELDS[e.field]).focus(); } })
+      : e.message))),
+  );
+  summary.hidden = false;
+  const first = errors.find((e) => e.field);
+  (first ? $(FIELDS[first.field]) : summary).focus();
+}
+
+async function submitCreate(event) {
+  event.preventDefault();
+  const title = $('create-name').value;
+  if (!title.trim()) return showErrors([{ field: 'title', message: t('web.form.titleRequired') }]);
+  const submit = $('create-submit');
+  setBusy(submit, true, 'web.form.creating');
+  try {
+    const result = await post(`/api/projects/${encodeURIComponent(view.slug)}/tasks`, {
+      title, body: $('create-body').value, priority: $('create-priority').value,
+    });
+    showErrors([]);
+    $('create-form').reset();
+    returnFocusTo = null;
+    $('create-dialog').close();
+    flash(t('web.created', { id: result.task.id }), 'ok', result.warnings);
+    await reload(`task:${result.task.id}`);
+  } catch (error) {
+    showErrors([{ field: error.field, message: error.message }]);
+  } finally {
+    setBusy(submit, false, 'web.form.create');
+  }
+}
+
+/** Re-reads the data after a write and puts focus on `focusKey` (data-focus or element id). */
+async function reload(focusKey) {
+  try {
+    await loadProjects();
+  } catch {
+    return;
+  }
+  await render({ keepFocus: true, focus: focusKey });
 }
 
 function column(id, title, tasks, selectedId, extra) {
   const headingId = `col-${id}`;
   return el('section', { class: 'column', 'aria-labelledby': headingId, id: `column-${id}` },
-    el('h2', { id: headingId }, el('span', { text: title }), el('span', { class: 'count', text: String(tasks.length) })),
+    // Focusable from script (jump links, after a discard) so a refresh can restore that focus.
+    el('h2', { id: headingId, tabindex: '-1', 'data-focus': headingId }, el('span', { text: title }), el('span', { class: 'count', text: String(tasks.length) })),
     el('ul', { class: 'cards' },
       tasks.length ? tasks.map((x) => card(x, selectedId)) : el('li', { class: 'none', text: t('web.none') }),
     ),
@@ -250,8 +435,12 @@ async function renderBoard() {
         el('h1', { text: project.name }),
         el('p', { class: 'mono muted', text: `${t('web.prefix')} ${project.idPrefix}` }),
       ),
-      el('div', { class: 'toolbar' }, toggle),
+      el('div', { class: 'toolbar' },
+        toggle,
+        canWrite ? el('button', { type: 'button', class: 'button button-primary', 'data-focus': 'new-task', text: t('web.newTask'), onclick: (e) => openCreate(e.currentTarget) }) : null,
+      ),
     ),
+    canWrite ? null : el('p', { class: 'info', text: t('web.readOnly') }),
     unreadable,
     data.tasks.length === 0 ? el('p', { class: 'empty', text: t('web.emptyBoard') }) : null,
     jump,
@@ -282,8 +471,9 @@ async function detailPanel(asPage) {
   const row = (label, value) => [el('dt', { text: label }), el('dd', {}, value)];
   return el('aside', { class: `detail${asPage ? ' detail-page' : ''}`, 'aria-labelledby': 'task-title' },
     el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
-    el('h1', { id: 'task-title', tabindex: '-1', text: task.title }),
+    el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
     el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' })),
+    actions(task, 'detail-actions'),
     el('dl', { class: 'meta' },
       row(t('web.meta.priority'), t(`web.priority.${task.priority}`)),
       row(t('web.meta.origin'), t(`web.origin.${task.origin}`)),
@@ -386,12 +576,12 @@ function renderNotFound() {
 
 // ---------- render loop ----------
 let rendering = Promise.resolve();
-function render({ keepFocus = false, firstPaint = false } = {}) {
-  rendering = rendering.then(() => doRender(keepFocus, firstPaint)).catch(() => undefined);
+function render({ keepFocus = false, firstPaint = false, focus = null } = {}) {
+  rendering = rendering.then(() => doRender(keepFocus, firstPaint, focus)).catch(() => undefined);
   return rendering;
 }
 
-async function doRender(keepFocus, firstPaint) {
+async function doRender(keepFocus, firstPaint, focus) {
   const previous = view;
   view = parseHash();
   if (!view.slug && projects.length === 1) {
@@ -414,7 +604,12 @@ async function doRender(keepFocus, firstPaint) {
     failure(error, () => render());
     return;
   }
-  if (focusKey) {
+  if (focus) {
+    // After a write: the moved card, the column it left or the task title; else the page heading.
+    const target = main.querySelector(`[data-focus="${CSS.escape(focus)}"]`) ?? main.querySelector(`#${CSS.escape(focus)}`) ?? main.querySelector('h1');
+    if (target && !target.matches('a, button, input, select, textarea')) target.setAttribute('tabindex', '-1');
+    target?.focus();
+  } else if (focusKey) {
     main.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
   } else if (!keepFocus && !firstPaint) {
     const sameBoard = previous && previous.slug === view.slug && previous.page === 'task' && view.page === 'board' && previous.id;
@@ -434,7 +629,7 @@ async function loadProjects() {
 
 async function refresh({ announce = true } = {}) {
   // Never disturb an open dialog: apply the update once it closes.
-  if ($('viewer').open) {
+  if (document.querySelector('dialog[open]')) {
     if (announce) pendingChanges += 1;
     return;
   }
@@ -444,7 +639,8 @@ async function refresh({ announce = true } = {}) {
     return;
   }
   await render({ keepFocus: true });
-  if (announce) setLive(t('web.updated', { n: Math.max(pendingChanges, 1) }));
+  // Our own write already has its message; do not announce its echo from the file watcher.
+  if (announce && Date.now() - lastOwnWrite > 2000) setLive(t('web.updated', { n: Math.max(pendingChanges, 1) }));
   pendingChanges = 0;
 }
 
@@ -500,11 +696,27 @@ async function start() {
     refresh();
   });
   $('viewer-close').addEventListener('click', () => $('viewer').close());
-  $('viewer').addEventListener('close', () => {
-    returnFocusTo?.focus();
-    returnFocusTo = null;
-    if (pendingChanges > 0) refresh();
+  $('create-form').addEventListener('submit', submitCreate);
+  $('create-cancel').addEventListener('click', () => $('create-dialog').close());
+  $('discard-cancel').addEventListener('click', () => $('discard-dialog').close());
+  $('discard-confirm').addEventListener('click', confirmDiscard);
+  // Esc must not cancel a discard that is already being sent.
+  $('discard-dialog').addEventListener('cancel', (e) => {
+    if ($('discard-confirm').disabled) e.preventDefault();
   });
+  for (const dialog of document.querySelectorAll('dialog')) {
+    dialog.addEventListener('close', () => {
+      // Restore focus unless the action that closed the dialog moves it itself.
+      if (!(dialog.id === 'discard-dialog' && discarding?.done)) returnFocusTo?.focus();
+      returnFocusTo = null;
+      if (pendingChanges > 0) refresh();
+    });
+  }
+  try {
+    canWrite = (await api('/api/session')).canWrite === true;
+  } catch {
+    canWrite = false;
+  }
   window.addEventListener('hashchange', () => render());
   WIDE.addEventListener('change', () => render({ keepFocus: true }));
   try {

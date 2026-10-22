@@ -120,7 +120,8 @@ async function runServe(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessE
   if (!['127.0.0.1', 'localhost', '::1'].includes(host)) io.err(t(lang, 'cli.warning', { message: t(lang, 'serve.nonLoopback', { host }) }));
   const poll = args.includes('--poll') || env.WAYFINDER_POLL === '1';
   const server = await startServer({ home, lang, host, port, publicPort, poll, webDir: webDir() });
-  io.out(t(lang, 'serve.listening', { url: server.url }));
+  io.out(t(lang, 'serve.listening', { url: server.writeUrl }));
+  io.out(t(lang, 'serve.keyNote'));
   const stop = () => {
     void server.close().then(() => process.exit(0));
   };

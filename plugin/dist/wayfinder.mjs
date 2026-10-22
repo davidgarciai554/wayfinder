@@ -7804,7 +7804,38 @@ var es_default = {
   "reason.invalidId": "falta el id o no es v\xE1lido",
   "reason.unknownStatus": "estado desconocido: {value}",
   "reason.missingTitle": "falta el t\xEDtulo",
-  "reason.idMismatch": "el id del archivo no coincide ({value})"
+  "reason.idMismatch": "el id del archivo no coincide ({value})",
+  "serve.keyNote": "Ese enlace lleva la clave de escritura de este arranque; sin ella la web es de solo lectura. No lo compartas.",
+  "web.forbiddenOrigin": "Petici\xF3n rechazada: no viene de esta web.",
+  "web.jsonOnly": "Petici\xF3n rechazada: solo se aceptan datos JSON.",
+  "web.needsKey": "Esta ventana no tiene la clave de escritura (cambia en cada arranque). Abre el enlace con clave que muestra la terminal de \xABwayfinder serve\xBB.",
+  "web.tooLarge": "Petici\xF3n rechazada: es demasiado grande.",
+  "web.badJson": "Petici\xF3n rechazada: los datos no son v\xE1lidos.",
+  "web.readOnly": "Solo lectura. Para crear, aprobar o descartar, abre el enlace con clave que muestra la terminal de \xABwayfinder serve\xBB.",
+  "web.newTask": "Nueva tarea",
+  "web.form.title": "T\xEDtulo",
+  "web.form.titleHint": "Obligatorio. Hasta 200 caracteres.",
+  "web.form.body": "Descripci\xF3n",
+  "web.form.bodyHint": "Opcional. Admite Markdown. No incluyas secretos ni datos personales.",
+  "web.form.priority": "Prioridad",
+  "web.form.create": "Crear tarea",
+  "web.form.creating": "Creando\u2026",
+  "web.form.errors": "No se ha creado la tarea. Revisa:",
+  "web.form.titleRequired": "Escribe un t\xEDtulo.",
+  "web.form.note": "Se crea en \xABPor hacer\xBB.",
+  "web.cancel": "Cancelar",
+  "web.created": "Creada {id} en \xABPor hacer\xBB.",
+  "web.approve": "Aprobar",
+  "web.approveLabel": "Aprobar \xAB{title}\xBB",
+  "web.approved": "{id} aprobada: pasa a \xABPor hacer\xBB.",
+  "web.discard": "Descartar",
+  "web.discardLabel": "Descartar \xAB{title}\xBB",
+  "web.discardTitle": "\xBFDescartar \xAB{title}\xBB?",
+  "web.discardText": "{id} pasar\xE1 a \xABDescartadas\xBB y dejar\xE1 de verse en el tablero. Podr\xE1s verla con \xABMostrar descartadas\xBB.",
+  "web.discarding": "Descartando\u2026",
+  "web.discarded": "{id} descartada.",
+  "web.withWarning": "{message} Aviso: {warning}",
+  "web.actions": "Acciones"
 };
 
 // src/i18n/en.json
@@ -7997,7 +8028,38 @@ var en_default = {
   "reason.invalidId": "missing or invalid id",
   "reason.unknownStatus": "unknown status: {value}",
   "reason.missingTitle": "missing title",
-  "reason.idMismatch": "the file id does not match ({value})"
+  "reason.idMismatch": "the file id does not match ({value})",
+  "serve.keyNote": "That link carries the write key for this run; without it the web board is read-only. Do not share it.",
+  "web.forbiddenOrigin": "Request rejected: it does not come from this page.",
+  "web.jsonOnly": "Request rejected: only JSON data is accepted.",
+  "web.needsKey": 'This window does not have the write key (it changes on every start). Open the link with the key shown in the "wayfinder serve" terminal.',
+  "web.tooLarge": "Request rejected: it is too large.",
+  "web.badJson": "Request rejected: the data is not valid.",
+  "web.readOnly": 'Read-only. To create, approve or discard, open the link with the key shown in the "wayfinder serve" terminal.',
+  "web.newTask": "New task",
+  "web.form.title": "Title",
+  "web.form.titleHint": "Required. Up to 200 characters.",
+  "web.form.body": "Description",
+  "web.form.bodyHint": "Optional. Markdown is supported. Do not include secrets or personal data.",
+  "web.form.priority": "Priority",
+  "web.form.create": "Create task",
+  "web.form.creating": "Creating\u2026",
+  "web.form.errors": "The task was not created. Check:",
+  "web.form.titleRequired": "Enter a title.",
+  "web.form.note": 'It is created in "To do".',
+  "web.cancel": "Cancel",
+  "web.created": 'Created {id} in "To do".',
+  "web.approve": "Approve",
+  "web.approveLabel": 'Approve "{title}"',
+  "web.approved": '{id} approved: it moves to "To do".',
+  "web.discard": "Discard",
+  "web.discardLabel": 'Discard "{title}"',
+  "web.discardTitle": 'Discard "{title}"?',
+  "web.discardText": '{id} will move to "Discarded" and leave the board. You can still see it with "Show discarded".',
+  "web.discarding": "Discarding\u2026",
+  "web.discarded": "{id} discarded.",
+  "web.withWarning": "{message} Warning: {warning}",
+  "web.actions": "Actions"
 };
 
 // src/i18n/index.ts
@@ -43270,7 +43332,7 @@ async function runMcp(version2, baseEnv = process.env) {
 import { createServer } from "node:http";
 import { existsSync as existsSync7, readdirSync as readdirSync4, readFileSync as readFileSync10, statSync as statSync5, watch } from "node:fs";
 import { extname, join as join11 } from "node:path";
-import { randomBytes as randomBytes3 } from "node:crypto";
+import { randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
 
 // node_modules/mdurl/index.mjs
 var mdurl_exports = {};
@@ -48396,6 +48458,9 @@ var MIME = {
 var ASSET_NAME = /^[\w.-]+\.(png|jpe?g|gif|webp)$/i;
 var DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 var LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "localhost", "::1"]);
+var MAX_JSON = 256 * 1024;
+var CONFLICT_KEYS = /* @__PURE__ */ new Set(["store.conflict", "store.invalidTransition"]);
+var NOT_FOUND_KEYS = /* @__PURE__ */ new Set(["store.projectNotFound", "store.taskNotFound"]);
 function taskMeta(home, task) {
   return {
     id: task.id,
@@ -48424,8 +48489,9 @@ function startServer(options) {
     for (const n of names) for (const p of ports) out.add(`${n}:${p}`.toLowerCase());
     return out;
   };
-  const send = (res, status, body, type) => {
+  const send = (res, status, body, type, extra = {}) => {
     res.writeHead(status, {
+      ...extra,
       "Content-Type": type,
       "Content-Security-Policy": CSP,
       "X-Content-Type-Options": "nosniff",
@@ -48436,8 +48502,23 @@ function startServer(options) {
   };
   const json2 = (res, status, value) => send(res, status, JSON.stringify(value), "application/json; charset=utf-8");
   const notFound = (res) => json2(res, 404, { error: t(lang, "web.notFound") });
+  const cookieName = () => `wayfinder_${options.publicPort ?? boundPort}`;
+  const tokenBuffer = Buffer.from(token);
+  const sameToken = (value) => {
+    const candidate = Buffer.from(value ?? "");
+    return candidate.length === tokenBuffer.length && timingSafeEqual(candidate, tokenBuffer);
+  };
+  const cookieToken = (req) => {
+    for (const part of (req.headers.cookie ?? "").split(";")) {
+      const [name, ...rest] = part.trim().split("=");
+      if (name === cookieName()) return rest.join("=");
+    }
+    return void 0;
+  };
+  const canWrite = (req) => sameToken(cookieToken(req));
   const renderFor = (slug) => createRenderer(`/api/projects/${encodeURIComponent(slug)}/assets`);
-  function handleApi(res, parts) {
+  function handleApi(req, res, parts) {
+    if (parts[0] === "session" && parts.length === 1) return json2(res, 200, { canWrite: canWrite(req) });
     if (parts[0] === "i18n" && parts.length === 1) {
       const messages = Object.fromEntries(Object.entries(dictionaries[lang]).filter(([k]) => k.startsWith("web.") || k.startsWith("status.")));
       return json2(res, 200, { lang, messages });
@@ -48507,14 +48588,22 @@ function startServer(options) {
   function handle(req, res) {
     const hostHeader = (req.headers.host ?? "").toLowerCase();
     if (!allowedHosts().has(hostHeader)) return json2(res, 403, { error: t(lang, "web.forbiddenHost") });
-    if (req.method !== "GET" && req.method !== "HEAD") return json2(res, 405, { error: t(lang, "web.methodNotAllowed") });
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "POST") return json2(res, 405, { error: t(lang, "web.methodNotAllowed") });
     let pathname;
+    let url2;
     try {
-      pathname = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
+      url2 = new URL(req.url ?? "/", "http://localhost");
+      pathname = decodeURIComponent(url2.pathname);
     } catch {
       return notFound(res);
     }
     if (pathname.includes("\0") || pathname.includes("\\")) return notFound(res);
+    if (req.method === "POST") return handleWrite(req, res, pathname.split("/").filter(Boolean));
+    if (pathname === "/" && url2.searchParams.has("k")) {
+      const headers = { Location: "/" };
+      if (sameToken(url2.searchParams.get("k") ?? "")) headers["Set-Cookie"] = `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict`;
+      return send(res, 303, "", "text/plain; charset=utf-8", headers);
+    }
     const file2 = STATIC[pathname];
     if (file2) {
       const full = join11(webDir2, file2);
@@ -48526,14 +48615,69 @@ function startServer(options) {
     if (parts[0] !== "api") return notFound(res);
     if (parts[1] === "projects" && parts[3] === "assets" && parts.length === 5) return serveAsset(res, parts[2], parts[4]);
     try {
-      handleApi(res, parts.slice(1));
+      handleApi(req, res, parts.slice(1));
     } catch (error62) {
-      if (error62 instanceof WayfinderError) {
-        const status = error62.key === "store.projectNotFound" || error62.key === "store.taskNotFound" ? 404 : 400;
-        return json2(res, status, { error: t(lang, error62.key, error62.vars) });
-      }
-      json2(res, 500, { error: t(lang, "web.serverError") });
+      fail(res, error62);
     }
+  }
+  function fail(res, error62, field) {
+    if (error62 instanceof WayfinderError) {
+      const status = NOT_FOUND_KEYS.has(error62.key) ? 404 : CONFLICT_KEYS.has(error62.key) ? 409 : 400;
+      return json2(res, status, { error: t(lang, error62.key, error62.vars), ...field ? { field } : {} });
+    }
+    json2(res, 500, { error: t(lang, "web.serverError") });
+  }
+  function handleWrite(req, res, parts) {
+    const route = writeRoute(parts);
+    if (!route) return json2(res, 405, { error: t(lang, "web.methodNotAllowed") });
+    if (req.headers.origin !== `http://${req.headers.host}`) return json2(res, 403, { error: t(lang, "web.forbiddenOrigin") });
+    if (!/^application\/json\s*(;|$)/i.test(req.headers["content-type"] ?? "")) return json2(res, 415, { error: t(lang, "web.jsonOnly") });
+    if (!canWrite(req)) return json2(res, 401, { error: t(lang, "web.needsKey") });
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= MAX_JSON) chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (size > MAX_JSON) return json2(res, 413, { error: t(lang, "web.tooLarge") });
+      let input2;
+      try {
+        const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+        input2 = parsed;
+      } catch {
+        return json2(res, 400, { error: t(lang, "web.badJson") });
+      }
+      const str = (key) => typeof input2[key] === "string" ? input2[key] : void 0;
+      try {
+        let result;
+        if (route.action === "create") {
+          result = createTask(home, route.slug, { title: str("title") ?? "", body: str("body") ?? "", priority: str("priority") }, "web");
+        } else {
+          const expectedUpdated = str("expectedUpdated");
+          if (!expectedUpdated) return json2(res, 400, { error: t(lang, "web.badJson") });
+          result = setStatus(home, route.slug, route.id, route.action === "approve" ? "todo" : "discarded", "web", { expectedUpdated });
+        }
+        json2(res, route.action === "create" ? 201 : 200, {
+          task: taskMeta(home, result.task),
+          warnings: result.warnings.map((w) => t(lang, w.key, w.vars))
+        });
+      } catch (error62) {
+        fail(res, error62, route.action === "create" ? formField(error62, str("title") ?? "") : void 0);
+      }
+    });
+  }
+  function formField(error62, title) {
+    if (!(error62 instanceof WayfinderError)) return void 0;
+    if (error62.key === "store.secretRejected") return findSecrets(title).length > 0 ? "title" : "body";
+    return { "store.invalidTitle": "title", "store.bodyTooLong": "body", "store.invalidPriority": "priority" }[error62.key];
+  }
+  function writeRoute(parts) {
+    if (parts[0] !== "api" || parts[1] !== "projects" || parts[3] !== "tasks" || !SLUG_RE.test(parts[2] ?? "")) return null;
+    if (parts.length === 4) return { action: "create", slug: parts[2], id: "" };
+    if (parts.length === 6 && (parts[5] === "approve" || parts[5] === "discard")) return { action: parts[5], slug: parts[2], id: parts[4] };
+    return null;
   }
   function openEvents(req, res) {
     res.writeHead(200, {
@@ -48594,8 +48738,10 @@ data: ${Date.now()}
       const address = server.address();
       boundPort = typeof address === "object" && address ? address.port : 0;
       const shownHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+      const url2 = `http://${shownHost}:${options.publicPort ?? boundPort}/`;
       resolvePromise({
-        url: `http://${shownHost}:${options.publicPort ?? boundPort}/`,
+        url: url2,
+        writeUrl: `${url2}?k=${token}`,
         port: boundPort,
         token,
         close: () => new Promise((done) => {
@@ -48709,7 +48855,8 @@ async function runServe(args, lang, io, env) {
   if (!["127.0.0.1", "localhost", "::1"].includes(host)) io.err(t(lang, "cli.warning", { message: t(lang, "serve.nonLoopback", { host }) }));
   const poll = args.includes("--poll") || env.WAYFINDER_POLL === "1";
   const server = await startServer({ home, lang, host, port, publicPort, poll, webDir: webDir() });
-  io.out(t(lang, "serve.listening", { url: server.url }));
+  io.out(t(lang, "serve.listening", { url: server.writeUrl }));
+  io.out(t(lang, "serve.keyNote"));
   const stop = () => {
     void server.close().then(() => process.exit(0));
   };
