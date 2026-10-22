@@ -7836,7 +7836,8 @@ var es_default = {
   "web.discarded": "{id} descartada.",
   "web.withWarning": "{message} Aviso: {warning}",
   "web.actions": "Acciones",
-  "serve.portInUse": "El puerto {port} ya lo usa otra aplicaci\xF3n. Elige otro con --port o WAYFINDER_PORT."
+  "serve.portInUse": "El puerto {port} ya lo usa otra aplicaci\xF3n. Elige otro con --port o WAYFINDER_PORT.",
+  "hook.session.notInitialized": "Wayfinder a\xFAn no tiene carpeta de datos ({path}), as\xED que sus herramientas wf_* no est\xE1n disponibles. Para crearla, ejecuta en una terminal: {command}"
 };
 
 // src/i18n/en.json
@@ -8061,7 +8062,8 @@ var en_default = {
   "web.discarded": "{id} discarded.",
   "web.withWarning": "{message} Warning: {warning}",
   "web.actions": "Actions",
-  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT."
+  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT.",
+  "hook.session.notInitialized": "Wayfinder has no data folder yet ({path}), so its wf_* tools are unavailable. To create it, run in a terminal: {command}"
 };
 
 // src/i18n/index.ts
@@ -8287,8 +8289,11 @@ function modifiedOutside(home, rel) {
 
 // src/store/init.ts
 var GITIGNORE = ".wayfinder.lock\n*.tmp\n.state/\n";
+function isInitialized(home) {
+  return existsSync(join4(home, ".git")) && existsSync(join4(home, "projects"));
+}
 function assertInitialized(home) {
-  if (!existsSync(join4(home, ".git")) || !existsSync(join4(home, "projects"))) {
+  if (!isInitialized(home)) {
     throw new WayfinderError("serve.notInitialized", { path: home });
   }
 }
@@ -43071,6 +43076,13 @@ function runHook(event, io, baseEnv = process.env, now = Date.now) {
           }
         }));
       }
+      return 0;
+    }
+    if (event === "session-start" && !isInitialized(home)) {
+      const root = env.CLAUDE_PLUGIN_ROOT?.trim();
+      const command = root ? `node "${join10(root, "dist", "wayfinder.mjs")}" init` : "wayfinder init";
+      const message = t(lang, "hook.session.notInitialized", { path: home, command });
+      io.out(JSON.stringify({ systemMessage: message, hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: message } }));
       return 0;
     }
     const project = projectFor(home, input2, env);

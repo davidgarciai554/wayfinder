@@ -219,5 +219,6 @@
   "web.discarded": "{id} descartada.",
   "web.withWarning": "{message} Aviso: {warning}",
   "web.actions": "Acciones",
-  "serve.portInUse": "El puerto {port} ya lo usa otra aplicación. Elige otro con --port o WAYFINDER_PORT."
+  "serve.portInUse": "El puerto {port} ya lo usa otra aplicación. Elige otro con --port o WAYFINDER_PORT.",
+  "hook.session.notInitialized": "Wayfinder aún no tiene carpeta de datos ({path}), así que sus herramientas wf_* no están disponibles. Para crearla, ejecuta en una terminal: {command}"
 }

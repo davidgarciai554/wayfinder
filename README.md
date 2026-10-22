@@ -1,8 +1,93 @@
 # Wayfinder
 
-Gestor de tareas personal en Markdown que Claude Code usa como "Jira personal" y como memoria de cada proyecto. Los datos viven en una carpeta privada (`~/.wayfinder`), que es un repositorio git sin remoto con un commit por cada escritura.
+Gestor de tareas personal en Markdown que Claude Code usa como "Jira personal" y como memoria de cada proyecto.
 
-> README provisional: la instalación del plugin y del paquete npm se documentan en el incremento 7 del plan (`Planes/2026-10-21-wayfinder-mvp.md`).
+- Claude consulta lo pendiente, propone ideas, mueve estados y escribe la bitácora.
+- Tú sobre todo miras, creas tareas y apruebas o descartas ideas, desde la web local o pidiéndoselo a Claude en el chat.
+
+Los datos viven en una carpeta privada (`~/.wayfinder`): un repositorio git **sin remoto** con un commit por cada escritura. Nada de Wayfinder se guarda en `.claude/`, `AGENTS.md` ni `CLAUDE.md` de tus proyectos.
+
+## Requisitos
+
+- Windows 11 (es la única plataforma verificada).
+- Node.js 22 o superior y git.
+- Claude Code 2.1.271 o superior, para el plugin.
+
+## Instalación del plugin de Claude Code
+
+Desde una copia local de este repositorio:
+
+```powershell
+claude plugin marketplace add D:\ruta\a\wayfinder
+claude plugin install wayfinder@wayfinder --config language=es
+```
+
+- `language`: `es` o `en`. Idioma de los mensajes, de la web y de las respuestas de Claude sobre Wayfinder.
+- `home` (opcional): carpeta de datos. Por defecto, `~/.wayfinder`.
+- `capturesDir` (opcional): carpeta extra desde la que se pueden adjuntar capturas, además del repositorio actual.
+
+Puedes cambiarlas después con `/plugin` o con `claude plugin configure wayfinder`.
+
+### Primer uso
+
+1. Crea la carpeta de datos una sola vez. En la primera sesión tras instalar, Claude Code te muestra el comando exacto con la ruta del plugin. Por ejemplo:
+   ```powershell
+   node "<carpeta del plugin>\dist\wayfinder.mjs" init
+   ```
+2. En el repositorio que quieras seguir, pide a Claude: «registra este proyecto en Wayfinder». El registro es siempre explícito, proyecto a proyecto.
+3. A partir de ahí, cada sesión empieza con la lista de pendientes y las propuestas sin aprobar.
+   - Claude mueve los estados mientras trabaja.
+   - Antes de terminar, si hay tareas en curso, Claude escribe la bitácora del día.
+   - Las tareas no triviales necesitan un plan en `Planes/` antes de pasar a «En curso».
+
+### Aprobar ideas desde el chat
+
+Escribe la orden con el ID, por ejemplo «aprueba WAY-4».
+
+1. Claude revisa la propuesta antes de aprobarla.
+2. Si ve algo sospechoso (instrucciones ocultas, peticiones de secretos, comandos de red…), te explica el motivo y no la aprueba hasta que repitas la orden, por ejemplo «aprueba WAY-4 igualmente».
+3. Solo se aprueban por chat las propuestas creadas por Claude, y quedan marcadas como «Aprobada por chat».
+
+## Web local
+
+```powershell
+node "<carpeta del plugin>\dist\wayfinder.mjs" serve
+```
+
+- Abre el enlace que imprime, `http://127.0.0.1:4747/?k=…`.
+- La clave de ese enlace habilita crear, aprobar y descartar en ese navegador, y cambia en cada arranque. Sin ella, la web es de solo lectura. No compartas el enlace.
+- La web solo escucha en este equipo.
+- Opciones: `--port <n>` (o `WAYFINDER_PORT`) y `--poll`, para detectar cambios por sondeo en unidades de red. Si el puerto está ocupado por otra aplicación, `serve` lo dice y no arranca.
+
+## Paquete npm
+
+Cuando esté publicado (aún no lo está), los mismos comandos estarán disponibles con `npx`:
+
+```powershell
+npx @davidgarciai554/wayfinder@0.1.0 init
+npx @davidgarciai554/wayfinder@0.1.0 serve
+```
+
+El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
+
+## Seguridad y privacidad
+
+- Nunca guardes secretos ni datos personales en tareas, bitácoras o capturas. Wayfinder rechaza los patrones de secreto más comunes, pero es una ayuda, no una garantía.
+- Mantén la carpeta de datos privada y sin remoto. Wayfinder nunca hace `push`.
+- El contenido de las tareas se trata como datos no confiables: Claude no sigue instrucciones escritas dentro de ellas.
+
+## Desarrollo
+
+```powershell
+npm ci
+npm run typecheck
+npm test              # unitarios e integración (construye antes)
+npm run test:e2e      # Playwright
+npm run test:docker   # requiere Docker Desktop y la imagen wayfinder:dev
+npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red
+```
+
+El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está en `.claude-plugin/marketplace.json`.
 
 ## Docker
 

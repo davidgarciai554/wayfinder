@@ -57,6 +57,20 @@ test('an unregistered repository gets no output and nothing is written', (t) => 
   assert.equal(existsSync(join(home, '.state')), false);
 });
 
+test('session-start before init tells the person and Claude the exact init command; other hooks stay silent', (t) => {
+  const base = makeHome(t);
+  const home = join(base, '..', 'not-initialised');
+  const root = join(base, '..', 'plugin-root');
+  const r = hook('session-start', { cwd: base }, { WAYFINDER_HOME: home, CLAUDE_PLUGIN_ROOT: root, WAYFINDER_LANG: 'es' });
+  assert.equal(r.code, 0);
+  const expected = `node "${join(root, 'dist', 'wayfinder.mjs')}" init`;
+  assert.ok(r.json.systemMessage.includes(expected), r.json.systemMessage);
+  assert.match(r.json.systemMessage, /aún no tiene carpeta de datos/);
+  assert.equal(r.json.hookSpecificOutput.additionalContext, r.json.systemMessage);
+  for (const event of ['prompt', 'stop']) assert.equal(hook(event, { cwd: base }, { WAYFINDER_HOME: home }).out, '');
+  assert.equal(existsSync(home), false, 'nothing is created');
+});
+
 test('prompt records only explicit orders and never stores the prompt text', (t) => {
   const { home, repo } = setup(t);
   const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo };

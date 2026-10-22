@@ -219,5 +219,6 @@
   "web.discarded": "{id} discarded.",
   "web.withWarning": "{message} Warning: {warning}",
   "web.actions": "Actions",
-  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT."
+  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT.",
+  "hook.session.notInitialized": "Wayfinder has no data folder yet ({path}), so its wf_* tools are unavailable. To create it, run in a terminal: {command}"
 }

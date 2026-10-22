@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
+import { isInitialized } from './store/init.ts';
 import { hasLogFor } from './store/log.ts';
 import { extractOrders, recordOrders } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
@@ -124,6 +125,16 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
           },
         }));
       }
+      return 0;
+    }
+
+    // First run after installing the plugin: the MCP refuses an uninitialised folder, so say how
+    // to create it (to the person and to Claude) instead of failing silently.
+    if (event === 'session-start' && !isInitialized(home)) {
+      const root = env.CLAUDE_PLUGIN_ROOT?.trim();
+      const command = root ? `node "${join(root, 'dist', 'wayfinder.mjs')}" init` : 'wayfinder init';
+      const message = t(lang, 'hook.session.notInitialized', { path: home, command });
+      io.out(JSON.stringify({ systemMessage: message, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: message } }));
       return 0;
     }
 

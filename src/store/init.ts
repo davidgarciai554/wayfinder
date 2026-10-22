@@ -9,8 +9,12 @@ import type { Lang } from '../i18n/index.ts';
 const GITIGNORE = '.wayfinder.lock\n*.tmp\n.state/\n';
 
 /** serve and mcp refuse to run on a folder that `init` has not prepared (e.g. an empty Docker volume). */
+export function isInitialized(home: string): boolean {
+  return existsSync(join(home, '.git')) && existsSync(join(home, 'projects'));
+}
+
 export function assertInitialized(home: string): void {
-  if (!existsSync(join(home, '.git')) || !existsSync(join(home, 'projects'))) {
+  if (!isInitialized(home)) {
     throw new WayfinderError('serve.notInitialized', { path: home });
   }
 }
