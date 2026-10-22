@@ -255,6 +255,15 @@ main:focus { outline: none; }
 .meta dt { color: var(--wf-muted); }
 .meta dd { margin: 0; overflow-wrap: anywhere; }
 
+/* Task history: oldest first, like the log; each entry is a focus target from the log. */
+.history { display: flex; flex-direction: column; gap: var(--wf-space-3); border-top: 1px solid var(--wf-border); padding-top: var(--wf-space-4); }
+.history h2 { font-family: var(--wf-font-display); font-weight: 400; font-size: 21px; }
+.entries { display: flex; flex-direction: column; gap: var(--wf-space-4); }
+.entry { border-left: 3px solid var(--wf-border-strong); padding-left: var(--wf-space-4); scroll-margin-top: var(--wf-space-6); }
+.entry:focus { outline: 2px solid var(--wf-focus); outline-offset: 4px; border-left-color: var(--wf-focus); }
+.entry h3 { font-family: var(--wf-font-mono); font-size: 13px; font-weight: 400; color: var(--wf-muted); margin: 0 0 var(--wf-space-1); }
+.entry-log { margin: var(--wf-space-1) 0 0; font-size: 14px; }
+
 /* Rendered Markdown */
 .prose { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
 .prose > :first-child { margin-top: 0; }

@@ -7,7 +7,7 @@ import { setGitRunner } from '../src/store/git.ts';
 import { initHome } from '../src/store/init.ts';
 import { createProject } from '../src/store/project.ts';
 import { appendLog } from '../src/store/log.ts';
-import { createTask, setStatus, updateTask } from '../src/store/tasks.ts';
+import { createTask, logProgress, setStatus, updateTask } from '../src/store/tasks.ts';
 import { startServer } from '../src/server.ts';
 import { e2eGitOffFlag, e2eHome, e2eKeyFile, E2E_PORTS } from './paths.ts';
 
@@ -39,7 +39,8 @@ for (let i = 1; i <= 12; i++) {
 const discarded = mk('Idea descartada');
 setStatus(E2E_HOME, 'wayfinder', discarded, 'discarded', 'web', { clock });
 appendLog(E2E_HOME, 'wayfinder', 'Implementado el filtro; tests en verde.', { taskId: todo, clock });
-void xss;
+// Hostile text in a history entry is rendered as data, like descriptions.
+logProgress(E2E_HOME, 'wayfinder', xss, '<img src=x onerror=window.__xss=4>\n[x](javascript:window.__xss=5)', {}, clock);
 
 // Approved-by-chat and risk flags, written as the store would leave them.
 const tasksDir = join(E2E_HOME, 'projects', 'wayfinder', 'tasks');
@@ -58,6 +59,16 @@ createProject(E2E_HOME, { slug: 'escritura', name: 'escritura', idPrefix: 'ESC',
 for (const title of ['Propuesta para aprobar', 'Propuesta para descartar', 'Propuesta en conflicto', 'Propuesta sin git']) {
   createTask(E2E_HOME, 'escritura', { title, body: 'Idea de Claude.' }, 'mcp', clock);
 }
+
+// History plan: a task with progress entries on two days and a task written before histories existed.
+createProject(E2E_HOME, { slug: 'historial', name: 'historial', idPrefix: 'HIS', localPath: 'D:/historial' });
+const memory = createTask(E2E_HOME, 'historial', { title: 'Filtro con memoria', body: 'Descripción de la tarea.' }, 'web', () => new Date('2026-10-19T08:00:00')).task.id;
+setStatus(E2E_HOME, 'historial', memory, 'in-progress', 'mcp', { trivial: true, note: 'trivial', clock: () => new Date('2026-10-19T08:05:00') });
+logProgress(E2E_HOME, 'historial', memory, 'Avanzamos en el filtro: primer paso.', { files: 'web/app.js' }, () => new Date('2026-10-20T09:15:00'));
+logProgress(E2E_HOME, 'historial', memory, 'Avanzamos en el filtro: tests en verde.', { next: 'revisión visual' }, () => new Date('2026-10-21T11:30:00'));
+const legacy = createTask(E2E_HOME, 'historial', { title: 'Tarea antigua sin historial', body: 'Escrita antes del historial.' }, 'web', clock).task;
+const legacyFile = join(E2E_HOME, legacy.file);
+writeFileSync(legacyFile, readFileSync(legacyFile, 'utf8').replace(/\n## Historial[\s\S]*$/, '\n'));
 
 // Real git, unless a spec switches it "off" with the flag file (git missing → 200 with a warning).
 rmSync(e2eGitOffFlag(lang), { force: true });

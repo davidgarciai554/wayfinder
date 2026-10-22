@@ -128,12 +128,15 @@ function timeEl(iso) {
 const PAGES = ['board', 'task', 'log', 'assets', 'project'];
 function parseHash() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
-  const [slug, page = 'board', id] = parts;
-  return { slug: slug || null, page: PAGES.includes(page) ? page : 'board', id: id || null };
+  const [slug, page = 'board', id, sub] = parts;
+  // sub: the history entry of a task (#/slug/task/WF-1/3), reached from the log.
+  const entry = page === 'task' && /^[1-9]\d{0,5}$/.test(sub ?? '') ? Number(sub) : null;
+  return { slug: slug || null, page: PAGES.includes(page) ? page : 'board', id: id || null, entry };
 }
 function href(slug, page = 'board', id) {
   return `#/${encodeURIComponent(slug)}/${page}${id ? `/${encodeURIComponent(id)}` : ''}`;
 }
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // ---------- chrome ----------
 function renderChrome() {
@@ -482,6 +485,25 @@ async function detailPanel(asPage) {
       row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(task.updated) })),
     ),
     body,
+    historySection(task),
+  );
+}
+
+/** Every task has a history; each entry links to the log day where it was recorded. */
+function historySection(task) {
+  const entries = (task.history ?? []).map((e) => {
+    const text = el('div', { class: 'prose' });
+    if (e.created) text.append(el('p', { text: t('web.historyCreated', { origin: t(`web.origin.${task.origin}`) }) }));
+    else text.innerHTML = e.html; // Sanitised by the server (markdown-it, html: false).
+    return el('article', { class: 'entry', id: `entry-${e.n}`, tabindex: '-1', 'aria-labelledby': `entry-${e.n}-time` },
+      el('h3', { id: `entry-${e.n}-time` }, el('time', { class: 'mono', datetime: `${e.date}T${e.time}`, text: `${e.date} ${e.time}` })),
+      text,
+      e.created ? null : el('p', { class: 'entry-log' }, el('a', { href: href(view.slug, 'log', e.date), text: t('web.entryInLog', { day: e.date }) })),
+    );
+  });
+  return el('section', { class: 'history', 'aria-labelledby': 'task-history' },
+    el('h2', { id: 'task-history', text: t('web.history') }),
+    entries.length ? el('div', { class: 'entries' }, entries) : el('p', { class: 'muted', text: t('web.noHistory') }),
   );
 }
 
@@ -492,9 +514,14 @@ async function renderTaskPage() {
 // ---------- log ----------
 async function renderLog() {
   const { days } = await api(`/api/projects/${encodeURIComponent(view.slug)}/log`);
-  const head = el('div', { class: 'page-head' }, el('h1', { text: t('web.tab.log') }));
+  // One day (#/slug/log/2026-10-22), reached from a history entry.
+  const day = DAY.test(view.id ?? '') ? view.id : null;
+  const head = el('div', { class: 'page-head' },
+    el('h1', { text: day ? t('web.logDay', { day }) : t('web.tab.log') }),
+    day ? el('a', { href: href(view.slug, 'log'), text: t('web.wholeLog') }) : null);
+  if (day && !days.includes(day)) return main.replaceChildren(head, el('p', { class: 'empty', text: t('web.noLogDay', { day }) }));
   if (days.length === 0) return main.replaceChildren(head, el('p', { class: 'empty', text: t('web.noLog') }));
-  const shown = days.slice(0, logShown);
+  const shown = day ? [day] : days.slice(0, logShown);
   const entries = await Promise.all(shown.map((day) => api(`/api/projects/${encodeURIComponent(view.slug)}/log/${day}`)));
   const list = el('div', { class: 'days' },
     entries.map((entry) => {
@@ -503,10 +530,11 @@ async function renderLog() {
       return el('section', { class: 'day', 'aria-labelledby': `day-${entry.day}` }, el('h2', { id: `day-${entry.day}`, text: entry.day }), prose);
     }),
   );
-  const more = days.length > logShown
+  const more = !day && days.length > logShown
     ? el('button', { type: 'button', class: 'button', 'data-focus': 'older-days', text: t('web.olderDays'), onclick: () => { logShown += LOG_PAGE; render({ keepFocus: true }); } })
     : null;
-  main.replaceChildren(head, list, more ? el('p', {}, more) : null);
+  // replaceChildren() would print a null child as the text "null".
+  main.replaceChildren(head, list, ...(more ? [el('p', {}, more)] : []));
 }
 
 // ---------- assets ----------
@@ -611,9 +639,10 @@ async function doRender(keepFocus, firstPaint, focus) {
     target?.focus();
   } else if (focusKey) {
     main.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
-  } else if (!keepFocus && !firstPaint) {
+  } else if (!keepFocus && (!firstPaint || view.entry)) {
+    // A link to a history entry focuses it even when it opens the page.
     const sameBoard = previous && previous.slug === view.slug && previous.page === 'task' && view.page === 'board' && previous.id;
-    if (view.page === 'task') main.querySelector('#task-title')?.focus();
+    if (view.page === 'task') (view.entry && main.querySelector(`#entry-${view.entry}`) || main.querySelector('#task-title'))?.focus();
     else if (sameBoard) main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`)?.focus();
     else {
       const heading = main.querySelector('h1');

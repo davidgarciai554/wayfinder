@@ -12,7 +12,7 @@
 - **Incluido:**
   - incremento 4: tablero, detalle de tarea, bitácora, capturas y página del proyecto, con autorefresco;
   - incremento 5: crear tarea, aprobar y descartar con confirmación.
-- **Excluido:** edición libre de tareas, búsqueda, arrastrar como única vía, varios usuarios, selector manual de tema.
+- **Excluido:** edición libre de tareas, búsqueda (la memoria se consulta con `wf_search` desde Claude; plan `Planes/2026-10-22-bitacora-enlazada-e-historial.md`), arrastrar como única vía, varios usuarios, selector manual de tema.
 - **Señal observable de éxito:** abrir la web y, sin desplazarse en una pantalla de 1440 px, ver las propuestas sin aprobar y las tareas en curso. Todo el flujo se puede completar con teclado.
 
 ## Entrada y referencias
@@ -125,9 +125,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Tablero | 4 columnas: Propuestas, Por hacer, En curso, Hechas (10 últimas) | «Cargando…» con `role=status` y la estructura de columnas | Por columna: «(ninguna)»; sin tareas, un texto que invita a pedir ideas a Claude | Aviso con «Reintentar»; las tareas ilegibles se listan arriba con su motivo | — | — | Títulos largos que se parten; «Ver todas las hechas» |
 | Tarjeta | ID · prioridad · fecha relativa; título como enlace; etiquetas de aviso | — | — | — | — | — | Foco visible en el enlace y en los botones; la seleccionada lleva un borde de 2 px con el acento |
-| Detalle | Título, etiquetas, metadatos (`<dl>`), Markdown renderizado | «Cargando…» | Sin descripción: «Sin descripción» | Tarea inexistente → mensaje y enlace al tablero | — | — | Cerrar (44 px) devuelve el foco a la tarjeta; el cuerpo se desplaza dentro del panel |
+| Detalle | Título, etiquetas, metadatos (`<dl>`), Markdown renderizado y sección «Historial» (`h2`): una entrada por avance (`article` con `h3` y `<time>`), de la más antigua a la más reciente, cada una con enlace «Ver en la bitácora del <día>»; la de creación sin enlace | «Cargando…» | Sin descripción: «Sin descripción». Sin entradas: «Esta tarea aún no tiene entradas en su historial.» | Tarea inexistente → mensaje y enlace al tablero | — | — | Cerrar (44 px) devuelve el foco a la tarjeta; el cuerpo se desplaza dentro del panel. `#/<slug>/task/<ID>/<n>` abre la tarea con el foco en la entrada `n` (si no existe, en el título) |
 | Autorefresco | Aviso discreto «Actualizado · N cambios» (`aria-live=polite`) | — | — | Banner persistente «Sin conexión…» con «Reintentar» | Aviso único al reconectar | — | Nunca mueve el foco ni pisa formularios ni diálogos abiertos |
-| Bitácora | Días en orden inverso con `h2` y entradas | «Cargando…» | «Aún no hay bitácora.» | Aviso con «Reintentar» | — | — | «Cargar días anteriores» |
+| Bitácora | Días en orden inverso con `h2` y entradas; cada avance es una línea «[ID · título] — resumen» que enlaza a su entrada del historial, y los registros automáticos llevan el enlace a la tarea en su propio párrafo. `#/<slug>/log/<día>` muestra solo ese día con «Ver toda la bitácora» | «Cargando…» | «Aún no hay bitácora.» Día sin bitácora: «No hay bitácora del <día>.» | Aviso con «Reintentar» | — | — | «Cargar días anteriores» |
 | Capturas | Rejilla con el texto alternativo como pie | «Cargando…» | «Aún no hay capturas.» | Imagen rota → texto alternativo visible | — | — | El visor `<dialog>` se cierra con Esc y devuelve el foco |
 | Nueva tarea (incremento 5) | Diálogo con título, descripción y prioridad | Botón deshabilitado y «Creando…» | — | Errores junto al campo, resumen enlazado y foco al primer error; el borrador se conserva | Mensaje durante ≥ 5 s | Enviar sin título → error | — |
 | Descartar (incremento 5) | `alertdialog` con la consecuencia | — | — | Error → mensaje en el diálogo | Mensaje | — | Foco inicial en «Cancelar»; Esc cancela |
@@ -178,6 +178,7 @@
 | Fecha | Cambio o flujo | Entorno y ruta | Evidencia | Resultado | Desviación aprobada o seguimiento |
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-21 | Incremento 4: tablero, detalle, bitácora, capturas, proyecto (es/en) | `wayfinder serve` con datos de prueba; Chromium headless (Playwright 1.64.1); Windows 11 | `npm run test:e2e` 11/11; capturas `test-results/review/` a 320, 768 y 1280 px en claro y oscuro; `test/contrast.test.ts` | Coincide con el lienzo v8. Contraste medido: todos los textos ≥ 4,5:1 y foco, bordes y arcilla ≥ 3:1 en los dos temas | «Descartada» en claro ajustada de `#73726C` a `#5E5D59` (4,15 → 5,67:1). Sin verificar: prueba manual con NVDA y zoom real al 200 % del navegador (aproximado con un viewport de 640 px) |
+| 2026-10-22 | Plan de bitácora e historial, incremento 5: sección Historial, enlaces bitácora ↔ entrada, vista de un día (es/en) | Fixture e2e (`historial`); Chromium headless; Windows 11 | `npm run test:e2e` 27/27 (`e2e/history.spec.ts`: foco en la entrada, «Atrás», teclado, estados vacíos, 320 px sin scroll horizontal, árbol de accesibilidad); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: tokens existentes (`--wf-border-strong`, `--wf-focus`, tipografía mono para fechas), sin colores nuevos | Corregido de paso: la bitácora mostraba un texto «null» al final (defecto previo). Sin verificar: NVDA y zoom real al 200 % |
 
 ## Regresión visual automatizada
 - **Herramienta:** Playwright, prevista en el plan (incremento 4) como devDependency.

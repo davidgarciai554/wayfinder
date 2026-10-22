@@ -44,7 +44,8 @@ test.describe('web board (read-only)', () => {
     await page.goto('/#/wayfinder/board');
     await page.getByRole('link', { name: '<img src=x onerror=window.__xss=1>' }).click();
     await expect(page.getByRole('heading', { level: 1, name: '<img src=x onerror=window.__xss=1>' })).toBeVisible();
-    await expect(page.locator('.detail .prose')).toContainText('<script>window.__xss=2</script>');
+    await expect(page.locator('.detail > .prose')).toContainText('<script>window.__xss=2</script>');
+    await expect(page.locator('.history .prose').last()).toContainText('<img src=x onerror=window.__xss=4>');
     await expect(page.locator('.detail .prose a[href^="javascript"]')).toHaveCount(0);
     await expect(page.locator('.detail .prose h2', { hasText: 'Encabezado' })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();

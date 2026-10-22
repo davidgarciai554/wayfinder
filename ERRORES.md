@@ -79,3 +79,13 @@
 - **Solución:** se reserva exactamente la longitud del aviso traducido.
 - **Archivos modificados:** `src/hook.ts`, `test/hook.test.ts`.
 - **Validación:** la prueba nueva falla antes del cambio y pasa después; `node --test test/hook.test.ts` 12/12.
+
+## 2026-10-22 · La página de bitácora mostraba el texto «null» al final
+
+- **Contexto:** plan de bitácora e historial, incremento 5, revisión visual con capturas.
+- **Reproducción:** abrir `#/<slug>/log` en un proyecto con 7 días de bitácora o menos (sin botón «Cargar días anteriores»).
+- **Salida observada:** debajo del último día aparece la palabra «null».
+- **Causa confirmada:** `renderLog` llamaba a `main.replaceChildren(head, list, more ? … : null)`, y `replaceChildren` convierte un `null` en un nodo de texto. Defecto previo al plan (presente en el incremento 4).
+- **Solución:** solo se pasa el botón cuando existe.
+- **Archivos modificados:** `web/app.js`, `e2e/history.spec.ts`.
+- **Validación:** prueba e2e nueva (`main` no contiene «null»); `npm run test:e2e` 27/27; captura revisada.

@@ -303,7 +303,7 @@ export function setStatus(
     writeTaskUnlocked(home, task);
     const paths = [task.file];
     if (note || markers.length > 0) {
-      const lines = [`status: ${from} -> ${to}`, ...markers, ...(note ? [note] : []), taskLink(slug, id, task.title)];
+      const lines = [`status: ${from} -> ${to}`, ...markers, ...(note ? [note] : []), '', taskLink(slug, id, task.title)];
       paths.push(appendLogUnlocked(home, slug, lines.join('\n'), id, clock));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);

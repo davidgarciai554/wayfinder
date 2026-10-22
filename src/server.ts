@@ -6,6 +6,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { dictionaries, t, translateReason, type Lang } from './i18n/index.ts';
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
+import { isCreationEntry, parseEntries } from './store/history.ts';
 import { modifiedOutside } from './store/git.ts';
 import { isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
@@ -168,7 +169,10 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[2] === 'tasks' && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
-      return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body) });
+      const history = parseEntries(task.history).map((e) =>
+        isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) },
+      );
+      return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history });
     }
     if (parts[2] === 'log' && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), 'log');

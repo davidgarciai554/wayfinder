@@ -83,6 +83,7 @@ export function approveByChat(
       ...(review.signals.length ? [`signals: ${review.signals.join(', ')}`] : []),
       ...(reasons ? [`reasons: ${truncate(reasons, 300)}`] : []),
       ...(needsSecond ? ['risk-acknowledged: true'] : []),
+      '',
       taskLink(slug, id, task.title),
     ];
     const logFile = appendLogUnlocked(home, slug, lines.join('\n'), id, () => now);

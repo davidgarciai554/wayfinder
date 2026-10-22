@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
-import { createTask } from '../src/store/tasks.ts';
+import { createTask, logProgress } from '../src/store/tasks.ts';
 import { setGitRunner } from '../src/store/git.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { createServer as createNetServer } from 'node:net';
@@ -328,4 +328,21 @@ test('git missing: the write is kept and answers 201 with a visible warning', as
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /git/i);
   assert.equal(JSON.parse((await get(port, `/api/projects/demo/tasks/${task.id}`)).body).title, 'Sin git');
+});
+
+test('the task detail includes its history: the creation entry as data, the rest rendered safely', async (t) => {
+  const { home, port } = await serve(t);
+  createTask(home, 'demo', { title: 'Con historial', body: 'Descripción' }, 'web');
+  logProgress(home, 'demo', 'WF-1', 'Avanzamos.\n<script>alert(1)</script> [x](javascript:alert(2))\n# no es cabecera', { next: 'seguir' }, () => new Date('2026-10-22T13:40:00'));
+  const task = JSON.parse((await get(port, '/api/projects/demo/tasks/WF-1')).body);
+  assert.equal(task.html.includes('Historial'), false, 'the description html does not contain the history');
+  assert.equal(task.history.length, 2);
+  assert.deepEqual({ ...task.history[0], date: 'd', time: 't' }, { n: 1, date: 'd', time: 't', created: true });
+  const entry = task.history[1];
+  assert.equal(entry.n, 2);
+  assert.equal(entry.date, '2026-10-22');
+  assert.equal(entry.time, '13:40');
+  assert.doesNotMatch(entry.html, /<script|href="javascript:|<h1/i);
+  assert.match(entry.html, /# no es cabecera/);
+  assert.match(entry.html, /Next: seguir/);
 });

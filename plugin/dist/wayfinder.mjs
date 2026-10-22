@@ -7803,6 +7803,13 @@ var es_default = {
   "web.origin.claude": "Claude (propuesta)",
   "web.origin.routine": "Tarea programada (propuesta)",
   "web.noLog": "A\xFAn no hay bit\xE1cora.",
+  "web.history": "Historial",
+  "web.noHistory": "Esta tarea a\xFAn no tiene entradas en su historial.",
+  "web.historyCreated": "Tarea creada \xB7 origen: {origin}",
+  "web.entryInLog": "Ver en la bit\xE1cora del {day}",
+  "web.logDay": "Bit\xE1cora del {day}",
+  "web.wholeLog": "Ver toda la bit\xE1cora",
+  "web.noLogDay": "No hay bit\xE1cora del {day}.",
   "web.olderDays": "Cargar d\xEDas anteriores",
   "web.noAssets": "A\xFAn no hay capturas.",
   "web.noAltText": "sin descripci\xF3n",
@@ -8043,6 +8050,13 @@ var en_default = {
   "web.origin.claude": "Claude (proposal)",
   "web.origin.routine": "Scheduled task (proposal)",
   "web.noLog": "There is no log yet.",
+  "web.history": "History",
+  "web.noHistory": "This task has no history entries yet.",
+  "web.historyCreated": "Task created \xB7 origin: {origin}",
+  "web.entryInLog": "See in the log of {day}",
+  "web.logDay": "Log of {day}",
+  "web.wholeLog": "See the whole log",
+  "web.noLogDay": "There is no log for {day}.",
   "web.olderDays": "Load earlier days",
   "web.noAssets": "There are no screenshots yet.",
   "web.noAltText": "no description",
@@ -42821,7 +42835,7 @@ function setStatus(home, slug, id, to, actor, options = {}) {
     writeTaskUnlocked(home, task);
     const paths = [task.file];
     if (note || markers.length > 0) {
-      const lines = [`status: ${from} -> ${to}`, ...markers, ...note ? [note] : [], taskLink(slug, id, task.title)];
+      const lines = [`status: ${from} -> ${to}`, ...markers, ...note ? [note] : [], "", taskLink(slug, id, task.title)];
       paths.push(appendLogUnlocked(home, slug, lines.join("\n"), id, clock));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);
@@ -42962,6 +42976,7 @@ ${task.body}`);
       ...review.signals.length ? [`signals: ${review.signals.join(", ")}`] : [],
       ...reasons ? [`reasons: ${truncate(reasons, 300)}`] : [],
       ...needsSecond ? ["risk-acknowledged: true"] : [],
+      "",
       taskLink(slug, id, task.title)
     ];
     const logFile = appendLogUnlocked(home, slug, lines.join("\n"), id, () => now);
@@ -48941,7 +48956,10 @@ function startServer(options) {
     }
     if (parts[2] === "tasks" && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
-      return json2(res, 200, { ...taskMeta(home, task), html: md.render(task.body) });
+      const history = parseEntries(task.history).map(
+        (e) => isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) }
+      );
+      return json2(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history });
     }
     if (parts[2] === "log" && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), "log");

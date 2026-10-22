@@ -163,7 +163,7 @@ test('automatic status records and free entries keep their meaning, now with a t
   setStatus(home, 'demo', task.id, 'in-progress', 'mcp', { trivial: true, note: 'cambio mínimo' });
   const day = localDay(new Date());
   const log = readFileSync(join(home, 'projects/demo/log', `${day}.md`), 'utf8');
-  assert.match(log, /status: todo -> in-progress\ntrivial: true\ncambio mínimo\n\[WF-1 · Pausar\]\(#\/demo\/task\/WF-1\)\n$/);
+  assert.match(log, /status: todo -> in-progress\ntrivial: true\ncambio mínimo\n\n\[WF-1 · Pausar\]\(#\/demo\/task\/WF-1\)\n$/);
   assert.equal(hasLogFor(home, 'demo', day), false, 'automatic records still do not count');
   assert.equal(hasFreeLogFor(home, 'demo', day), false);
   appendLog(home, 'demo', 'Revisión general del repositorio.');
