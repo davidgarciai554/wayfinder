@@ -7835,7 +7835,8 @@ var es_default = {
   "web.discarding": "Descartando\u2026",
   "web.discarded": "{id} descartada.",
   "web.withWarning": "{message} Aviso: {warning}",
-  "web.actions": "Acciones"
+  "web.actions": "Acciones",
+  "serve.portInUse": "El puerto {port} ya lo usa otra aplicaci\xF3n. Elige otro con --port o WAYFINDER_PORT."
 };
 
 // src/i18n/en.json
@@ -8059,7 +8060,8 @@ var en_default = {
   "web.discarding": "Discarding\u2026",
   "web.discarded": "{id} discarded.",
   "web.withWarning": "{message} Warning: {warning}",
-  "web.actions": "Actions"
+  "web.actions": "Actions",
+  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT."
 };
 
 // src/i18n/index.ts
@@ -43330,6 +43332,7 @@ async function runMcp(version2, baseEnv = process.env) {
 
 // src/server.ts
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { existsSync as existsSync7, readdirSync as readdirSync4, readFileSync as readFileSync10, statSync as statSync5, watch } from "node:fs";
 import { extname, join as join11 } from "node:path";
 import { randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
@@ -48442,6 +48445,7 @@ var CSP = [
 ].join("; ");
 var STATIC = {
   "/": "index.html",
+  "/index.html": "index.html",
   "/app.js": "app.js",
   "/styles.css": "styles.css"
 };
@@ -48457,6 +48461,7 @@ var MIME = {
 };
 var ASSET_NAME = /^[\w.-]+\.(png|jpe?g|gif|webp)$/i;
 var DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+var DEFAULT_PORT = 4747;
 var LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "localhost", "::1"]);
 var MAX_JSON = 256 * 1024;
 var CONFLICT_KEYS = /* @__PURE__ */ new Set(["store.conflict", "store.invalidTransition"]);
@@ -48599,7 +48604,7 @@ function startServer(options) {
     }
     if (pathname.includes("\0") || pathname.includes("\\")) return notFound(res);
     if (req.method === "POST") return handleWrite(req, res, pathname.split("/").filter(Boolean));
-    if (pathname === "/" && url2.searchParams.has("k")) {
+    if ((pathname === "/" || pathname === "/index.html") && url2.searchParams.has("k")) {
       const headers = { Location: "/" };
       if (sameToken(url2.searchParams.get("k") ?? "")) headers["Set-Cookie"] = `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict`;
       return send(res, 303, "", "text/plain; charset=utf-8", headers);
@@ -48732,9 +48737,25 @@ data: ${Date.now()}
     for (const c of clients) c.write(": ping\n\n");
   }, 25e3);
   const server = createServer(handle);
+  const port = options.port ?? DEFAULT_PORT;
+  const stopWatching = () => {
+    clearInterval(heartbeat);
+    clearInterval(poller);
+    clearTimeout(debounce);
+    watcher?.close();
+  };
   return new Promise((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(options.port ?? 4321, host, () => {
+    const failed = (error62) => {
+      stopWatching();
+      server.close();
+      reject(error62?.code === "EADDRINUSE" ? new WayfinderError("serve.portInUse", { port }) : error62);
+    };
+    server.once("error", failed);
+    portAnswers(port).then((busy) => {
+      if (busy) return failed(new WayfinderError("serve.portInUse", { port }));
+      server.listen(port, host, onListening);
+    }, failed);
+    function onListening() {
       const address = server.address();
       boundPort = typeof address === "object" && address ? address.port : 0;
       const shownHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
@@ -48745,16 +48766,26 @@ data: ${Date.now()}
         port: boundPort,
         token,
         close: () => new Promise((done) => {
-          clearInterval(heartbeat);
-          clearInterval(poller);
-          clearTimeout(debounce);
-          watcher?.close();
+          stopWatching();
           for (const c of clients) c.end();
           server.close(() => done());
           server.closeAllConnections();
         })
       });
-    });
+    }
+  });
+}
+function portAnswers(port) {
+  if (port === 0) return Promise.resolve(false);
+  return new Promise((resolve5) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    const done = (busy) => {
+      socket.destroy();
+      resolve5(busy);
+    };
+    socket.setTimeout(1e3, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
   });
 }
 
@@ -48845,7 +48876,7 @@ async function runServe(args, lang, io, env) {
     const n = Number(value);
     return Number.isInteger(n) && n >= 0 && n <= 65535 ? n : NaN;
   };
-  const port = parsePort(option(args, "--port") ?? env.WAYFINDER_PORT, 4321);
+  const port = parsePort(option(args, "--port") ?? env.WAYFINDER_PORT, DEFAULT_PORT);
   const publicPort = parsePort(env.WAYFINDER_PUBLIC_PORT);
   if (Number.isNaN(port) || Number.isNaN(publicPort)) {
     io.err(t(lang, "serve.invalidPort", { value: option(args, "--port") ?? env.WAYFINDER_PORT ?? env.WAYFINDER_PUBLIC_PORT ?? "" }));

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { connect } from 'node:net';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { extname, join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -46,6 +47,7 @@ const CSP = [
 
 const STATIC: Record<string, string> = {
   '/': 'index.html',
+  '/index.html': 'index.html',
   '/app.js': 'app.js',
   '/styles.css': 'styles.css',
 };
@@ -61,6 +63,8 @@ const MIME: Record<string, string> = {
 };
 const ASSET_NAME = /^[\w.-]+\.(png|jpe?g|gif|webp)$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Not Astro's 4321 or other common dev-server ports. */
+export const DEFAULT_PORT = 4747;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const MAX_JSON = 256 * 1024;
 /** Store errors caused by the current state of the task rather than by the request. */
@@ -220,7 +224,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     if (req.method === 'POST') return handleWrite(req, res, pathname.split('/').filter(Boolean));
 
     // `/?k=<key>`: remember the key in this browser and drop it from the address bar.
-    if (pathname === '/' && url.searchParams.has('k')) {
+    if ((pathname === '/' || pathname === '/index.html') && url.searchParams.has('k')) {
       const headers: Record<string, string> = { Location: '/' };
       if (sameToken(url.searchParams.get('k') ?? '')) headers['Set-Cookie'] = `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict`;
       return send(res, 303, '', 'text/plain; charset=utf-8', headers);
@@ -370,9 +374,27 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   }, 25_000);
 
   const server = createServer(handle);
+  const port = options.port ?? DEFAULT_PORT;
+  const stopWatching = () => {
+    clearInterval(heartbeat);
+    clearInterval(poller);
+    clearTimeout(debounce);
+    watcher?.close();
+  };
   return new Promise((resolvePromise, reject) => {
-    server.once('error', reject);
-    server.listen(options.port ?? 4321, host, () => {
+    const failed = (error: unknown) => {
+      stopWatching();
+      server.close();
+      reject((error as NodeJS.ErrnoException)?.code === 'EADDRINUSE' ? new WayfinderError('serve.portInUse', { port }) : error);
+    };
+    server.once('error', failed);
+    // Windows lets 127.0.0.1:<port> coexist with another app bound to 0.0.0.0:<port>, and the
+    // browser would then reach whichever answers. Refuse a port where something already listens.
+    portAnswers(port).then((busy) => {
+      if (busy) return failed(new WayfinderError('serve.portInUse', { port }));
+      server.listen(port, host, onListening);
+    }, failed);
+    function onListening() {
       const address = server.address();
       boundPort = typeof address === 'object' && address ? address.port : 0;
       const shownHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
@@ -384,15 +406,27 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
         token,
         close: () =>
           new Promise<void>((done) => {
-            clearInterval(heartbeat);
-            clearInterval(poller);
-            clearTimeout(debounce);
-            watcher?.close();
+            stopWatching();
             for (const c of clients) c.end();
             server.close(() => done());
             server.closeAllConnections();
           }),
       });
-    });
+    }
+  });
+}
+
+/** True when something accepts connections on 127.0.0.1:<port>. Port 0 means "any free port". */
+function portAnswers(port: number): Promise<boolean> {
+  if (port === 0) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    const done = (busy: boolean) => {
+      socket.destroy();
+      resolve(busy);
+    };
+    socket.setTimeout(1000, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
   });
 }

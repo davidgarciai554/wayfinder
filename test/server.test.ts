@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { createTask } from '../src/store/tasks.ts';
 import { setGitRunner } from '../src/store/git.ts';
+import { WayfinderError } from '../src/store/errors.ts';
+import { createServer as createNetServer } from 'node:net';
+import { once } from 'node:events';
 import { commitCount, gitOut, makeHome, makeProject, tree } from './helpers.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
@@ -68,6 +71,24 @@ test('binds to 127.0.0.1, sends security headers and rejects foreign Host header
   for (const host of ['evil.example.com', `evil.example.com:${port}`, '127.0.0.1:1', `192.168.1.10:${port}`]) {
     assert.equal((await get(port, '/api/projects', host)).status, 403, host);
   }
+});
+
+test('refuses a port where another app already listens (even on 0.0.0.0), and serves /index.html', async (t) => {
+  const other = createNetServer().listen(0, '0.0.0.0');
+  await once(other, 'listening');
+  t.after(() => other.close());
+  const busyPort = (other.address() as { port: number }).port;
+  const home = makeHome(t);
+  await assert.rejects(startServer({ home, lang: 'es', port: busyPort, webDir: tmpdir() }), (error: WayfinderError) => {
+    assert.equal(error.key, 'serve.portInUse');
+    assert.equal(error.vars.port, busyPort);
+    return true;
+  });
+  const { port, server } = await serve(t);
+  assert.equal((await get(port, '/index.html')).status, 200);
+  const landing = await get(port, `/index.html?k=${server.token}`);
+  assert.equal(landing.status, 303);
+  assert.match(String(landing.headers['set-cookie']), /HttpOnly/);
 });
 
 test('WAYFINDER_PUBLIC_PORT is accepted in the Host header (Docker port mapping)', async (t) => {

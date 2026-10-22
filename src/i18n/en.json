@@ -218,5 +218,6 @@
   "web.discarding": "Discarding…",
   "web.discarded": "{id} discarded.",
   "web.withWarning": "{message} Warning: {warning}",
-  "web.actions": "Actions"
+  "web.actions": "Actions",
+  "serve.portInUse": "Port {port} is already used by another application. Choose another one with --port or WAYFINDER_PORT."
 }

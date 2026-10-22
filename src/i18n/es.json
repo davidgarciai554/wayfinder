@@ -218,5 +218,6 @@
   "web.discarding": "Descartando…",
   "web.discarded": "{id} descartada.",
   "web.withWarning": "{message} Aviso: {warning}",
-  "web.actions": "Acciones"
+  "web.actions": "Acciones",
+  "serve.portInUse": "El puerto {port} ya lo usa otra aplicación. Elige otro con --port o WAYFINDER_PORT."
 }

@@ -4,7 +4,7 @@ import { initHome } from './store/init.ts';
 import { getHome } from './store/paths.ts';
 import { runMcp } from './mcp.ts';
 import { HOOK_EVENTS, readStdin, runHook } from './hook.ts';
-import { startServer } from './server.ts';
+import { DEFAULT_PORT, startServer } from './server.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,7 +110,7 @@ async function runServe(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessE
     const n = Number(value);
     return Number.isInteger(n) && n >= 0 && n <= 65535 ? n : NaN;
   };
-  const port = parsePort(option(args, '--port') ?? env.WAYFINDER_PORT, 4321);
+  const port = parsePort(option(args, '--port') ?? env.WAYFINDER_PORT, DEFAULT_PORT);
   const publicPort = parsePort(env.WAYFINDER_PUBLIC_PORT);
   if (Number.isNaN(port) || Number.isNaN(publicPort)) {
     io.err(t(lang, 'serve.invalidPort', { value: option(args, '--port') ?? env.WAYFINDER_PORT ?? env.WAYFINDER_PUBLIC_PORT ?? '' }));
