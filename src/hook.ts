@@ -7,6 +7,7 @@ import { extractOrders, recordOrders } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
 import { matchProject, findRepoRoot } from './store/resolve.ts';
 import { listTasks, type Task } from './store/tasks.ts';
+import { flatten } from './store/text.ts';
 import { localDay } from './store/time.ts';
 
 export const HOOK_EVENTS = ['session-start', 'prompt', 'pre-tool', 'stop'] as const;
@@ -51,10 +52,6 @@ export function hookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   };
 }
 
-const clean = (text: string, max: number) => {
-  const flat = text.replace(/[\u0000-\u001F\u007F​-‏‪-‮⁠-⁤﻿]/g, ' ').replace(/\s+/g, ' ').trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-};
 
 function projectFor(home: string, input: Record<string, unknown>, env: NodeJS.ProcessEnv) {
   const dir = env.CLAUDE_PROJECT_DIR?.trim() || (typeof input.cwd === 'string' ? input.cwd : '');
@@ -66,7 +63,7 @@ function projectFor(home: string, input: Record<string, unknown>, env: NodeJS.Pr
 /** Only metadata, never task bodies: proposals may carry text from the web (prompt injection). */
 export function sessionContext(lang: Lang, slug: string, tasks: Task[]): string {
   const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, key, vars);
-  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${clean(x.title, MAX_TITLE)}`;
+  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE)}`;
   const active = tasks.filter((x) => x.status === 'in-progress' || x.status === 'todo');
   const proposed = tasks.filter((x) => x.status === 'proposed');
   const lines = [tr('hook.session.header', { slug }), `language: ${lang}`, tr('hook.session.skill')];

@@ -7661,6 +7661,10 @@ var es_default = {
   "store.taskUnreadable": "No se puede leer {file}: {reason}.",
   "store.invalidTitle": "T\xEDtulo no v\xE1lido: no puede estar vac\xEDo, superar {max} caracteres ni contener caracteres de control.",
   "store.bodyTooLong": "La descripci\xF3n supera {max} caracteres.",
+  "store.reservedHistoryHeading": "La descripci\xF3n no puede contener una l\xEDnea \xAB{heading}\xBB: est\xE1 reservada para el historial de la tarea. Usa otro t\xEDtulo.",
+  "store.historyFull": "El historial de esta tarea ha llegado a su l\xEDmite de {max} caracteres. Resume el trabajo en la descripci\xF3n o divide la tarea; el avance de hoy puede ir como entrada libre de bit\xE1cora.",
+  "store.historyNearLimit": "El historial de {id} supera el 80 % de su l\xEDmite ({max} caracteres).",
+  "store.historyEntryNotFound": "{id} no tiene la entrada {entry} del historial (tiene {total}).",
   "store.invalidPriority": "Prioridad no v\xE1lida: \xAB{value}\xBB. Valores v\xE1lidos: {valid}.",
   "store.conflict": "La tarea {id} cambi\xF3 mientras la editabas. Recarga y vuelve a intentarlo.",
   "store.planUnverifiable": "No se puede comprobar el plan: falta el directorio del proyecto consumidor.",
@@ -7887,6 +7891,10 @@ var en_default = {
   "store.taskUnreadable": "Cannot read {file}: {reason}.",
   "store.invalidTitle": "Invalid title: it cannot be empty, exceed {max} characters or contain control characters.",
   "store.bodyTooLong": "The description exceeds {max} characters.",
+  "store.reservedHistoryHeading": 'The description cannot contain a "{heading}" line: it is reserved for the task history. Use another heading.',
+  "store.historyFull": "This task's history has reached its {max}-character limit. Summarise the work in the description or split the task; today's progress can go in a free log entry.",
+  "store.historyNearLimit": "The history of {id} is over 80% of its limit ({max} characters).",
+  "store.historyEntryNotFound": "{id} has no history entry {entry} (it has {total}).",
   "store.invalidPriority": 'Invalid priority: "{value}". Valid values: {valid}.',
   "store.conflict": "Task {id} changed while you were editing it. Reload and try again.",
   "store.planUnverifiable": "The plan cannot be checked: the consumer project directory is unknown.",
@@ -42471,6 +42479,55 @@ import { createHash } from "node:crypto";
 import { existsSync as existsSync5, readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
 import { join as join8 } from "node:path";
 
+// src/store/history.ts
+var HISTORY_HEADING = "## Historial";
+var MARKER_RE = /^## Historial[ \t]*$/m;
+var FIELD_LABELS = [
+  ["decisions", "Decisions"],
+  ["files", "Files"],
+  ["next", "Next"],
+  ["blockers", "Blockers"]
+];
+function hasReservedHeading(description) {
+  return MARKER_RE.test(description);
+}
+function assertNoReservedHeading(description) {
+  if (hasReservedHeading(description)) throw new WayfinderError("store.reservedHistoryHeading", { heading: HISTORY_HEADING });
+}
+function splitBody(body) {
+  const match = MARKER_RE.exec(body);
+  if (!match) return { description: body, history: null };
+  const before = body.slice(0, match.index).replace(/\s+$/, "");
+  const after = body.slice(match.index + match[0].length).replace(/^\n+/, "");
+  return { description: before === "" ? "" : `${before}
+`, history: after };
+}
+function joinBody(description, history) {
+  if (history === null) return description;
+  const desc = description.replace(/\s+$/, "");
+  const entries = history.replace(/\s+$/, "");
+  return `${desc === "" ? "" : `${desc}
+
+`}${HISTORY_HEADING}
+${entries === "" ? "" : `
+${entries}
+`}`;
+}
+function escapeHeadings(text2) {
+  return text2.replace(/^(\s*)#/gm, "$1\\#");
+}
+function formatEntry(date5, time3, text2, fields = {}) {
+  const lines = [`### ${date5} ${time3}`, "", escapeHeadings(text2.replace(/\r\n?/g, "\n").trim())];
+  const extra = FIELD_LABELS.filter(([key]) => fields[key]?.trim()).map(
+    ([key, label]) => `- ${label}: ${escapeHeadings(fields[key].replace(/\s*\n\s*/g, " ").trim())}`
+  );
+  if (extra.length) lines.push("", ...extra);
+  return lines.join("\n");
+}
+function creationEntry(date5, time3, origin) {
+  return formatEntry(date5, time3, `Created (origin: ${origin}).`);
+}
+
 // src/store/transitions.ts
 var STATUSES = ["proposed", "todo", "in-progress", "done", "discarded"];
 var PRIORITIES = ["low", "medium", "high"];
@@ -42524,6 +42581,7 @@ function toTask(rel, raw) {
   if (!title) return { file: rel, reason: "missing title" };
   const priority = PRIORITIES.includes(String(d.priority)) ? d.priority : "medium";
   const origin = ORIGINS.includes(String(d.origin)) ? d.origin : "user";
+  const { description, history } = splitBody(parsed.body);
   return {
     id,
     title,
@@ -42535,7 +42593,8 @@ function toTask(rel, raw) {
     plan: str("plan") ?? "",
     approvedVia: d.approvedVia === "web" || d.approvedVia === "chat" ? d.approvedVia : void 0,
     riskAcknowledged: d.riskAcknowledged === true ? true : void 0,
-    body: parsed.body,
+    body: description,
+    history,
     file: rel,
     data: d
   };
@@ -42567,18 +42626,19 @@ function readTask(home, slug, id) {
   return result;
 }
 function validateTitle(title) {
-  const clean2 = title.replace(/\s+/g, " ").trim();
-  if (clean2 === "" || clean2.length > MAX_TITLE || CONTROL_CHARS.test(title)) {
+  const clean = title.replace(/\s+/g, " ").trim();
+  if (clean === "" || clean.length > MAX_TITLE || CONTROL_CHARS.test(title)) {
     throw new WayfinderError("store.invalidTitle", { max: MAX_TITLE });
   }
-  assertNoSecrets(clean2);
-  return clean2;
+  assertNoSecrets(clean);
+  return clean;
 }
 function validateBody(body) {
-  const clean2 = body.replace(/\r\n?/g, "\n");
-  if (clean2.length > MAX_BODY) throw new WayfinderError("store.bodyTooLong", { max: MAX_BODY });
-  assertNoSecrets(clean2);
-  return clean2;
+  const clean = body.replace(/\r\n?/g, "\n");
+  if (clean.length > MAX_BODY) throw new WayfinderError("store.bodyTooLong", { max: MAX_BODY });
+  assertNoReservedHeading(clean);
+  assertNoSecrets(clean);
+  return clean;
 }
 function validatePriority(priority) {
   if (priority === void 0) return "medium";
@@ -42602,7 +42662,7 @@ function writeTaskUnlocked(home, task) {
   for (const [k, v] of Object.entries(known)) data[k] = v;
   if (task.approvedVia) data.approvedVia = task.approvedVia;
   if (task.riskAcknowledged) data.riskAcknowledged = true;
-  writeFileAtomic(join8(home, task.file), serializeFrontmatter(data, task.body));
+  writeFileAtomic(join8(home, task.file), serializeFrontmatter(data, joinBody(task.body, task.history)));
 }
 function nextIdUnlocked(home, slug, prefix) {
   const dir = tasksDir(home, slug);
@@ -42622,17 +42682,22 @@ function createTask(home, slug, input2, actor, clock = systemClock) {
   const priority = validatePriority(input2.priority);
   return withLock(home, () => {
     const id = nextIdUnlocked(home, slug, project.idPrefix);
-    const now = isoLocal(clock());
+    const date5 = clock();
+    const now = isoLocal(date5);
+    const origin = actor === "web" ? "user" : "claude";
     const task = {
       id,
       title,
       status: actor === "web" ? "todo" : "proposed",
       priority,
-      origin: actor === "web" ? "user" : "claude",
+      origin,
       created: now,
       updated: now,
       plan: "",
       body,
+      // Every task has a history from the start (decision D7 of the history plan).
+      history: `${creationEntry(localDay(date5), localTime(date5), origin)}
+`,
       file: `projects/${slug}/tasks/${id}-${slugify(title)}.md`,
       data: {}
     };
@@ -42987,6 +43052,15 @@ function makePlanExists(consumerRoot) {
 // src/hook.ts
 import { readFileSync as readFileSync9 } from "node:fs";
 import { join as join10, resolve as resolve4 } from "node:path";
+
+// src/store/text.ts
+var INVISIBLE2 = /[\u0000-\u001F\u007F­​-‏‪-‮⁠-⁩︀-️﻿]|[\u{E0000}-\u{E007F}]/gu;
+function flatten(text2, max) {
+  const flat = text2.replace(INVISIBLE2, " ").replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
+}
+
+// src/hook.ts
 var HOOK_EVENTS = ["session-start", "prompt", "pre-tool", "stop"];
 var MAX_CONTEXT = 4e3;
 var MAX_TITLE2 = 80;
@@ -43012,10 +43086,6 @@ function hookEnv(env) {
     WAYFINDER_LANG: pick2(env.WAYFINDER_LANG, env.CLAUDE_PLUGIN_OPTION_LANGUAGE, defaults.language)
   };
 }
-var clean = (text2, max) => {
-  const flat = text2.replace(/[\u0000-\u001F\u007F​-‏‪-‮⁠-⁤﻿]/g, " ").replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
-};
 function projectFor(home, input2, env) {
   const dir = env.CLAUDE_PROJECT_DIR?.trim() || (typeof input2.cwd === "string" ? input2.cwd : "");
   if (!dir) return null;
@@ -43024,7 +43094,7 @@ function projectFor(home, input2, env) {
 }
 function sessionContext(lang, slug, tasks) {
   const tr = (key, vars) => t(lang, key, vars);
-  const row = (x) => `- ${x.id} [${x.status}] (${x.priority}) ${clean(x.title, MAX_TITLE2)}`;
+  const row = (x) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE2)}`;
   const active = tasks.filter((x) => x.status === "in-progress" || x.status === "todo");
   const proposed = tasks.filter((x) => x.status === "proposed");
   const lines = [tr("hook.session.header", { slug }), `language: ${lang}`, tr("hook.session.skill")];

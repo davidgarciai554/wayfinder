@@ -3,11 +3,12 @@ import { join } from 'node:path';
 import { WayfinderError, type Warning } from './errors.ts';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { commitPaths } from './git.ts';
+import { assertNoReservedHeading, creationEntry, joinBody, splitBody } from './history.ts';
 import { appendLogUnlocked, assertNoSecrets } from './log.ts';
 import { assertId, ID_RE, projectDir, safeJoin, slugify } from './paths.ts';
 import { requireProject } from './project.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
-import { isoLocal, systemClock, type Clock } from './time.ts';
+import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.ts';
 import {
   checkTransition,
   isStatus,
@@ -30,7 +31,10 @@ export interface Task {
   plan: string;
   approvedVia?: 'web' | 'chat';
   riskAcknowledged?: boolean;
+  /** The description: the stored body above the history section. */
   body: string;
+  /** Raw history section (see history.ts); null for tasks created before it existed. */
+  history: string | null;
   /** Path relative to WAYFINDER_HOME, with forward slashes. */
   file: string;
   /** Raw frontmatter, kept so unknown keys survive rewrites. */
@@ -62,6 +66,7 @@ function toTask(rel: string, raw: string): Task | Unreadable {
   if (!title) return { file: rel, reason: 'missing title' };
   const priority = (PRIORITIES as readonly string[]).includes(String(d.priority)) ? (d.priority as Priority) : 'medium';
   const origin = (ORIGINS as readonly string[]).includes(String(d.origin)) ? (d.origin as Origin) : 'user';
+  const { description, history } = splitBody(parsed.body);
   return {
     id,
     title,
@@ -73,7 +78,8 @@ function toTask(rel: string, raw: string): Task | Unreadable {
     plan: str('plan') ?? '',
     approvedVia: d.approvedVia === 'web' || d.approvedVia === 'chat' ? d.approvedVia : undefined,
     riskAcknowledged: d.riskAcknowledged === true ? true : undefined,
-    body: parsed.body,
+    body: description,
+    history,
     file: rel,
     data: d,
   };
@@ -119,6 +125,7 @@ function validateTitle(title: string): string {
 function validateBody(body: string): string {
   const clean = body.replace(/\r\n?/g, '\n');
   if (clean.length > MAX_BODY) throw new WayfinderError('store.bodyTooLong', { max: MAX_BODY });
+  assertNoReservedHeading(clean);
   assertNoSecrets(clean);
   return clean;
 }
@@ -147,7 +154,7 @@ export function writeTaskUnlocked(home: string, task: Task): void {
   for (const [k, v] of Object.entries(known)) data[k] = v;
   if (task.approvedVia) data.approvedVia = task.approvedVia;
   if (task.riskAcknowledged) data.riskAcknowledged = true;
-  writeFileAtomic(join(home, task.file), serializeFrontmatter(data, task.body));
+  writeFileAtomic(join(home, task.file), serializeFrontmatter(data, joinBody(task.body, task.history)));
 }
 
 function nextIdUnlocked(home: string, slug: string, prefix: string): string {
@@ -181,17 +188,22 @@ export function createTask(
   const priority = validatePriority(input.priority);
   return withLock(home, () => {
     const id = nextIdUnlocked(home, slug, project.idPrefix);
-    const now = isoLocal(clock());
+    const date = clock();
+    const now = isoLocal(date);
+    const origin: Origin = actor === 'web' ? 'user' : 'claude';
     const task: Task = {
       id,
       title,
       status: actor === 'web' ? 'todo' : 'proposed',
       priority,
-      origin: actor === 'web' ? 'user' : 'claude',
+      origin,
       created: now,
       updated: now,
       plan: '',
       body,
+      // Every task has a history from the start (decision D7 of the history plan).
+      history: `${creationEntry(localDay(date), localTime(date), origin)}
+`,
       file: `projects/${slug}/tasks/${id}-${slugify(title)}.md`,
       data: {},
     };
