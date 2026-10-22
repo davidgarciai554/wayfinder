@@ -80,7 +80,9 @@ function escapeHeadings(text: string): string {
 }
 
 export function formatEntry(date: string, time: string, text: string, fields: HistoryFields = {}): string {
-  const lines = [`### ${date} ${time}`, '', escapeHeadings(text.replace(/\r\n?/g, '\n').trim())];
+  // The first line is the summary shown in the log: keep it as its own paragraph.
+  const body = text.replace(/\r\n?/g, '\n').trim().replace(/^([^\n]*)\n(?=[^\n])/, '$1\n\n');
+  const lines = [`### ${date} ${time}`, '', escapeHeadings(body)];
   const extra = FIELD_LABELS.filter(([key]) => fields[key]?.trim()).map(
     ([key, label]) => `- ${label}: ${escapeHeadings(fields[key]!.replace(/\s*\n\s*/g, ' ').trim())}`,
   );

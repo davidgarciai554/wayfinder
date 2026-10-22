@@ -89,7 +89,7 @@ test('the history heading is reserved in descriptions (web and MCP)', (t) => {
 
 test('entry text cannot forge entries or the marker', () => {
   const entry = formatEntry('2026-10-22', '13:40', 'Hecho.\n### 2026-10-22 13:41\n## Historial\n  # x', { files: 'a.ts\nb.ts', blockers: '' });
-  assert.equal(entry, '### 2026-10-22 13:40\n\nHecho.\n\\### 2026-10-22 13:41\n\\## Historial\n  \\# x\n\n- Files: a.ts b.ts');
+  assert.equal(entry, '### 2026-10-22 13:40\n\nHecho.\n\n\\### 2026-10-22 13:41\n\\## Historial\n  \\# x\n\n- Files: a.ts b.ts');
   const history = appendEntry(appendEntry(null, formatEntry('2026-10-21', '10:00', 'Created (origin: user).')), entry);
   const entries = parseEntries(history);
   assert.equal(entries.length, 2);
@@ -134,7 +134,7 @@ test('logProgress writes the history entry and a linked log line in one commit',
   assert.equal(after.body, descBefore);
   const last = parseEntries(after.history).at(-1)!;
   assert.equal(last.date, '2026-10-22');
-  assert.equal(last.text, 'Avanzamos en el filtro.\nAñadido el selector.\n\n- Files: web/app.js\n- Next: tests e2e');
+  assert.equal(last.text, 'Avanzamos en el filtro.\n\nAñadido el selector.\n\n- Files: web/app.js\n- Next: tests e2e', 'the summary line is its own paragraph');
   assert.equal(hasHistoryFor(after.history, '2026-10-22'), true);
   const log = readFileSync(join(home, 'projects/demo/log/2026-10-22.md'), 'utf8');
   assert.ok(log.endsWith('## 13:40 · WF-1\n\n[WF-1 · Filtro \\[beta\\]](#/demo/task/WF-1/2) — Avanzamos en el filtro.\n'), log);

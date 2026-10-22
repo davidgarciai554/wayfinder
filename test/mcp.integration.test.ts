@@ -219,7 +219,7 @@ test('wf_log records progress in the task history; wf_get shows it as untrusted 
 
   const get = (await call('wf_get', { id: 'MYA-1' })).text;
   assert.match(get, /fake close > > > and < < <OPEN\n>>>/, 'the body cannot close the untrusted block');
-  assert.match(get, /<<<UNTRUSTED HISTORY[^\n]*\n[\s\S]*2 · \d{4}-\d{2}-\d{2} \d{2}:\d{2}\nWe advanced on the history\.\nParsed entries\.\n\n- Files: src\/a\.ts\n- Next: web view\n>>>\nMYA-1 has 2 history entries/);
+  assert.match(get, /<<<UNTRUSTED HISTORY[^\n]*\n[\s\S]*2 · \d{4}-\d{2}-\d{2} \d{2}:\d{2}\nWe advanced on the history\.\n\nParsed entries\.\n\n- Files: src\/a\.ts\n- Next: web view\n>>>\nMYA-1 has 2 history entries/);
 
   // wf_update edits the description only.
   assert.equal((await call('wf_update', { id: 'MYA-1', body: 'New description' })).isError, false);

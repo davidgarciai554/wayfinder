@@ -298,3 +298,23 @@ Cada incremento deja `npm run typecheck` y `npm test` en verde y es revisable po
 - **Skill:** cierre con avance y `task_id`; trabajo menor solo en bitácora.
 - **Commits:** `wf: log <ID>` toca dos archivos; sigue siendo un commit por escritura.
 - **Sin cambios:** aprobación por chat (salvo el hash sobre la descripción), `wf_review`, PreToolUse, sin push, Docker, npm.
+
+## Registro de implementación (2026-10-22)
+
+| Incremento | Commit | Validación |
+| --- | --- | --- |
+| 1 · Modelo de tarea con Historial | `7182d4e` | `npm test` 82/82 |
+| 2 · `wf_log` con avance y bitácora enlazada | `7b1384e` | `npm test` 87/87; `npm run test:e2e` 20/20; `check:dist` |
+| 3 · `wf_history` y `wf_search` | `e088d61` | `npm test` 92/92; `check:dist` |
+| 4 · Hooks SessionStart y Stop | `ecbb7ba` | `npm test` 95/95 (corrige un defecto previo: el contexto truncado pasaba de 4000; ver `ERRORES.md`) |
+| 5 · Web | `559f8a4` | `npm test` 96/96; `npm run test:e2e` 27/27; capturas a 320 y 1280 px en claro y oscuro (corrige un «null» previo en la bitácora; ver `ERRORES.md`) |
+| 6 · Skill, README, Docker y prueba real | este commit | `npm test` 96/96; `npm run test:e2e` 27/27; `check:dist`; `npm run test:docker` 5/5 con la imagen reconstruida |
+
+Desviación menor durante el incremento 6, consecuencia directa del contrato «la primera línea es el resumen»: al formatear una entrada, la primera línea queda como párrafo propio, porque en la web se fundía con el texto siguiente.
+
+Prueba real con el plugin instalado sobre `demo-wayfinder` (Claude Code, `claude -p`, datos reales en `~/.wayfinder`):
+- Sesión 1: «Avanza en DEM-1…». Claude cargó la skill, editó `export.md` y llamó a `wf_log` con `task_id: DEM-1`, una primera línea «Avanzamos en DEM-1: …», `decisions`, `files` y `next`. DEM-1, tarea anterior al historial, ganó su sección `## Historial`; la bitácora del día recibió la línea enlazada `#/demo-wayfinder/task/DEM-1/1`; un solo commit `wf: log DEM-1`.
+- Sesión 2: «¿En qué quedamos con DEM-1…?». Respondió con el contexto de SessionStart (último avance y siguiente paso), sin llamar a Wayfinder.
+- Sesión 3: «¿Por qué decidimos el separador del CSV?». Usó `wf_history` y `wf_search` y respondió con la decisión registrada.
+- Web sobre los datos reales (`serve --port 4748`, solo lectura): el enlace de la bitácora del 2026-10-22 abre DEM-1 con el foco en la entrada 1.
+- **No verificado en sesión real:** el bloqueo del Stop, porque ese día ya había un avance registrado en una tarea en curso; queda cubierto por `test/hook.test.ts`. La entrada de DEM-1 se escribió antes del ajuste del párrafo del resumen y conserva su formato.
