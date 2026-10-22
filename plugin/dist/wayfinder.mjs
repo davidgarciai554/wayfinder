@@ -8232,7 +8232,13 @@ function withLock(home, fn) {
       mkdirSync(lockDir);
       break;
     } catch (error62) {
-      if (error62.code !== "EEXIST") throw error62;
+      const code2 = error62.code ?? "";
+      if (code2 !== "EEXIST" && !RETRYABLE.has(code2)) throw error62;
+      if (code2 !== "EEXIST") {
+        if (Date.now() - started > LOCK_TIMEOUT_MS) throw new WayfinderError("store.lockTimeout", { path: lockDir });
+        sleepSync(10 + Math.floor(Math.random() * 30));
+        continue;
+      }
       try {
         if (Date.now() - statSync(lockDir).mtimeMs > LOCK_TTL_MS) {
           rmSync(lockDir, { recursive: true, force: true });

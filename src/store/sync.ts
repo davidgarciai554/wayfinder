@@ -45,7 +45,15 @@ export function withLock<T>(home: string, fn: () => T): T {
       mkdirSync(lockDir);
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      // Windows answers EPERM/EBUSY/EACCES to mkdir while another process is deleting the lock:
+      // that is contention too, so wait for it like EEXIST.
+      if (code !== 'EEXIST' && !RETRYABLE.has(code)) throw error;
+      if (code !== 'EEXIST') {
+        if (Date.now() - started > LOCK_TIMEOUT_MS) throw new WayfinderError('store.lockTimeout', { path: lockDir });
+        sleepSync(10 + Math.floor(Math.random() * 30));
+        continue;
+      }
       try {
         if (Date.now() - statSync(lockDir).mtimeMs > LOCK_TTL_MS) {
           rmSync(lockDir, { recursive: true, force: true });
