@@ -114,3 +114,36 @@ test('closing the task opened from the log goes back to the log', async ({ page 
   await expect(page).toHaveURL(/#\/historial\/log$/);
   await expect(page.getByRole('dialog')).toBeHidden();
 });
+
+test('opening and closing a task keeps the board underneath: no reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/#/historial/board');
+  await expect(page.locator('.card').first()).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as { __board: Element | null; __replaced: number };
+    const main = document.getElementById('main')!;
+    w.__board = main.firstElementChild;
+    w.__replaced = 0;
+    new MutationObserver(() => (w.__replaced += 1)).observe(main, { childList: true });
+  });
+  const unchanged = () => page.evaluate(() => {
+    const w = window as unknown as { __board: Element | null; __replaced: number };
+    return w.__replaced === 0 && document.getElementById('main')!.firstElementChild === w.__board;
+  });
+  const card = page.getByRole('link', { name: 'Filtro con memoria' });
+  await card.click();
+  const dialog = page.getByRole('dialog', { name: 'Filtro con memoria' });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('.card[aria-current="true"]')).toHaveCount(1);
+  expect(await unchanged()).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/historial\/board$/);
+  await expect(dialog).toBeHidden();
+  await expect(card).toBeFocused();
+  await expect(page.locator('.card[aria-current="true"]')).toHaveCount(0);
+  await card.click();
+  await dialog.getByRole('button', { name: 'Cerrar el detalle' }).click();
+  await expect(page).toHaveURL(/#\/historial\/board$/);
+  await expect(card).toBeFocused();
+  expect(await unchanged()).toBe(true);
+});

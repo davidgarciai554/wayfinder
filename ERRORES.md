@@ -89,3 +89,23 @@
 - **Solución:** solo se pasa el botón cuando existe.
 - **Archivos modificados:** `web/app.js`, `e2e/history.spec.ts`.
 - **Validación:** prueba e2e nueva (`main` no contiene «null»); `npm run test:e2e` 27/27; captura revisada.
+
+## 2026-10-22 · Al abrir o cerrar una tarea la web parecía recargarse, y la URL podía quedarse en la tarea
+
+- **Contexto:** detalle de tarea en modal (commit `f011764`), aviso del usuario en Chrome.
+- **Reproducción:** en el tablero, abrir una tarea y cerrarla con Esc o con «×».
+- **Salida observada:** el tablero se sustituía por «Cargando…» y se volvía a pintar entero al abrir y al cerrar. En la pestaña de automatización de Chrome (en segundo plano, `visibilityState: hidden`), el modal se cerraba pero la URL seguía en `#/<slug>/task/<ID>`.
+- **Causa confirmada:** cada cambio de ruta entre tablero y tarea volvía a pintar la página completa. Además, la vuelta atrás dependía del evento `close` del `<dialog>`, que Chrome entregó tarde en la pestaña oculta. La bandera `closingByRoute` tampoco servía, porque ese evento es asíncrono.
+- **Solución:** entre tablero y tarea del mismo proyecto se conserva el tablero y solo se abre o cierra el modal y se marca la tarjeta. Esc (evento `cancel`, inmediato) y «×» cambian de ruta directamente; el router cierra el modal; `close` queda como respaldo, con una guarda contra doble navegación.
+- **Archivos modificados:** `web/app.js`, `e2e/history.spec.ts`.
+- **Validación:** Chrome real (pestaña de automatización) con clic y teclas reales: tablero intacto (mismo nodo), URL de vuelta a `board`, foco en la tarjeta, con Esc y con «×». E2E nueva «no reload»; `npm run test:e2e` 29/29.
+
+## 2026-10-22 · `EPERM` intermitente al crear el bloqueo con 20 procesos concurrentes
+
+- **Contexto:** `npm test` tras el cambio anterior, Windows 11, Node 24.
+- **Reproducción:** intermitente; `test/concurrency.test.ts` «20 concurrent processes create 20 distinct IDs».
+- **Salida observada:** `Error: EPERM: operation not permitted, mkdir '…\home\.wayfinder.lock'` en `withLock` (`src/store/sync.ts`).
+- **Causa (hipótesis muy probable, coherente con el comportamiento documentado de Windows):** un `mkdir` sobre un directorio que otro proceso está borrando devuelve `EPERM`; `withLock` solo trataba `EEXIST` como contención y abortaba la escritura.
+- **Solución:** `withLock` trata `EPERM`, `EBUSY` y `EACCES` como contención (espera y reintenta hasta el tiempo límite), igual que ya hacía `writeFileAtomic`.
+- **Archivos modificados:** `src/store/sync.ts`.
+- **Validación:** `node --test test/concurrency.test.ts` 5 veces seguidas en verde; `npm test` completo. Al ser intermitente, no hay una reproducción determinista que demuestre la corrección.

@@ -456,11 +456,11 @@ async function renderBoard() {
 // One <dialog> for the task: header, then description and history beside the metadata.
 // The URL stays #/<slug>/task/<ID>[/<n>]; closing goes back where the person came from.
 let taskFromApp = false; // opened by navigating inside the app (history.back() returns there)
-let closingByRoute = false; // the router closed it: do not navigate again
+let leaving = false; // a navigation away from the task is under way: do not start another
 
 async function taskDetail() {
   let task;
-  const close = el('button', { type: 'button', class: 'button icon-button', 'data-focus': 'task-close', 'aria-label': t('web.closeDetail'), title: t('web.closeDetail'), onclick: () => $('task-dialog').close() }, closeIcon());
+  const close = el('button', { type: 'button', class: 'button icon-button', 'data-focus': 'task-close', 'aria-label': t('web.closeDetail'), title: t('web.closeDetail'), onclick: leaveTask }, closeIcon());
   try {
     task = await api(`/api/projects/${encodeURIComponent(view.slug)}/tasks/${encodeURIComponent(view.id)}`);
   } catch (error) {
@@ -502,6 +502,15 @@ async function taskDetail() {
   );
 }
 
+/** Marks the card of the open task without re-rendering the board. */
+function markSelected() {
+  const selected = view.page === 'task' ? `task:${view.id}` : null;
+  for (const item of main.querySelectorAll('.card')) {
+    if (item.querySelector('.card-title')?.dataset.focus === selected) item.setAttribute('aria-current', 'true');
+    else item.removeAttribute('aria-current');
+  }
+}
+
 /** Opens (or refreshes in place) the task dialog for the current route. */
 async function showTask(firstPaint) {
   const dialog = $('task-dialog');
@@ -517,16 +526,16 @@ async function showTask(firstPaint) {
 }
 
 function hideTask() {
-  const dialog = $('task-dialog');
-  if (!dialog.open) return;
-  closingByRoute = true;
-  dialog.close();
-  closingByRoute = false;
+  if ($('task-dialog').open) $('task-dialog').close();
 }
 
-/** Esc or the close button: leave the task route. */
+/**
+ * Esc or the close button: leave the task route; the router then closes the dialog. The dialog's
+ * own "close" event is only a fallback: browsers may deliver it late (hidden tabs).
+ */
 function leaveTask() {
-  if (closingByRoute || parseHash().page !== 'task') return;
+  if (leaving || parseHash().page !== 'task') return;
+  leaving = true;
   if (taskFromApp) history.back();
   else location.hash = href(view.slug);
 }
@@ -650,6 +659,7 @@ function render({ keepFocus = false, firstPaint = false, focus = null } = {}) {
 async function doRender(keepFocus, firstPaint, focus) {
   const previous = view;
   view = parseHash();
+  leaving = false;
   if (!view.slug && projects.length === 1) {
     location.replace(href(projects[0].slug));
     return;
@@ -657,10 +667,14 @@ async function doRender(keepFocus, firstPaint, focus) {
   // Remember focus so a refresh never moves it.
   const focusKey = keepFocus ? document.activeElement?.getAttribute('data-focus') : null;
   renderChrome();
-  if (firstPaint || !keepFocus) loading();
+  // Opening or closing a task keeps the board that is already underneath: only the dialog changes.
+  const onBoard = (v) => v && (v.page === 'board' || v.page === 'task');
+  const keepBoard = !firstPaint && !keepFocus && onBoard(previous) && onBoard(view) && previous.slug === view.slug && main.querySelector('.workspace');
+  if (!keepBoard && (firstPaint || !keepFocus)) loading();
   try {
     if (!view.slug) renderProjects();
     else if (!projects.some((p) => p.slug === view.slug)) renderNotFound();
+    else if (keepBoard) markSelected();
     else if (view.page === 'board') await renderBoard();
     else if (view.page === 'task') await renderBoard();
     else if (view.page === 'log') await renderLog();
@@ -777,6 +791,10 @@ async function start() {
   // Esc must not cancel a discard that is already being sent.
   $('discard-dialog').addEventListener('cancel', (e) => {
     if ($('discard-confirm').disabled) e.preventDefault();
+  });
+  $('task-dialog').addEventListener('cancel', (e) => {
+    e.preventDefault(); // Esc: navigate instead, so the URL and the dialog never disagree
+    leaveTask();
   });
   $('task-dialog').addEventListener('close', leaveTask);
   for (const dialog of document.querySelectorAll('dialog:not(#task-dialog)')) {
