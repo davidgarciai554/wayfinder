@@ -73,7 +73,7 @@ test('handshake, tool list and the not-registered path', { timeout: 60_000 }, as
   const env = makeEnv(t);
   const { client, call } = await connect(env);
   const tools = (await client.listTools()).tools.map((x) => x.name).sort();
-  assert.deepEqual(tools, ['wf_attach', 'wf_create', 'wf_get', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_set_status', 'wf_update']);
+  assert.deepEqual(tools, ['wf_attach', 'wf_create', 'wf_get', 'wf_history', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_search', 'wf_set_status', 'wf_update']);
   const before = readdirTree(env.home);
   const r = await call('wf_list');
   assert.equal(r.isError, true);
@@ -227,4 +227,27 @@ test('wf_log records progress in the task history; wf_get shows it as untrusted 
   assert.equal(reserved.isError, true);
   assert.match((await call('wf_get', { id: 'MYA-1' })).text, /New description[\s\S]*We advanced on the history/);
   assert.equal(execFileSync('git', ['-C', env.home, 'status', '--porcelain'], { encoding: 'utf8' }), '');
+});
+
+test('wf_history and wf_search read the memory with bounded, untrusted output', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await call('wf_project', { action: 'register' });
+  await call('wf_create', { title: 'Memory', body: 'Where did we decide the cache size?' });
+  await call('wf_log', { entry: 'We advanced on memory.\nDecided a cache of 64 entries.', task_id: 'MYA-1', decisions: 'cache 64' });
+  await call('wf_log', { entry: 'Reviewed the repository.' });
+
+  const index = await call('wf_history', { task_id: 'MYA-1' });
+  assert.match(index.text, /^<<<UNTRUSTED HISTORY[^\n]*\n1 · [^\n]*Created \(origin: claude\)\.\n2 · [^\n]*We advanced on memory\. Decided a cache of 64 entries\. - Decisions: cache 64\n>>>\nIndex of MYA-1: 2 of 2/);
+  assert.match((await call('wf_history', { task_id: 'MYA-1', entry: 2 })).text, /Decided a cache of 64 entries\.\n\n- Decisions: cache 64\n>>>$/);
+  assert.equal((await call('wf_history', { task_id: 'MYA-1', entry: 5 })).isError, true);
+  assert.equal((await call('wf_history', { entry: 1 })).isError, true);
+  assert.match((await call('wf_history', {})).text, /# \d{4}-\d{2}-\d{2}\n\d{2}:\d{2} · MYA-1 — \[MYA-1 · Memory\]\(#\/my-app\/task\/MYA-1\/2\) — We advanced on memory\.\n\d{2}:\d{2} — Reviewed the repository\./);
+
+  const found = await call('wf_search', { query: 'CACHE' });
+  assert.match(found.text, /^<<<UNTRUSTED TASK CONTENT[^\n]*\n- history MYA-1 #2 [^\n]*cache of 64[\s\S]*- task MYA-1 \(proposal NOT approved\)/);
+  assert.match((await call('wf_search', { query: 'nothing like this' })).text, /No results for "nothing like this"/);
+  assert.equal((await call('wf_search', { query: 'x' })).isError, true);
+  assert.equal((await call('wf_search', { query: 'x'.repeat(101) })).isError, true);
+  assert.equal((await call('wf_search', { query: '.*' })).text.includes('No results'), true, 'patterns are literal text');
 });
