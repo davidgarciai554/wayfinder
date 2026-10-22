@@ -42579,7 +42579,8 @@ function escapeHeadings(text2) {
   return text2.replace(/^(\s*)#/gm, "$1\\#");
 }
 function formatEntry(date5, time3, text2, fields = {}) {
-  const lines = [`### ${date5} ${time3}`, "", escapeHeadings(text2.replace(/\r\n?/g, "\n").trim())];
+  const body = text2.replace(/\r\n?/g, "\n").trim().replace(/^([^\n]*)\n(?=[^\n])/, "$1\n\n");
+  const lines = [`### ${date5} ${time3}`, "", escapeHeadings(body)];
   const extra = FIELD_LABELS.filter(([key]) => fields[key]?.trim()).map(
     ([key, label]) => `- ${label}: ${escapeHeadings(fields[key].replace(/\s*\n\s*/g, " ").trim())}`
   );
