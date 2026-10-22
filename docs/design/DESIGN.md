@@ -35,7 +35,7 @@
 - **Idea rectora:** una herramienta de consulta cálida y tranquila. Los datos mandan, la decoración no.
 - **Personalidad y tono:** sereno, legible y preciso. Textos breves en el idioma configurado.
 - **Densidad de información:** media-alta. Tarjetas compactas con el ID, la prioridad y la fecha en monoespaciada.
-- **Principio de composición:** columnas de estado como listas; el detalle de la tarea es un panel lateral en pantallas anchas.
+- **Principio de composición:** columnas de estado como listas; el detalle de la tarea se abre en un modal sobre el tablero (decisión del usuario, 2026-10-22).
 - **Dirección que se evita:** bento, gradientes, cristal, sombras decorativas, hero, métricas inventadas y emojis.
 - **Riesgo visual deliberado:** la serifa en los títulos dentro de una herramienta. Da carácter y separa jerarquías sin añadir color.
 
@@ -48,15 +48,15 @@
 - **Jerarquía de contenidos:**
   - el nombre del proyecto es el `h1` de la página;
   - las columnas son `h2` con recuento;
-  - en el detalle, el título de la tarea es el encabezado principal del panel.
+  - en el detalle, el título de la tarea es el encabezado principal del modal (`h1`), con «Descripción» e «Historial» como `h2`.
 - **Flujo principal:** abrir el tablero → ver las columnas → abrir una tarea → volver.
 - **Acciones:**
   - incremento 4: el enlace a la tarea, «Mostrar descartadas» y «Ver todas las hechas»;
   - incremento 5: «Nueva tarea» como acción principal, y «Aprobar» y «Descartar» en las propuestas.
-- **Patrones seleccionados:** app shell mínimo, tablero como lista de columnas, maestro-detalle, vacío orientado a acción, error recuperable, confirmación proporcional (solo para descartar) y feedback inmediato.
+- **Patrones seleccionados:** app shell mínimo, tablero como lista de columnas, detalle en modal, vacío orientado a acción, error recuperable, confirmación proporcional (solo para descartar) y feedback inmediato.
 - **Patrones descartados:**
   - arrastrar y soltar, porque no aporta a un uso sobre todo de lectura y exige una alternativa de todos modos;
-  - el detalle en un diálogo, porque es peor para leer tareas largas;
+  - el panel lateral para el detalle: sustituido el 2026-10-22 por un modal a petición del usuario, para ver toda la información de la tarea bien estructurada. El riesgo de leer tareas largas se mitiga con un modal ancho (hasta 1000 px), desplazamiento dentro del modal y pantalla completa en compacto;
   - confirmar la aprobación, porque es reversible.
 
 ## Sistema visual
@@ -125,7 +125,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Tablero | 4 columnas: Propuestas, Por hacer, En curso, Hechas (10 últimas) | «Cargando…» con `role=status` y la estructura de columnas | Por columna: «(ninguna)»; sin tareas, un texto que invita a pedir ideas a Claude | Aviso con «Reintentar»; las tareas ilegibles se listan arriba con su motivo | — | — | Títulos largos que se parten; «Ver todas las hechas» |
 | Tarjeta | ID · prioridad · fecha relativa; título como enlace; etiquetas de aviso | — | — | — | — | — | Foco visible en el enlace y en los botones; la seleccionada lleva un borde de 2 px con el acento |
-| Detalle | Título, etiquetas, metadatos (`<dl>`), Markdown renderizado y sección «Historial» (`h2`): una entrada por avance (`article` con `h3` y `<time>`), de la más antigua a la más reciente, cada una con enlace «Ver en la bitácora del <día>»; la de creación sin enlace | «Cargando…» | Sin descripción: «Sin descripción». Sin entradas: «Esta tarea aún no tiene entradas en su historial.» | Tarea inexistente → mensaje y enlace al tablero | — | — | Cerrar (44 px) devuelve el foco a la tarjeta; el cuerpo se desplaza dentro del panel. `#/<slug>/task/<ID>/<n>` abre la tarea con el foco en la entrada `n` (si no existe, en el título) |
+| Detalle | Título, etiquetas, metadatos (`<dl>`), Markdown renderizado y sección «Historial» (`h2`): una entrada por avance (`article` con `h3` y `<time>`), de la más antigua a la más reciente, cada una con enlace «Ver en la bitácora del <día>»; la de creación sin enlace | «Cargando…» | Sin descripción: «Sin descripción». Sin entradas: «Esta tarea aún no tiene entradas en su historial.» | Tarea inexistente → mensaje y enlace al tablero | — | — | Cerrar (44 px) o Esc cierran el modal y vuelven a donde estaba la persona (la bitácora, si vino de ella; si no, el tablero con el foco en la tarjeta); el contenido se desplaza dentro del modal y se refresca solo sin perder la posición. `#/<slug>/task/<ID>/<n>` abre la tarea con el foco en la entrada `n` (si no existe, en el título) |
 | Autorefresco | Aviso discreto «Actualizado · N cambios» (`aria-live=polite`) | — | — | Banner persistente «Sin conexión…» con «Reintentar» | Aviso único al reconectar | — | Nunca mueve el foco ni pisa formularios ni diálogos abiertos |
 | Bitácora | Días en orden inverso con `h2` y entradas; cada avance es una línea «[ID · título] — resumen» que enlaza a su entrada del historial, y los registros automáticos llevan el enlace a la tarea en su propio párrafo. `#/<slug>/log/<día>` muestra solo ese día con «Ver toda la bitácora» | «Cargando…» | «Aún no hay bitácora.» Día sin bitácora: «No hay bitácora del <día>.» | Aviso con «Reintentar» | — | — | «Cargar días anteriores» |
 | Capturas | Rejilla con el texto alternativo como pie | «Cargando…» | «Aún no hay capturas.» | Imagen rota → texto alternativo visible | — | — | El visor `<dialog>` se cierra con Esc y devuelve el foco |
@@ -135,11 +135,12 @@
 ## Diseño adaptable y acceso equivalente
 - **Compacto (< 720 px):**
   - columnas apiladas con enlaces de salto «Propuestas (2) · …»;
-  - el detalle de la tarea como página con «← Tablero»;
+  - el detalle de la tarea como modal a pantalla completa, con su botón de cerrar;
   - pestañas que pasan a otra línea y objetivos táctiles de 44 px;
   - sin scroll horizontal a 320 px ni con zoom al 200 %.
-- **Intermedio (720–1099 px):** columnas en una rejilla `auto-fit` (2 por fila) y el detalle como página.
-- **Amplio (≥ 1100 px):** cuatro columnas y el detalle como panel lateral (máximo 600 px) con el tablero visible.
+- **Intermedio (720–1099 px):** columnas en una rejilla `auto-fit` (2 por fila) y el detalle como modal.
+- **Amplio (≥ 1100 px):** cuatro columnas.
+- **Detalle de tarea (≥ 720 px):** modal de hasta 1000 px sobre el tablero. Cabecera con ID, título, etiquetas, acciones y cerrar; debajo, dos columnas: descripción e historial a la izquierda y datos (prioridad, origen, plan, fechas) en una columna de 260 px a la derecha. En compacto, a pantalla completa con los datos antes de la descripción.
 - **Teclado y foco:**
   - un enlace «Saltar al contenido» y orden de foco igual al orden visual;
   - anillo de 2 px con `--wf-focus` y 2 px de separación;
@@ -179,6 +180,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-21 | Incremento 4: tablero, detalle, bitácora, capturas, proyecto (es/en) | `wayfinder serve` con datos de prueba; Chromium headless (Playwright 1.64.1); Windows 11 | `npm run test:e2e` 11/11; capturas `test-results/review/` a 320, 768 y 1280 px en claro y oscuro; `test/contrast.test.ts` | Coincide con el lienzo v8. Contraste medido: todos los textos ≥ 4,5:1 y foco, bordes y arcilla ≥ 3:1 en los dos temas | «Descartada» en claro ajustada de `#73726C` a `#5E5D59` (4,15 → 5,67:1). Sin verificar: prueba manual con NVDA y zoom real al 200 % del navegador (aproximado con un viewport de 640 px) |
 | 2026-10-22 | Plan de bitácora e historial, incremento 5: sección Historial, enlaces bitácora ↔ entrada, vista de un día (es/en) | Fixture e2e (`historial`); Chromium headless; Windows 11 | `npm run test:e2e` 27/27 (`e2e/history.spec.ts`: foco en la entrada, «Atrás», teclado, estados vacíos, 320 px sin scroll horizontal, árbol de accesibilidad); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: tokens existentes (`--wf-border-strong`, `--wf-focus`, tipografía mono para fechas), sin colores nuevos | Corregido de paso: la bitácora mostraba un texto «null» al final (defecto previo). Sin verificar: NVDA y zoom real al 200 % |
+| 2026-10-22 | Detalle de tarea en modal (dos columnas; pantalla completa en compacto) | Fixture e2e; Chromium headless; Windows 11 | `npm run test:e2e` 28/28 (foco en el título o en la entrada enlazada, Esc y «Cerrar» vuelven al origen y devuelven el foco a la tarjeta, 640 px sin scroll horizontal); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: mismos tokens, superficie y sombra que los diálogos existentes | Cambia una decisión aprobada (panel lateral) por petición expresa del usuario. Sin verificar: NVDA y zoom real al 200 % |
 
 ## Regresión visual automatizada
 - **Herramienta:** Playwright, prevista en el plan (incremento 4) como devDependency.

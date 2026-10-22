@@ -3,7 +3,6 @@
 // sanitised by the server (markdown-it, html: false) is inserted as HTML.
 // Writes (create, approve, discard) need the per-start key cookie set by the link `serve` prints.
 
-const WIDE = window.matchMedia('(min-width: 1100px)');
 const DONE_LIMIT = 10;
 const LOG_PAGE = 7;
 const STATUS_ORDER = ['proposed', 'todo', 'in-progress', 'done'];
@@ -450,43 +449,86 @@ async function renderBoard() {
     el('div', { class: 'columns' }, columns),
   );
 
-  const workspace = el('div', { class: 'workspace' }, boardArea);
-  if (view.page === 'task' && WIDE.matches) workspace.append(await detailPanel(false));
-  main.replaceChildren(workspace);
+  main.replaceChildren(el('div', { class: 'workspace' }, boardArea));
 }
 
-// ---------- task detail ----------
-async function detailPanel(asPage) {
+// ---------- task detail (modal over the board) ----------
+// One <dialog> for the task: header, then description and history beside the metadata.
+// The URL stays #/<slug>/task/<ID>[/<n>]; closing goes back where the person came from.
+let taskFromApp = false; // opened by navigating inside the app (history.back() returns there)
+let closingByRoute = false; // the router closed it: do not navigate again
+
+async function taskDetail() {
   let task;
+  const close = el('button', { type: 'button', class: 'button icon-button', 'data-focus': 'task-close', 'aria-label': t('web.closeDetail'), title: t('web.closeDetail'), onclick: () => $('task-dialog').close() }, closeIcon());
   try {
     task = await api(`/api/projects/${encodeURIComponent(view.slug)}/tasks/${encodeURIComponent(view.id)}`);
   } catch (error) {
-    return el('aside', { class: `detail${asPage ? ' detail-page' : ''}` },
+    return el('div', { class: 'detail' },
+      el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: view.id }), close),
+      el('h1', { id: 'task-title', tabindex: '-1', text: t('web.taskNotFoundTitle') }),
       el('p', { role: 'alert', text: error.status === 404 ? t('web.taskNotFound', { id: view.id }) : error.message }),
       el('a', { href: href(view.slug), text: t('web.backToBoard') }));
   }
-  const close = asPage
-    ? el('a', { class: 'button', href: href(view.slug), text: `← ${t('web.backToBoard')}` })
-    : el('a', { class: 'button icon-button', href: href(view.slug), 'aria-label': t('web.closeDetail'), title: t('web.closeDetail') }, closeIcon());
-  const body = el('div', { class: 'prose' });
-  if (task.html.trim()) body.innerHTML = task.html; // Sanitised by the server (markdown-it, html: false).
-  else body.append(el('p', { class: 'muted', text: t('web.noDescription') }));
+  const description = el('div', { class: 'prose' });
+  if (task.html.trim()) description.innerHTML = task.html; // Sanitised by the server (markdown-it, html: false).
+  else description.append(el('p', { class: 'muted', text: t('web.noDescription') }));
   const row = (label, value) => [el('dt', { text: label }), el('dd', {}, value)];
-  return el('aside', { class: `detail${asPage ? ' detail-page' : ''}`, 'aria-labelledby': 'task-title' },
-    el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
-    el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
-    el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' })),
-    actions(task, 'detail-actions'),
-    el('dl', { class: 'meta' },
-      row(t('web.meta.priority'), t(`web.priority.${task.priority}`)),
-      row(t('web.meta.origin'), t(`web.origin.${task.origin}`)),
-      row(t('web.meta.plan'), task.plan ? el('span', { class: 'mono', text: task.plan }) : '—'),
-      row(t('web.meta.created'), el('span', { class: 'mono', text: exact(task.created) })),
-      row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(task.updated) })),
+  return el('div', { class: 'detail' },
+    el('header', { class: 'detail-head' },
+      el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
+      el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
+      el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' })),
+      actions(task, 'detail-actions'),
     ),
-    body,
-    historySection(task),
+    el('div', { class: 'detail-grid' },
+      el('aside', { class: 'detail-side', 'aria-label': t('web.details') },
+        el('dl', { class: 'meta' },
+          row(t('web.meta.priority'), t(`web.priority.${task.priority}`)),
+          row(t('web.meta.origin'), t(`web.origin.${task.origin}`)),
+          row(t('web.meta.plan'), task.plan ? el('span', { class: 'mono', text: task.plan }) : '—'),
+          row(t('web.meta.created'), el('span', { class: 'mono', text: exact(task.created) })),
+          row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(task.updated) })),
+        ),
+      ),
+      el('div', { class: 'detail-main' },
+        el('section', { id: 'task-description', 'aria-labelledby': 'task-description-title' },
+          el('h2', { id: 'task-description-title', text: t('web.description') }),
+          description,
+        ),
+        historySection(task),
+      ),
+    ),
   );
+}
+
+/** Opens (or refreshes in place) the task dialog for the current route. */
+async function showTask(firstPaint) {
+  const dialog = $('task-dialog');
+  const sameTask = dialog.open && dialog.dataset.task === `${view.slug}/${view.id}`;
+  const scroll = sameTask ? dialog.scrollTop : 0;
+  dialog.replaceChildren(await taskDetail());
+  dialog.dataset.task = `${view.slug}/${view.id}`;
+  if (!dialog.open) {
+    taskFromApp = !firstPaint;
+    dialog.showModal();
+  }
+  dialog.scrollTop = scroll;
+}
+
+function hideTask() {
+  const dialog = $('task-dialog');
+  if (!dialog.open) return;
+  closingByRoute = true;
+  dialog.close();
+  closingByRoute = false;
+}
+
+/** Esc or the close button: leave the task route. */
+function leaveTask() {
+  if (closingByRoute || parseHash().page !== 'task') return;
+  if (taskFromApp) history.back();
+  else location.hash = href(view.slug);
 }
 
 /** Every task has a history; each entry links to the log day where it was recorded. */
@@ -505,10 +547,6 @@ function historySection(task) {
     el('h2', { id: 'task-history', text: t('web.history') }),
     entries.length ? el('div', { class: 'entries' }, entries) : el('p', { class: 'muted', text: t('web.noHistory') }),
   );
-}
-
-async function renderTaskPage() {
-  main.replaceChildren(await detailPanel(true));
 }
 
 // ---------- log ----------
@@ -624,25 +662,31 @@ async function doRender(keepFocus, firstPaint, focus) {
     if (!view.slug) renderProjects();
     else if (!projects.some((p) => p.slug === view.slug)) renderNotFound();
     else if (view.page === 'board') await renderBoard();
-    else if (view.page === 'task') await (WIDE.matches ? renderBoard() : renderTaskPage());
+    else if (view.page === 'task') await renderBoard();
     else if (view.page === 'log') await renderLog();
     else if (view.page === 'assets') await renderAssets();
     else if (view.page === 'project') await renderProject();
+    const onTask = view.page === 'task' && projects.some((p) => p.slug === view.slug);
+    if (onTask) await showTask(firstPaint);
+    else hideTask();
   } catch (error) {
+    hideTask();
     failure(error, () => render());
     return;
   }
+  // With the task dialog open, focus lives inside it.
+  const scope = $('task-dialog').open ? $('task-dialog') : main;
   if (focus) {
     // After a write: the moved card, the column it left or the task title; else the page heading.
-    const target = main.querySelector(`[data-focus="${CSS.escape(focus)}"]`) ?? main.querySelector(`#${CSS.escape(focus)}`) ?? main.querySelector('h1');
+    const target = scope.querySelector(`[data-focus="${CSS.escape(focus)}"]`) ?? scope.querySelector(`#${CSS.escape(focus)}`) ?? scope.querySelector('h1');
     if (target && !target.matches('a, button, input, select, textarea')) target.setAttribute('tabindex', '-1');
     target?.focus();
   } else if (focusKey) {
-    main.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
-  } else if (!keepFocus && (!firstPaint || view.entry)) {
-    // A link to a history entry focuses it even when it opens the page.
+    scope.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
+  } else if (!keepFocus && (!firstPaint || view.page === 'task')) {
+    // Opening a task (also from a link that opens the app) focuses its title or the linked entry.
     const sameBoard = previous && previous.slug === view.slug && previous.page === 'task' && view.page === 'board' && previous.id;
-    if (view.page === 'task') (view.entry && main.querySelector(`#entry-${view.entry}`) || main.querySelector('#task-title'))?.focus();
+    if (view.page === 'task') (view.entry && scope.querySelector(`#entry-${view.entry}`) || scope.querySelector('#task-title'))?.focus();
     else if (sameBoard) main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`)?.focus();
     else {
       const heading = main.querySelector('h1');
@@ -657,8 +701,9 @@ async function loadProjects() {
 }
 
 async function refresh({ announce = true } = {}) {
-  // Never disturb an open dialog: apply the update once it closes.
-  if (document.querySelector('dialog[open]')) {
+  // Never disturb an open form or confirmation: apply the update once it closes. The task dialog
+  // is only for reading, so it refreshes in place.
+  if (document.querySelector('dialog[open]:not(#task-dialog)')) {
     if (announce) pendingChanges += 1;
     return;
   }
@@ -733,7 +778,8 @@ async function start() {
   $('discard-dialog').addEventListener('cancel', (e) => {
     if ($('discard-confirm').disabled) e.preventDefault();
   });
-  for (const dialog of document.querySelectorAll('dialog')) {
+  $('task-dialog').addEventListener('close', leaveTask);
+  for (const dialog of document.querySelectorAll('dialog:not(#task-dialog)')) {
     dialog.addEventListener('close', () => {
       // Restore focus unless the action that closed the dialog moves it itself.
       if (!(dialog.id === 'discard-dialog' && discarding?.done)) returnFocusTo?.focus();
@@ -747,7 +793,6 @@ async function start() {
     canWrite = false;
   }
   window.addEventListener('hashchange', () => render());
-  WIDE.addEventListener('change', () => render({ keepFocus: true }));
   try {
     await loadProjects();
   } catch (error) {

@@ -44,14 +44,14 @@ test.describe('web board (read-only)', () => {
     await page.goto('/#/wayfinder/board');
     await page.getByRole('link', { name: '<img src=x onerror=window.__xss=1>' }).click();
     await expect(page.getByRole('heading', { level: 1, name: '<img src=x onerror=window.__xss=1>' })).toBeVisible();
-    await expect(page.locator('.detail > .prose')).toContainText('<script>window.__xss=2</script>');
+    await expect(page.locator('#task-description .prose')).toContainText('<script>window.__xss=2</script>');
     await expect(page.locator('.history .prose').last()).toContainText('<img src=x onerror=window.__xss=4>');
     await expect(page.locator('.detail .prose a[href^="javascript"]')).toHaveCount(0);
     await expect(page.locator('.detail .prose h2', { hasText: 'Encabezado' })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   });
 
-  test('keyboard only: open a task in the side panel and return focus to its card', async ({ page }) => {
+  test('keyboard only: open a task in a modal over the board and return focus to its card', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/#/wayfinder/board');
     await expect(page.locator('.card').first()).toBeVisible();
@@ -61,17 +61,26 @@ test.describe('web board (read-only)', () => {
     await target.focus();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/task\/WF-3$/);
+    const dialog = page.getByRole('dialog', { name: 'Añadir filtro por prioridad al tablero' });
+    await expect(dialog).toBeVisible();
     await expect(page.locator('#task-title')).toBeFocused();
     await expect(page.locator('.detail')).toContainText('Alta');
     await expect(page.locator('.detail img')).toHaveAttribute('alt', 'Filtro desplegado');
     await expect(page.locator('.card[aria-current="true"] .card-title')).toHaveText('Añadir filtro por prioridad al tablero');
-    await page.getByRole('link', { name: 'Cerrar el detalle' }).focus();
+    await page.getByRole('button', { name: 'Cerrar el detalle' }).focus();
     await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/board$/);
+    await expect(dialog).toBeHidden();
+    await expect(target).toBeFocused();
+    // Esc closes it too.
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(page).toHaveURL(/board$/);
     await expect(target).toBeFocused();
   });
 
-  test('narrow screens open the task as a page and never scroll horizontally', async ({ page }) => {
+  test('narrow screens open the task as a full-screen modal and never scroll horizontally', async ({ page }) => {
     for (const width of [320, 640]) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto('/#/wayfinder/board');
@@ -80,8 +89,12 @@ test.describe('web board (read-only)', () => {
       await noHorizontalScroll(page);
     }
     await page.goto('/#/wayfinder/task/WF-3');
-    await expect(page.locator('.detail-page')).toBeVisible();
-    await expect(page.locator('.columns')).toHaveCount(0);
+    const dialog = page.getByRole('dialog', { name: 'Añadir filtro por prioridad al tablero' });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator('#task-title')).toBeFocused();
+    const box = await dialog.boundingBox();
+    expect(box?.width).toBe(640);
+    expect(await dialog.evaluate((d) => d.scrollWidth - d.clientWidth)).toBe(0);
     await noHorizontalScroll(page);
   });
 

@@ -26,7 +26,7 @@ test.describe('task history and linked log', () => {
     await expect(entry.locator('time')).toHaveAttribute('datetime', '2026-10-21T11:30');
     await expect(page.locator('#entry-1')).toContainText('Tarea creada · origen: Persona');
     await expect(page.locator('#entry-1').getByRole('link')).toHaveCount(0);
-    await expect(page.locator('.detail > .prose').first()).toHaveText('Descripción de la tarea.');
+    await expect(page.locator('#task-description .prose')).toHaveText('Descripción de la tarea.');
 
     await page.locator('#entry-2').getByRole('link', { name: 'Ver en la bitácora del 2026-10-20' }).click();
     await expect(page).toHaveURL(/#\/historial\/log\/2026-10-20$/);
@@ -63,7 +63,7 @@ test.describe('task history and linked log', () => {
 
     await page.goto('/#/historial/task/HIS-404/1');
     await expect(page.getByRole('alert')).toContainText('HIS-404');
-    await expect(page.locator('main').getByRole('link', { name: 'Tablero' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('link', { name: 'Tablero' })).toBeVisible();
   });
 
   test('compact width: the history fits at 320 px', async ({ page }) => {
@@ -103,4 +103,14 @@ test('the log page shows no stray text and automatic records keep the task link 
   const day = page.locator('#day-2026-10-19').locator('..');
   await expect(day.getByRole('paragraph').filter({ has: page.getByRole('link', { name: 'HIS-1 · Filtro con memoria' }) })).toHaveText('HIS-1 · Filtro con memoria');
   await expect(page.locator('main')).not.toContainText('null');
+});
+
+test('closing the task opened from the log goes back to the log', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/#/historial/log');
+  await page.getByRole('link', { name: 'HIS-1 · Filtro con memoria' }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Filtro con memoria' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/historial\/log$/);
+  await expect(page.getByRole('dialog')).toBeHidden();
 });
