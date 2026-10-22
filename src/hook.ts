@@ -2,12 +2,13 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
 import { isInitialized } from './store/init.ts';
-import { hasLogFor } from './store/log.ts';
+import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
+import { hasFreeLogFor } from './store/log.ts';
 import { extractOrders, recordOrders } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
 import { matchProject, findRepoRoot } from './store/resolve.ts';
 import { listTasks, type Task } from './store/tasks.ts';
-import { flatten } from './store/text.ts';
+import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
 
 export const HOOK_EVENTS = ['session-start', 'prompt', 'pre-tool', 'stop'] as const;
@@ -20,6 +21,8 @@ export interface HookIo {
 
 const MAX_CONTEXT = 4000;
 const MAX_TITLE = 80;
+const MAX_HISTORY_BLOCK = 1200;
+const HISTORY_TASKS = 2;
 
 /** userConfig defaults declared by the plugin itself (CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json). */
 function manifestDefaults(env: NodeJS.ProcessEnv): { home?: string; language?: string } {
@@ -60,7 +63,7 @@ function projectFor(home: string, input: Record<string, unknown>, env: NodeJS.Pr
   return matchProject(home, root);
 }
 
-/** Only metadata, never task bodies: proposals may carry text from the web (prompt injection). */
+/** Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection). */
 export function sessionContext(lang: Lang, slug: string, tasks: Task[]): string {
   const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, key, vars);
   const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE)}`;
@@ -70,8 +73,48 @@ export function sessionContext(lang: Lang, slug: string, tasks: Task[]): string 
   lines.push('', tr('hook.session.active'), ...(active.length ? active.map(row) : [tr('hook.session.none')]));
   if (proposed.length) lines.push('', tr('hook.session.proposed'), ...proposed.map(row));
   let text = lines.join('\n');
-  if (text.length > MAX_CONTEXT) text = `${text.slice(0, MAX_CONTEXT - 40)}\n${tr('hook.session.truncated')}`;
+  if (text.length > MAX_CONTEXT) {
+    const note = `\n${tr('hook.session.truncated')}`;
+    text = `${text.slice(0, MAX_CONTEXT - note.length)}${note}`;
+  }
+  // Recent history goes last and only while it fits: it never pushes the metadata out.
+  const history = historyLines(tasks);
+  if (history.length) {
+    let block = `\n\n${tr('hook.session.history')}`;
+    for (const row of history) {
+      const next = `${block}\n${row}`;
+      if (next.length > MAX_HISTORY_BLOCK || text.length + next.length > MAX_CONTEXT) break;
+      block = next;
+    }
+    if (block.includes('\n- ')) text += block;
+  }
   return text;
+}
+
+/**
+ * The latest progress of up to two in-progress tasks, one line per entry. Entries are written
+ * only through wf_log (the description cannot hold the history heading), but Claude may have
+ * summarised untrusted content, so everything is flattened, defused and labelled as data.
+ */
+function historyLines(tasks: Task[]): string[] {
+  const field = (text: string, label: string) => new RegExp(`^- ${label}: (.*)$`, 'm').exec(text)?.[1] ?? '';
+  const line = (text: string, max: number) => flatten(neutralize(text.split('\n')[0] ?? ''), max);
+  return tasks
+    .filter((x) => x.status === 'in-progress')
+    .map((task) => ({ task, entries: parseEntries(task.history).filter((e) => !isCreationEntry(e)) }))
+    .filter((x) => x.entries.length > 0)
+    .map((x) => ({ ...x, last: `${x.entries.at(-1)!.date} ${x.entries.at(-1)!.time}` }))
+    .sort((a, b) => b.last.localeCompare(a.last))
+    .slice(0, HISTORY_TASKS)
+    .flatMap(({ task, entries }) => {
+      const latest = entries.at(-1)!;
+      const extra = [['next', field(latest.text, 'Next')], ['blockers', field(latest.text, 'Blockers')]]
+        .filter(([, v]) => v)
+        .map(([k, v]) => ` | ${k}: ${flatten(neutralize(v), 150)}`)
+        .join('');
+      const earlier = entries.slice(-3, -1).reverse().map((e) => `  ${e.date} ${e.time}: ${line(e.text, 100)}`);
+      return [`- ${task.id} ${latest.date} ${latest.time}: ${line(latest.text, 200)}${extra}`, ...earlier];
+    });
 }
 
 function denyReason(home: string, input: Record<string, unknown>): string | null {
@@ -151,8 +194,12 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
     }
     if (event === 'stop') {
       if (input.stop_hook_active === true) return 0;
-      const inProgress = listTasks(home, project.slug).tasks.some((x) => x.status === 'in-progress');
-      if (inProgress && !hasLogFor(home, project.slug, localDay(new Date(now())))) {
+      // Without the transcript the hook cannot tell which task was worked on: progress on any
+      // in-progress task, or a free log entry for minor work, is enough.
+      const inProgress = listTasks(home, project.slug).tasks.filter((x) => x.status === 'in-progress');
+      const day = localDay(new Date(now()));
+      const recorded = inProgress.some((x) => hasHistoryFor(x.history, day)) || hasFreeLogFor(home, project.slug, day);
+      if (inProgress.length > 0 && !recorded) {
         io.out(JSON.stringify({ decision: 'block', reason: t(lang, 'hook.stop.reason') }));
       }
       return 0;

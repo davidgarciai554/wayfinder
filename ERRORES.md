@@ -69,3 +69,13 @@
 - **Solución:** `hasLogFor` cuenta solo las entradas cuyo cuerpo no empieza por `status: <a> -> <b>`, es decir, las escritas con `wf_log`. Límite documentado en el código: una entrada de `wf_log` que empiece así se tomaría por automática.
 - **Archivos modificados:** `src/store/log.ts`, `test/hook.test.ts`, `plugin/dist/`.
 - **Validación:** test nuevo del mismo día (falla sin el cambio y pasa con él); `npm test` 74/74. En sesión real con el plugin instalado, el hook bloquea una vez y Claude escribe `wf_log`; si la persona pidió expresamente no escribir la bitácora, Claude lo respeta y no hay bucle.
+
+## 2026-10-22 · El contexto de SessionStart podía pasar del tope de 4000 caracteres al truncar la lista
+
+- **Contexto:** plan de bitácora e historial, incremento 4, al añadir la prueba de que el historial nunca desplaza la lista de tareas.
+- **Reproducción:** un proyecto con unas 60 tareas pendientes de título largo y el hook `session-start` en inglés.
+- **Salida observada:** `assert.ok(ctx.length <= 4000)` falla: el contexto mide 4009 caracteres.
+- **Causa confirmada:** `sessionContext` cortaba en `MAX_CONTEXT - 40` y añadía el aviso «(list truncated; use wf_list for the full list)», que con el salto de línea mide 49 caracteres. Defecto previo al plan; la prueba antigua no tenía tantas tareas.
+- **Solución:** se reserva exactamente la longitud del aviso traducido.
+- **Archivos modificados:** `src/hook.ts`, `test/hook.test.ts`.
+- **Validación:** la prueba nueva falla antes del cambio y pasa después; `node --test test/hook.test.ts` 12/12.
