@@ -82,7 +82,7 @@
   | Estado o aviso | Claro | Oscuro |
   | --- | --- | --- |
   | Sin aprobar | `#6B5410` / `#F7EFD2` / borde discontinuo `#C9A82D` | `#E5C76B` / `#3A3218` |
-  | Por hacer | `#3D3D3A` / `#F0EEE6` | `#DEDCD1` / `#30302E` |
+  | Por hacer (azul pizarra desde el 2026-10-22, antes gris neutro; más apagado que el azul de «Aprobada por chat») | `#3F5A7A` / `#E6ECF2` / borde `#A9BBCF` | `#A9BFD8` / `#232B33` / borde `#3F4F61` |
   | En curso | `#A04E31` / `#F5E6DF` | `#E89A7E` / `#33241E` |
   | Hecha | `#4E5E39` / `#E9EEE1` | `#A9BE8A` / `#2A3222` |
   | Descartada (tachada) | `#5E5D59` / `#F0EEE6` (ajustado de `#73726C`, que daba 4,15:1) | `#B0AEA5` / `#262624` |
@@ -90,6 +90,7 @@
   | Aprobada pese a aviso (con icono de advertencia) | `#A63D2E` / `#F8E1DC` / borde `#E4B5AB` | `#F0A08F` / `#3E2420` |
   | Modificada fuera de Wayfinder | `#5E5D59` / `#FFFFFF` / borde `#87867F` | — |
   | Peligro (descartar) | `#B43A2B` | `#F09383` |
+- **Color por columna** (petición del usuario, 2026-10-22): cada columna de estado lleva una franja superior de 4 px y el contador como píldora de su estado. Franjas, ≥ 3:1 sobre el fondo de página y de columna: Propuestas `#A87B00` / `#E2B93B`, Por hacer `#3E6EA8` / `#86AEE0`, En curso `#C0573A` / `#E8876A`, Hechas `#4A7D32` / `#93C46F` (claro / oscuro); Descartadas usa su color de texto. El nombre de la columna sigue siendo el que da el significado.
 
 - **Contraste objetivo:** texto ≥ 4,5:1; bordes de control, foco e iconos ≥ 3:1, en los dos temas. Se mide al implementar.
 
@@ -111,7 +112,7 @@
   - `--wf-bg`, `--wf-surface`, `--wf-column`, `--wf-border`, `--wf-border-strong`;
   - `--wf-text`, `--wf-muted`, `--wf-accent`, `--wf-accent-hover`, `--wf-accent-soft`, `--wf-on-accent`, `--wf-clay`;
   - `--wf-focus`, `--wf-danger`;
-  - `--wf-status-<estado>-{fg,bg,border}`, `--wf-flag-<aviso>-{fg,bg,border}`;
+  - `--wf-status-<estado>-{fg,bg,border}`, `--wf-flag-<aviso>-{fg,bg,border}`, `--wf-stripe-<estado>`;
   - `--wf-font-display`, `--wf-font-body`, `--wf-font-mono`;
   - `--wf-space-1…8`, `--wf-radius-sm|md|lg|xl`.
 - **Valores locales excepcionales:** ninguno previsto.
@@ -181,6 +182,7 @@
 | 2026-10-21 | Incremento 4: tablero, detalle, bitácora, capturas, proyecto (es/en) | `wayfinder serve` con datos de prueba; Chromium headless (Playwright 1.64.1); Windows 11 | `npm run test:e2e` 11/11; capturas `test-results/review/` a 320, 768 y 1280 px en claro y oscuro; `test/contrast.test.ts` | Coincide con el lienzo v8. Contraste medido: todos los textos ≥ 4,5:1 y foco, bordes y arcilla ≥ 3:1 en los dos temas | «Descartada» en claro ajustada de `#73726C` a `#5E5D59` (4,15 → 5,67:1). Sin verificar: prueba manual con NVDA y zoom real al 200 % del navegador (aproximado con un viewport de 640 px) |
 | 2026-10-22 | Plan de bitácora e historial, incremento 5: sección Historial, enlaces bitácora ↔ entrada, vista de un día (es/en) | Fixture e2e (`historial`); Chromium headless; Windows 11 | `npm run test:e2e` 27/27 (`e2e/history.spec.ts`: foco en la entrada, «Atrás», teclado, estados vacíos, 320 px sin scroll horizontal, árbol de accesibilidad); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: tokens existentes (`--wf-border-strong`, `--wf-focus`, tipografía mono para fechas), sin colores nuevos | Corregido de paso: la bitácora mostraba un texto «null» al final (defecto previo). Sin verificar: NVDA y zoom real al 200 % |
 | 2026-10-22 | Detalle de tarea en modal (dos columnas; pantalla completa en compacto) | Fixture e2e; Chromium headless; Windows 11 | `npm run test:e2e` 28/28 (foco en el título o en la entrada enlazada, Esc y «Cerrar» vuelven al origen y devuelven el foco a la tarjeta, 640 px sin scroll horizontal); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: mismos tokens, superficie y sombra que los diálogos existentes | Cambia una decisión aprobada (panel lateral) por petición expresa del usuario. Sin verificar: NVDA y zoom real al 200 % |
+| 2026-10-22 | Color por columna (franja y contador) y «Por hacer» en azul pizarra | Fixture e2e; Chromium headless; Windows 11 | `test/contrast.test.ts` (franjas ≥ 3:1 sobre página y columna; textos de estado ≥ 4,5:1); capturas a 320 y 1280 px en claro y oscuro | Las cuatro columnas se distinguen sin depender solo del color (encabezado con nombre) | Amplía la paleta aprobada (nuevo color de «Por hacer» y tokens de franja) por petición expresa del usuario |
 
 ## Regresión visual automatizada
 - **Herramienta:** Playwright, prevista en el plan (incremento 4) como devDependency.

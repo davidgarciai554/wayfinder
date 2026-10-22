@@ -31,7 +31,11 @@ const TEXT: Array<[string, string]> = [
   ...['proposed', 'todo', 'progress', 'done', 'discarded'].map((s) => [`status-${s}-fg`, `status-${s}-bg`] as [string, string]),
   ...['chat', 'risk', 'outside'].map((f) => [`flag-${f}-fg`, `flag-${f}-bg`] as [string, string]),
 ];
-const NON_TEXT: Array<[string, string]> = [['focus', 'bg'], ['focus', 'surface'], ['border-strong', 'surface'], ['clay', 'surface']];
+const NON_TEXT: Array<[string, string]> = [
+  ['focus', 'bg'], ['focus', 'surface'], ['border-strong', 'surface'], ['clay', 'surface'],
+  // Column colour stripes sit on the page background.
+  ...['proposed', 'todo', 'progress', 'done'].flatMap((s) => [[`stripe-${s}`, 'bg'], [`stripe-${s}`, 'column']] as Array<[string, string]>),
+];
 
 for (const [theme, map] of Object.entries(themes)) {
   test(`text contrast ≥ 4.5:1 in the ${theme} theme`, () => {

@@ -19,9 +19,11 @@
   --wf-danger: #B43A2B;
 
   --wf-status-proposed-fg: #6B5410; --wf-status-proposed-bg: #F7EFD2; --wf-status-proposed-border: #C9A82D;
-  --wf-status-todo-fg: #3D3D3A; --wf-status-todo-bg: #F0EEE6; --wf-status-todo-border: #DEDCD1;
+  --wf-status-todo-fg: #3F5A7A; --wf-status-todo-bg: #E6ECF2; --wf-status-todo-border: #A9BBCF;
   --wf-status-progress-fg: #A04E31; --wf-status-progress-bg: #F5E6DF; --wf-status-progress-border: #EBCECE;
   --wf-status-done-fg: #4E5E39; --wf-status-done-bg: #E9EEE1; --wf-status-done-border: #C9D4B8;
+  /* Column stripes (≥ 3:1 on the page and column backgrounds). */
+  --wf-stripe-proposed: #A87B00; --wf-stripe-todo: #3E6EA8; --wf-stripe-progress: #C0573A; --wf-stripe-done: #4A7D32;
   --wf-status-discarded-fg: #5E5D59; --wf-status-discarded-bg: #F0EEE6; --wf-status-discarded-border: #DEDCD1;
   --wf-flag-chat-fg: #1F5FAE; --wf-flag-chat-bg: #FFFFFF; --wf-flag-chat-border: #B9D0EE;
   --wf-flag-risk-fg: #A63D2E; --wf-flag-risk-bg: #F8E1DC; --wf-flag-risk-border: #E4B5AB;
@@ -54,9 +56,10 @@
     --wf-danger: #F09383;
 
     --wf-status-proposed-fg: #E5C76B; --wf-status-proposed-bg: #3A3218; --wf-status-proposed-border: #C9A82D;
-    --wf-status-todo-fg: #DEDCD1; --wf-status-todo-bg: #30302E; --wf-status-todo-border: #4D4C48;
+    --wf-status-todo-fg: #A9BFD8; --wf-status-todo-bg: #232B33; --wf-status-todo-border: #3F4F61;
     --wf-status-progress-fg: #E89A7E; --wf-status-progress-bg: #33241E; --wf-status-progress-border: #5A3A2E;
     --wf-status-done-fg: #A9BE8A; --wf-status-done-bg: #2A3222; --wf-status-done-border: #44523A;
+    --wf-stripe-proposed: #E2B93B; --wf-stripe-todo: #86AEE0; --wf-stripe-progress: #E8876A; --wf-stripe-done: #93C46F;
     --wf-status-discarded-fg: #B0AEA5; --wf-status-discarded-bg: #262624; --wf-status-discarded-border: #3D3D3A;
     --wf-flag-chat-fg: #8BB6EC; --wf-flag-chat-bg: #262624; --wf-flag-chat-border: #35507A;
     --wf-flag-risk-fg: #F0A08F; --wf-flag-risk-bg: #3E2420; --wf-flag-risk-border: #6B3A30;
@@ -213,6 +216,14 @@ main:focus { outline: none; }
 .column { background: var(--wf-column); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-lg); padding: var(--wf-space-3); display: flex; flex-direction: column; gap: var(--wf-space-3); }
 .column h2 { font-size: 17px; display: flex; justify-content: space-between; align-items: baseline; gap: var(--wf-space-2); padding: 2px var(--wf-space-1); }
 .column h2 .count { font-family: var(--wf-font-mono); font-size: 13px; color: var(--wf-muted); }
+/* Each status column carries its colour: a top stripe and the count as a status pill. */
+.column[data-status] { border-top: 4px solid var(--col-stripe); }
+.column[data-status] h2 .count { color: var(--col-fg); background: var(--col-bg); border: 1px solid var(--col-border); border-radius: 999px; padding: 0 var(--wf-space-2); }
+.column[data-status='proposed'] { --col-stripe: var(--wf-stripe-proposed); --col-fg: var(--wf-status-proposed-fg); --col-bg: var(--wf-status-proposed-bg); --col-border: var(--wf-status-proposed-border); }
+.column[data-status='todo'] { --col-stripe: var(--wf-stripe-todo); --col-fg: var(--wf-status-todo-fg); --col-bg: var(--wf-status-todo-bg); --col-border: var(--wf-status-todo-border); }
+.column[data-status='in-progress'] { --col-stripe: var(--wf-stripe-progress); --col-fg: var(--wf-status-progress-fg); --col-bg: var(--wf-status-progress-bg); --col-border: var(--wf-status-progress-border); }
+.column[data-status='done'] { --col-stripe: var(--wf-stripe-done); --col-fg: var(--wf-status-done-fg); --col-bg: var(--wf-status-done-bg); --col-border: var(--wf-status-done-border); }
+.column[data-status='discarded'] { --col-stripe: var(--wf-status-discarded-fg); --col-fg: var(--wf-status-discarded-fg); --col-bg: var(--wf-status-discarded-bg); --col-border: var(--wf-status-discarded-border); }
 .cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--wf-space-2); }
 .cards .none { color: var(--wf-muted); padding: var(--wf-space-1) var(--wf-space-1) var(--wf-space-2); }
 

@@ -373,7 +373,7 @@ async function reload(focusKey) {
 
 function column(id, title, tasks, selectedId, extra) {
   const headingId = `col-${id}`;
-  return el('section', { class: 'column', 'aria-labelledby': headingId, id: `column-${id}` },
+  return el('section', { class: 'column', 'aria-labelledby': headingId, id: `column-${id}`, 'data-status': id },
     // Focusable from script (jump links, after a discard) so a refresh can restore that focus.
     el('h2', { id: headingId, tabindex: '-1', 'data-focus': headingId }, el('span', { text: title }), el('span', { class: 'count', text: String(tasks.length) })),
     el('ul', { class: 'cards' },
