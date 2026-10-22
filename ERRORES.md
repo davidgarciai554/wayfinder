@@ -59,3 +59,13 @@
 - **Solución:** puerto por defecto 4747; antes de escuchar, `serve` comprueba si algo ya responde en `127.0.0.1:<P>` y, si es así, sale con código 1 y el mensaje «El puerto <P> ya lo usa otra aplicación…» (también ante `EADDRINUSE`), parando watchers y temporizadores. `/index.html` se sirve igual que `/`, también con `?k=`.
 - **Archivos modificados:** `src/server.ts`, `src/cli.ts`, `src/i18n/es.json`, `src/i18n/en.json`, `test/server.test.ts`, `dist/`, `plugin/dist/`.
 - **Validación:** test unitario con un servidor ocupando `0.0.0.0:<P>` → `serve.portInUse`; `/index.html` → 200 y la clave por `/index.html?k=` → cookie. Bundle real: `serve --port 4321` con Astro activo → mensaje y código 1; `serve` sin opciones → `http://127.0.0.1:4747/?k=…` y `/index.html` → 200. `npm test` 71/71, `npm run test:e2e` 20/20 y `check:dist` correcto.
+
+## 2026-10-22 · El hook Stop no pedía la bitácora si ese día había habido una aprobación o una pausa
+
+- **Contexto:** incremento 7, prueba extremo a extremo con el plugin instalado (Claude Code 2.1.308, `claude -p` en un repositorio de demostración).
+- **Reproducción:** aprobar por chat «aprueba DEM-1», pasar la tarea a `in-progress` y terminar la sesión sin `wf_log`.
+- **Salida observada:** la sesión termina sin que el hook Stop bloquee. La bitácora del día solo contiene el registro automático `status: proposed -> todo` / `approved-via: chat`.
+- **Causa confirmada:** `hasLogFor` solo comprobaba que existiera el archivo del día, y las transiciones con nota o marcas (aprobación por chat, pausas, descartes, `trivial`) escriben registros automáticos en ese archivo. El test existente esquivaba el caso: evaluaba «mañana» porque la nota ya había creado la bitácora de hoy.
+- **Solución:** `hasLogFor` cuenta solo las entradas cuyo cuerpo no empieza por `status: <a> -> <b>`, es decir, las escritas con `wf_log`. Límite documentado en el código: una entrada de `wf_log` que empiece así se tomaría por automática.
+- **Archivos modificados:** `src/store/log.ts`, `test/hook.test.ts`, `plugin/dist/`.
+- **Validación:** test nuevo del mismo día (falla sin el cambio y pasa con él); `npm test` 74/74. En sesión real con el plugin instalado, el hook bloquea una vez y Claude escribe `wf_log`; si la persona pidió expresamente no escribir la bitácora, Claude lo respeta y no hay bucle.

@@ -107,6 +107,19 @@ test('stop blocks once when work is in progress and today has no log', (t) => {
   assert.equal(stop(false), '', 'no block once that day has a log');
 });
 
+test('stop still blocks when today only has automatic status records (approval, pause notes)', (t) => {
+  const { home, repo } = setup(t);
+  const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: 'es' };
+  const id = createTask(home, 'consumer', { title: 'Trabajo' }, 'web').task.id;
+  // Both write "status: … -> …" records into today's log file.
+  setStatus(home, 'consumer', id, 'in-progress', 'mcp', { trivial: true, note: 'cambio mínimo' });
+  const other = createTask(home, 'consumer', { title: 'Otra' }, 'web').task.id;
+  setStatus(home, 'consumer', other, 'discarded', 'mcp', { note: 'ya no hace falta' });
+  assert.equal(JSON.parse(hook('stop', { stop_hook_active: false }, env).out).decision, 'block');
+  appendLog(home, 'consumer', 'Implementado el cambio mínimo; tests en verde.');
+  assert.equal(hook('stop', { stop_hook_active: false }, env).out, '', 'a wf_log entry satisfies it');
+});
+
 test('pre-tool denies direct edits of WAYFINDER_HOME and allows the rest', (t) => {
   const { home, repo } = setup(t);
   const env = { WAYFINDER_HOME: home };

@@ -841,3 +841,27 @@ Los hooks obtienen `WAYFINDER_HOME` y el idioma de `CLAUDE_PLUGIN_OPTION_HOME` y
   - `init` dentro del contenedor, probado a mano sobre una carpeta vacía: commit `wf: init`.
   - `npm test` con 72/72 en Node 24 y 22, y `check:dist` correcto.
   - **No verificado:** el uso de la variante MCP desde Claude Code (fuera del alcance, como dice el plan) y el comando exacto del README con tu carpeta real, porque tu `serve` ya ocupa el 4747. Los tests usan los mismos parámetros con otro puerto.
+- **Incremento 7 (2026-10-22), empaquetado y validación en limpio:**
+  - Avisos de terceros: el build genera `THIRD_PARTY_NOTICES.md` a partir del metafile de esbuild, con el texto de licencia de los 10 paquetes incluidos (MIT, ISC, BSD-2-Clause y Apache-2.0; los paquetes Apache no traen archivo NOTICE). Viaja en `dist/`, en `plugin/dist/`, en el paquete npm y en la imagen.
+  - `check:dist` comprueba además que todo `git(home, '<subcomando>')` de `src/` está en `ALLOWED_SUBCOMMANDS` y que la lista no contiene `push`, `fetch`, `pull`, `remote`, `config`, `clone`, `submodule` ni `ls-remote`. Probado introduciendo un `push`: lo detecta.
+  - Primer uso del plugin: si la carpeta de datos no existe, SessionStart muestra a la persona (`systemMessage`) y a Claude el comando exacto `node "<plugin>/dist/wayfinder.mjs" init`, en lugar de fallar en silencio.
+  - README final: requisitos, instalación del plugin (`claude plugin marketplace add` + `claude plugin install wayfinder@wayfinder --config language=es`), primer uso, aprobación por chat, web, npm (aún sin publicar), seguridad, desarrollo y Docker.
+  - Defecto encontrado en la prueba extremo a extremo y corregido: el hook Stop no bloqueaba si ese día ya había registros automáticos de estado (detalle en `ERRORES.md`).
+  - Validación:
+    - `npm run build && npm run check:dist` correctos;
+    - `npm pack --dry-run`: solo `LICENSE`, `README.md`, `package.json` y `dist/` (8 archivos, 394,5 kB);
+    - tarball instalado en una carpeta vacía: `npx wayfinder --help`, `--version`, `init` y `serve` funcionan sin el `node_modules` del repositorio;
+    - instalación limpia del plugin en tu Claude Code 2.1.308 con tu autorización: marketplace local y `wayfinder@wayfinder` en ámbito de usuario, idioma `es`;
+    - flujo extremo a extremo con sesiones reales `claude -p` en un repositorio de demostración (transcripciones en el scratchpad de la sesión). Las etapas, todas correctas:
+      - registro → DEM;
+      - SessionStart con `language: es`;
+      - `wf_create` (DEM-1, DEM-2);
+      - «aprueba DEM-1» → revisión `clean`, `todo` con `Approved-via: chat`;
+      - plan vinculado → `in-progress`;
+      - Stop bloquea una vez → `wf_log`;
+      - la web muestra «Aprobada por chat», aprueba DEM-3 y descarta DEM-4 con el diálogo (Esc cancela);
+      - `git log` con un commit de Wayfinder por escritura, sin remoto y árbol limpio;
+    - `npx @davidgarciai554/batclaude init --yes` sobre un clon: `plugin/`, `.claude-plugin/`, `src/`, `web/`, `Dockerfile` y `LICENSE` intactos (sin ningún cambio en el árbol);
+    - `npm test` 74/74.
+  - **No verificado:** el aviso de primer uso en una sesión real (tu carpeta ya estaba inicializada; cubierto por un test del hook) y la instalación desde GitHub o npm, que depende de publicar (incremento 8).
+  - Queda en tu `~/.wayfinder` el proyecto de demostración `demo-wayfinder`, como acordamos.

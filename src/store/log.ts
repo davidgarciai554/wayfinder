@@ -30,8 +30,17 @@ export function appendLogUnlocked(home: string, slug: string, entry: string, tas
   return `projects/${slug}/log/${day}.md`;
 }
 
+/**
+ * True when the day has at least one entry written with wf_log. Status changes also leave
+ * automatic records ("status: a -> b" plus markers) in the day file; they are not a summary of
+ * the work, so they do not count. Limit: a wf_log entry that itself starts with "status: x -> y"
+ * would be taken for an automatic one.
+ */
 export function hasLogFor(home: string, slug: string, day: string): boolean {
-  return existsSync(safeJoin(projectDir(home, slug), 'log', `${day}.md`));
+  const file = safeJoin(projectDir(home, slug), 'log', `${day}.md`);
+  if (!existsSync(file)) return false;
+  const entries = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n').split(/^## .*$/m).slice(1);
+  return entries.some((entry) => !/^\s*status: \S+ -> \S+$/m.test(entry.trimStart().split('\n')[0] ?? ''));
 }
 
 export function appendLog(

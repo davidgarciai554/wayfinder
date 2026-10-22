@@ -42375,7 +42375,10 @@ ${text2}
   return `projects/${slug}/log/${day}.md`;
 }
 function hasLogFor(home, slug, day) {
-  return existsSync3(safeJoin(projectDir(home, slug), "log", `${day}.md`));
+  const file2 = safeJoin(projectDir(home, slug), "log", `${day}.md`);
+  if (!existsSync3(file2)) return false;
+  const entries = readFileSync5(file2, "utf8").replace(/\r\n?/g, "\n").split(/^## .*$/m).slice(1);
+  return entries.some((entry) => !/^\s*status: \S+ -> \S+$/m.test(entry.trimStart().split("\n")[0] ?? ""));
 }
 function appendLog(home, slug, entry, options = {}) {
   requireProject(home, slug);
