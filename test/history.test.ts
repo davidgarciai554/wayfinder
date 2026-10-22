@@ -13,9 +13,11 @@ import {
   splitBody,
 } from '../src/store/history.ts';
 import { contentHash } from '../src/store/review.ts';
-import { createTask, readTask, updateTask, writeTaskUnlocked } from '../src/store/tasks.ts';
+import { appendLog, hasFreeLogFor, hasLogFor, taskLink } from '../src/store/log.ts';
+import { createTask, logProgress, readTask, setStatus, updateTask, writeTaskUnlocked } from '../src/store/tasks.ts';
+import { localDay } from '../src/store/time.ts';
 import { flatten, neutralize } from '../src/store/text.ts';
-import { fixedClock, makeHome, makeProject } from './helpers.ts';
+import { commitCount, fixedClock, gitOut, makeHome, makeProject, tree } from './helpers.ts';
 
 const isKey = (key: string) => (e: unknown) => e instanceof WayfinderError && e.key === key;
 
@@ -114,4 +116,58 @@ test('the chat approval hash depends on the description, not on the history', (t
   changed.history = appendEntry(changed.history, formatEntry('2026-10-22', '09:00', 'Avanzamos.'));
   writeTaskUnlocked(home, changed);
   assert.equal(contentHash(readTask(home, 'demo', task.id)), before);
+});
+
+test('logProgress writes the history entry and a linked log line in one commit', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const { task } = createTask(home, 'demo', { title: 'Filtro [beta]', body: 'Detalle' }, 'web', fixedClock('2026-10-21T10:00:00'));
+  const descBefore = readTask(home, 'demo', task.id).body;
+  const commits = commitCount(home);
+  const at = () => new Date('2026-10-22T13:40:00');
+  const r = logProgress(home, 'demo', task.id, 'Avanzamos en el filtro.\nAñadido el selector.', { files: 'web/app.js', next: 'tests e2e' }, at);
+  assert.equal(r.entry, 2);
+  assert.equal(commitCount(home), commits + 1);
+  assert.equal(gitOut(home, 'log', '-1', '--format=%s'), `wf: log ${task.id}`);
+  assert.deepEqual(gitOut(home, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), [task.file, 'projects/demo/log/2026-10-22.md'].sort());
+  const after = readTask(home, 'demo', task.id);
+  assert.equal(after.body, descBefore);
+  const last = parseEntries(after.history).at(-1)!;
+  assert.equal(last.date, '2026-10-22');
+  assert.equal(last.text, 'Avanzamos en el filtro.\nAñadido el selector.\n\n- Files: web/app.js\n- Next: tests e2e');
+  assert.equal(hasHistoryFor(after.history, '2026-10-22'), true);
+  const log = readFileSync(join(home, 'projects/demo/log/2026-10-22.md'), 'utf8');
+  assert.ok(log.endsWith('## 13:40 · WF-1\n\n[WF-1 · Filtro \\[beta\\]](#/demo/task/WF-1/2) — Avanzamos en el filtro.\n'), log);
+  assert.equal(hasFreeLogFor(home, 'demo', '2026-10-22'), false, 'a task entry is not a free entry');
+  assert.equal(gitOut(home, 'status', '--porcelain'), '');
+});
+
+test('logProgress validates everything before writing', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const { task } = createTask(home, 'demo', { title: 'T' }, 'web');
+  const before = tree(home);
+  const commits = commitCount(home);
+  assert.throws(() => logProgress(home, 'demo', 'WF-99', 'x'), isKey('store.taskNotFound'));
+  assert.throws(() => logProgress(home, 'demo', task.id, '   '), isKey('store.emptyLogEntry'));
+  assert.throws(() => logProgress(home, 'demo', task.id, 'x'.repeat(4001)), isKey('store.logEntryTooLong'));
+  assert.throws(() => logProgress(home, 'demo', task.id, 'ok', { decisions: `token ghp_${'a'.repeat(36)}` }), isKey('store.secretRejected'));
+  assert.deepEqual(tree(home), before);
+  assert.equal(commitCount(home), commits);
+});
+
+test('automatic status records and free entries keep their meaning, now with a task link', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const { task } = createTask(home, 'demo', { title: 'Pausar' }, 'web');
+  setStatus(home, 'demo', task.id, 'in-progress', 'mcp', { trivial: true, note: 'cambio mínimo' });
+  const day = localDay(new Date());
+  const log = readFileSync(join(home, 'projects/demo/log', `${day}.md`), 'utf8');
+  assert.match(log, /status: todo -> in-progress\ntrivial: true\ncambio mínimo\n\[WF-1 · Pausar\]\(#\/demo\/task\/WF-1\)\n$/);
+  assert.equal(hasLogFor(home, 'demo', day), false, 'automatic records still do not count');
+  assert.equal(hasFreeLogFor(home, 'demo', day), false);
+  appendLog(home, 'demo', 'Revisión general del repositorio.');
+  assert.equal(hasFreeLogFor(home, 'demo', day), true);
+  assert.match(taskLink('demo', 'WF-1', 'x'.repeat(100), 3), /^\[WF-1 · x{79}…\]\(#\/demo\/task\/WF-1\/3\)$/);
+  assert.throws(() => taskLink('../x', 'WF-1', 't'), isKey('store.invalidSlug'));
 });

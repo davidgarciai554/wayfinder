@@ -3,8 +3,19 @@ import { join } from 'node:path';
 import { WayfinderError, type Warning } from './errors.ts';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { commitPaths } from './git.ts';
-import { assertNoReservedHeading, creationEntry, joinBody, splitBody } from './history.ts';
-import { appendLogUnlocked, assertNoSecrets } from './log.ts';
+import {
+  appendEntry,
+  assertNoReservedHeading,
+  creationEntry,
+  formatEntry,
+  HISTORY_WARN_AT,
+  joinBody,
+  MAX_HISTORY,
+  parseEntries,
+  splitBody,
+  type HistoryFields,
+} from './history.ts';
+import { appendLogUnlocked, assertNoSecrets, MAX_LOG_ENTRY, taskLink } from './log.ts';
 import { assertId, ID_RE, projectDir, safeJoin, slugify } from './paths.ts';
 import { requireProject } from './project.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
@@ -292,10 +303,49 @@ export function setStatus(
     writeTaskUnlocked(home, task);
     const paths = [task.file];
     if (note || markers.length > 0) {
-      const lines = [`status: ${from} -> ${to}`, ...markers, ...(note ? [note] : [])];
+      const lines = [`status: ${from} -> ${to}`, ...markers, ...(note ? [note] : []), taskLink(slug, id, task.title)];
       paths.push(appendLogUnlocked(home, slug, lines.join('\n'), id, clock));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);
     return { task, warnings };
+  });
+}
+
+export const MAX_HISTORY_FIELD = 1000;
+
+/**
+ * Records progress on a task: appends an entry to its history and a linked line to today's
+ * log, under one lock and in one commit. Everything is validated before writing anything.
+ */
+export function logProgress(
+  home: string,
+  slug: string,
+  id: string,
+  entry: string,
+  fields: HistoryFields = {},
+  clock: Clock = systemClock,
+): WriteResult & { entry: number; logFile: string } {
+  requireProject(home, slug);
+  assertId(id);
+  const text = entry.replace(/\r\n?/g, '\n').trim();
+  if (text === '') throw new WayfinderError('store.emptyLogEntry', {});
+  if (text.length > MAX_LOG_ENTRY) throw new WayfinderError('store.logEntryTooLong', { max: MAX_LOG_ENTRY });
+  for (const value of Object.values(fields)) {
+    if (value !== undefined && value.length > MAX_HISTORY_FIELD) throw new WayfinderError('store.logEntryTooLong', { max: MAX_HISTORY_FIELD });
+  }
+  assertNoSecrets([text, ...Object.values(fields)].filter(Boolean).join('\n'));
+  return withLock(home, () => {
+    const task = readTask(home, slug, id);
+    const date = clock();
+    task.history = appendEntry(task.history, formatEntry(localDay(date), localTime(date), text, fields));
+    const n = parseEntries(task.history).length;
+    task.updated = isoLocal(date);
+    const first = text.split('\n')[0];
+    const summary = first.length > 200 ? `${first.slice(0, 199)}…` : first;
+    writeTaskUnlocked(home, task);
+    const logFile = appendLogUnlocked(home, slug, `${taskLink(slug, id, task.title, n)} — ${summary}`, id, () => date);
+    const warnings = commitPaths(home, [task.file, logFile], `wf: log ${id}`);
+    if (task.history.length > MAX_HISTORY * HISTORY_WARN_AT) warnings.push({ key: 'store.historyNearLimit', vars: { id, max: MAX_HISTORY } });
+    return { task, warnings, entry: n, logFile };
   });
 }

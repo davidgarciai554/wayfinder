@@ -1,6 +1,6 @@
 import { WayfinderError, type Warning } from './errors.ts';
 import { commitPaths } from './git.ts';
-import { appendLogUnlocked, assertNoSecrets } from './log.ts';
+import { appendLogUnlocked, assertNoSecrets, taskLink } from './log.ts';
 import { consumeOrderUnlocked, getOrderUnlocked, ORDER_TTL_MS } from './mentions.ts';
 import { contentHash, consumeReviewUnlocked, getReviewUnlocked } from './review.ts';
 import { withLock } from './sync.ts';
@@ -83,6 +83,7 @@ export function approveByChat(
       ...(review.signals.length ? [`signals: ${review.signals.join(', ')}`] : []),
       ...(reasons ? [`reasons: ${truncate(reasons, 300)}`] : []),
       ...(needsSecond ? ['risk-acknowledged: true'] : []),
+      taskLink(slug, id, task.title),
     ];
     const logFile = appendLogUnlocked(home, slug, lines.join('\n'), id, () => now);
     consumeOrderUnlocked(home, slug, id);

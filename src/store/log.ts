@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { WayfinderError, type Warning } from './errors.ts';
 import { commitPaths } from './git.ts';
-import { assertId, projectDir, safeJoin } from './paths.ts';
+import { assertId, assertSlug, projectDir, safeJoin } from './paths.ts';
 import { requireProject } from './project.ts';
 import { findSecrets } from './secrets.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
@@ -12,6 +12,17 @@ export const MAX_LOG_ENTRY = 4000;
 export function assertNoSecrets(text: string): void {
   const found = findSecrets(text);
   if (found.length > 0) throw new WayfinderError('store.secretRejected', { pattern: found.join(', ') });
+}
+
+/**
+ * Markdown link from the log to a task (or to one of its history entries). Built by code from
+ * validated values, never from text written by Claude.
+ */
+export function taskLink(slug: string, id: string, title: string, entry?: number): string {
+  assertSlug(slug);
+  assertId(id);
+  const label = `${id} · ${title.length > 80 ? `${title.slice(0, 79)}…` : title}`.replace(/[\\[\]]/g, '\\$&');
+  return `[${label}](#/${slug}/task/${id}${entry ? `/${entry}` : ''})`;
 }
 
 /** Appends to log/YYYY-MM-DD.md. Must run inside the store lock. Returns the path relative to home. */
@@ -41,6 +52,23 @@ export function hasLogFor(home: string, slug: string, day: string): boolean {
   if (!existsSync(file)) return false;
   const entries = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n').split(/^## .*$/m).slice(1);
   return entries.some((entry) => !/^\s*status: \S+ -> \S+$/m.test(entry.trimStart().split('\n')[0] ?? ''));
+}
+
+/**
+ * True when the day has a free entry: one written with wf_log without a task (minor work).
+ * Entries about a task carry " · ID" in their heading; automatic records start with "status:".
+ */
+export function hasFreeLogFor(home: string, slug: string, day: string): boolean {
+  const file = safeJoin(projectDir(home, slug), 'log', `${day}.md`);
+  if (!existsSync(file)) return false;
+  const text = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n');
+  const heads = [...text.matchAll(/^## (.*)$/gm)];
+  return heads.some((head, i) => {
+    if (head[1].includes(' · ')) return false;
+    const end = i + 1 < heads.length ? heads[i + 1].index : text.length;
+    const first = text.slice((head.index ?? 0) + head[0].length, end).trim().split('\n')[0] ?? '';
+    return first !== '' && !/^status: \S+ -> \S+$/.test(first);
+  });
 }
 
 export function appendLog(

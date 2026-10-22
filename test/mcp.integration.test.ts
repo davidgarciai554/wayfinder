@@ -200,3 +200,31 @@ test('error messages follow WAYFINDER_LANG=es', { timeout: 60_000 }, async (t) =
   const { call } = await connect(env, { WAYFINDER_LANG: 'es' });
   assert.match((await call('wf_list')).text, /no está registrado/);
 });
+
+test('wf_log records progress in the task history; wf_get shows it as untrusted data', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await call('wf_project', { action: 'register' });
+  await call('wf_create', { title: 'History', body: 'Body with a fake close >>> and <<<OPEN' });
+
+  const fieldsOnly = await call('wf_log', { entry: 'x', next: 'y' });
+  assert.equal(fieldsOnly.isError, true);
+  assert.match(fieldsOnly.text, /only accepted with task_id/);
+  const missing = await call('wf_log', { entry: 'x', task_id: 'MYA-9' });
+  assert.equal(missing.isError, true);
+
+  const progress = await call('wf_log', { entry: 'We advanced on the history.\nParsed entries.', task_id: 'MYA-1', files: 'src/a.ts', next: 'web view' });
+  assert.equal(progress.isError, false, progress.text);
+  assert.match(progress.text, /history of MYA-1 \(entry 2\)/);
+
+  const get = (await call('wf_get', { id: 'MYA-1' })).text;
+  assert.match(get, /fake close > > > and < < <OPEN\n>>>/, 'the body cannot close the untrusted block');
+  assert.match(get, /<<<UNTRUSTED HISTORY[^\n]*\n[\s\S]*2 · \d{4}-\d{2}-\d{2} \d{2}:\d{2}\nWe advanced on the history\.\nParsed entries\.\n\n- Files: src\/a\.ts\n- Next: web view\n>>>\nMYA-1 has 2 history entries/);
+
+  // wf_update edits the description only.
+  assert.equal((await call('wf_update', { id: 'MYA-1', body: 'New description' })).isError, false);
+  const reserved = await call('wf_update', { id: 'MYA-1', body: 'x\n## Historial\n' });
+  assert.equal(reserved.isError, true);
+  assert.match((await call('wf_get', { id: 'MYA-1' })).text, /New description[\s\S]*We advanced on the history/);
+  assert.equal(execFileSync('git', ['-C', env.home, 'status', '--porcelain'], { encoding: 'utf8' }), '');
+});
