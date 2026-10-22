@@ -2,7 +2,7 @@
 
 Gestor de tareas personal en Markdown que Claude Code usa como "Jira personal" y como memoria de cada proyecto.
 
-- Claude consulta lo pendiente, propone ideas, mueve estados y escribe la bitácora.
+- Claude consulta lo pendiente, propone ideas, mueve estados y registra cada avance en el historial de la tarea; la bitácora del día enlaza a esos avances.
 - Tú sobre todo miras, creas tareas y apruebas o descartas ideas, desde la web local o pidiéndoselo a Claude en el chat.
 
 Los datos viven en una carpeta privada (`~/.wayfinder`): un repositorio git **sin remoto** con un commit por cada escritura. Nada de Wayfinder se guarda en `.claude/`, `AGENTS.md` ni `CLAUDE.md` de tus proyectos.
@@ -37,8 +37,25 @@ Puedes cambiarlas después con `/plugin` o con `claude plugin configure wayfinde
 2. En el repositorio que quieras seguir, pide a Claude: «registra este proyecto en Wayfinder». El registro es siempre explícito, proyecto a proyecto.
 3. A partir de ahí, cada sesión empieza con la lista de pendientes y las propuestas sin aprobar.
    - Claude mueve los estados mientras trabaja.
-   - Antes de terminar, si hay tareas en curso, Claude escribe la bitácora del día.
+   - Cada avance queda en el historial de la tarea y en una línea de la bitácora que enlaza a él (ver «Historial y memoria»).
+   - Antes de terminar, si hay tareas en curso y hoy no se ha registrado ningún avance, Claude lo registra.
    - Las tareas no triviales necesitan un plan en `Planes/` antes de pasar a «En curso».
+
+### Historial y memoria
+
+Cada tarea tiene una sección `## Historial` al final de su archivo. Nace con una entrada de creación y crece con cada avance que Claude registra con `wf_log` y el ID de la tarea:
+
+- **En la tarea:** fecha y hora, qué se hizo, decisiones, archivos, siguiente paso y bloqueos.
+- **En la bitácora del día:** una línea «WAY-3 · título — Avanzamos en…» que enlaza a esa entrada. El trabajo menor sin tarea (por ejemplo, revisar el repositorio) va solo a la bitácora.
+- **En la web:** desde la bitácora llegas a la entrada concreta del historial, y desde cada entrada al día de la bitácora en que se escribió.
+- **Para Claude:** al empezar la sesión recibe el último avance de hasta dos tareas en curso. Bajo demanda, `wf_history` da el índice del historial de una tarea, una entrada completa o la línea temporal de los últimos días, y `wf_search` busca texto literal en tareas, historiales y bitácora.
+
+Reglas del historial:
+
+- Solo Wayfinder escribe en él. Editar la descripción de la tarea nunca lo toca, y una descripción no puede contener la línea `## Historial`.
+- Tiene su propio límite de 100 000 caracteres por tarea. Avisa al pasar del 80 % y, al llegar al límite, rechaza la entrada con un mensaje claro.
+- Lo que Claude lee del historial se trata como dato no confiable, igual que las descripciones.
+- Las tareas creadas antes de esta versión no se migran: muestran el historial vacío hasta su primer avance.
 
 ### Aprobar ideas desde el chat
 

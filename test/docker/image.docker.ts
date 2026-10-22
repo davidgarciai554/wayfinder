@@ -147,7 +147,7 @@ test('MCP over stdio in a container: explicit project, captures, plan rule and c
   // Without the consumer repository mounted.
   const bare = await mcpClient(t, ['-v', `${home}:/data`, '-v', `${captures}:/captures:ro`], { ...common, WAYFINDER_CAPTURES_DIR: '/captures' });
   const tools = (await bare.client.listTools()).tools.map((x) => x.name);
-  assert.equal(tools.length, 9);
+  assert.equal(tools.length, 11);
   assert.match((await bare.call('wf_create', { title: 'Docker task' })).text, /DEM-1 .*proposed/);
   assert.match((await bare.call('wf_list')).text, /DEM-1 \[proposed\]/);
   const attached = await bare.call('wf_attach', { path: '/captures/shot.png', alt: 'Board', task_id: 'DEM-1' });
