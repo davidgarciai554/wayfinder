@@ -1,3 +1,4 @@
+import { assertInitialized } from './store/init.ts';
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -270,6 +271,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
 export async function runMcp(version: string, baseEnv: NodeJS.ProcessEnv = process.env): Promise<void> {
   // Same normalisation as the hooks: unset plugin options must not become literal paths.
   const env = hookEnv(baseEnv);
+  assertInitialized(getHome(env));
   const server = createWayfinderServer({ home: getHome(env), lang: resolveLang(env), env, cwd: process.cwd(), version });
   // stdout carries JSON-RPC only; diagnostics must go to stderr.
   await server.connect(new StdioServerTransport());

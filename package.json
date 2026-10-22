@@ -26,7 +26,8 @@
     "build": "node scripts/build.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "prepack": "npm run build",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:docker": "node --test \"test/docker/*.docker.ts\""
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",

@@ -1,6 +1,6 @@
 import { LANGS, resolveLang, t, type Lang } from './i18n/index.ts';
 import { WayfinderError } from './store/errors.ts';
-import { initHome } from './store/init.ts';
+import { assertInitialized, initHome } from './store/init.ts';
 import { getHome } from './store/paths.ts';
 import { runMcp } from './mcp.ts';
 import { HOOK_EVENTS, readStdin, runHook } from './hook.ts';
@@ -101,10 +101,7 @@ function webDir(): string {
 
 async function runServe(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessEnv): Promise<number> {
   const home = getHome(env);
-  if (!existsSync(join(home, 'projects'))) {
-    io.err(t(lang, 'cli.error', { message: t(lang, 'serve.notInitialized', { path: home }) }));
-    return 1;
-  }
+  assertInitialized(home);
   const parsePort = (value: string | undefined, fallback?: number) => {
     if (value === undefined || value === '') return fallback;
     const n = Number(value);

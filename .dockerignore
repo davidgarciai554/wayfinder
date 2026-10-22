@@ -1,0 +1,20 @@
+# Only package.json, package-lock.json, scripts/, src/, web/ and LICENSE reach the build.
+node_modules
+.git
+.gitignore
+.gitattributes
+test
+e2e
+test-results
+.tmp-test
+.env*
+.npmrc
+Planes
+Plantillas
+docs
+.claude
+.claude-plugin
+plugin
+dist
+*.md
+!README.md

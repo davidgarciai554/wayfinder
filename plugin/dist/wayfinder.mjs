@@ -8287,6 +8287,11 @@ function modifiedOutside(home, rel) {
 
 // src/store/init.ts
 var GITIGNORE = ".wayfinder.lock\n*.tmp\n.state/\n";
+function assertInitialized(home) {
+  if (!existsSync(join4(home, ".git")) || !existsSync(join4(home, "projects"))) {
+    throw new WayfinderError("serve.notInitialized", { path: home });
+  }
+}
 function isWayfinderHome(home) {
   return existsSync(join4(home, "projects")) && existsSync(join4(home, ".git"));
 }
@@ -43326,6 +43331,7 @@ function createWayfinderServer(ctx) {
 }
 async function runMcp(version2, baseEnv = process.env) {
   const env = hookEnv(baseEnv);
+  assertInitialized(getHome(env));
   const server = createWayfinderServer({ home: getHome(env), lang: resolveLang(env), env, cwd: process.cwd(), version: version2 });
   await server.connect(new StdioServerTransport());
 }
@@ -48867,10 +48873,7 @@ function webDir() {
 }
 async function runServe(args, lang, io, env) {
   const home = getHome(env);
-  if (!existsSync8(join12(home, "projects"))) {
-    io.err(t(lang, "cli.error", { message: t(lang, "serve.notInitialized", { path: home }) }));
-    return 1;
-  }
+  assertInitialized(home);
   const parsePort = (value, fallback) => {
     if (value === void 0 || value === "") return fallback;
     const n = Number(value);

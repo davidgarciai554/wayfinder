@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
@@ -29,6 +32,20 @@ test('an unknown subcommand exits with a non-zero code and a message on stderr',
   assert.equal(r.status, 2);
   assert.equal(r.stdout, '');
   assert.match(r.stderr, /Comando desconocido: «nope»/);
+});
+
+test('serve and mcp refuse a data folder that init has not prepared (empty Docker volume)', () => {
+  const empty = mkdtempSync(join(tmpdir(), 'wf-empty-'));
+  try {
+    for (const command of ['serve', 'mcp']) {
+      const r = run([command], { WAYFINDER_HOME: empty });
+      assert.equal(r.status, 1, command);
+      assert.match(r.stderr, /No hay carpeta de datos .*wayfinder init/, command);
+      assert.equal(r.stdout, '', `${command}: stdout stays clean (it carries JSON-RPC for mcp)`);
+    }
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
 });
 
 test('--version prints a version', () => {
