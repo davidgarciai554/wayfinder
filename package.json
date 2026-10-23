@@ -25,7 +25,7 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "build": "node scripts/build.mjs",
     "check:dist": "node scripts/check-dist.mjs",
-    "prepack": "npm run build",
+    "prepare": "npm run build",
     "test:e2e": "playwright test",
     "test:docker": "node --test \"test/docker/*.docker.ts\""
   },

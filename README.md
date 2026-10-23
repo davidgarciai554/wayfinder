@@ -15,12 +15,14 @@ Los datos viven en una carpeta privada (`~/.wayfinder`): un repositorio git **si
 
 ## Instalación del plugin de Claude Code
 
-Desde una copia local de este repositorio:
+Desde GitHub:
 
 ```powershell
-claude plugin marketplace add D:\ruta\a\wayfinder
+claude plugin marketplace add davidgarciai554/wayfinder
 claude plugin install wayfinder@wayfinder --config language=es
 ```
+
+O desde una copia local de este repositorio, con `claude plugin marketplace add D:\ruta\a\wayfinder` en la primera línea.
 
 - `language`: `es` o `en`. Idioma de los mensajes, de la web y de las respuestas de Claude sobre Wayfinder.
 - `home` (opcional): carpeta de datos. Por defecto, `~/.wayfinder`.
@@ -76,13 +78,14 @@ node "<carpeta del plugin>\dist\wayfinder.mjs" serve
 - La web solo escucha en este equipo.
 - Opciones: `--port <n>` (o `WAYFINDER_PORT`) y `--poll`, para detectar cambios por sondeo en unidades de red. Si el puerto está ocupado por otra aplicación, `serve` lo dice y no arranca.
 
-## Paquete npm
+## Línea de comandos sin el plugin
 
-Cuando esté publicado (aún no lo está), los mismos comandos estarán disponibles con `npx`:
+El paquete no está publicado en npm. Se instala desde GitHub, que lo construye al instalarlo:
 
 ```powershell
-npx @davidgarciai554/wayfinder@0.1.0 init
-npx @davidgarciai554/wayfinder@0.1.0 serve
+npm install -g github:davidgarciai554/wayfinder
+wayfinder init
+wayfinder serve
 ```
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
@@ -108,11 +111,13 @@ El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está
 
 ## Docker
 
-La imagen sirve la web local y, como variante, el servidor MCP por stdio. Los ejemplos son para PowerShell en Windows con Docker Desktop. Construcción:
+La imagen sirve la web local y, como variante, el servidor MCP por stdio. No está publicada en ningún registro: se construye en tu equipo. Los ejemplos son para PowerShell en Windows con Docker Desktop.
 
 ```powershell
-docker build -t wayfinder:dev .
+docker build -t wayfinder:dev https://github.com/davidgarciai554/wayfinder.git#main
 ```
+
+Desde una copia local del repositorio: `docker build -t wayfinder:dev .`
 
 La imagen no declara ningún volumen. Monta siempre tu carpeta de datos en `/data`; sin ella, `serve` y `mcp` salen con un error.
 
