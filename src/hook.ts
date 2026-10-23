@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
+import { listErrors, type ErrorRecord } from './store/error-records.ts';
 import { isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
@@ -23,6 +24,8 @@ const MAX_CONTEXT = 4000;
 const MAX_TITLE = 80;
 const MAX_HISTORY_BLOCK = 1200;
 const HISTORY_TASKS = 2;
+const MAX_ERRORS_BLOCK = 600;
+const ERRORS_SHOWN = 5;
 
 /** userConfig defaults declared by the plugin itself (CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json). */
 function manifestDefaults(env: NodeJS.ProcessEnv): { home?: string; language?: string } {
@@ -64,7 +67,7 @@ function projectFor(home: string, input: Record<string, unknown>, env: NodeJS.Pr
 }
 
 /** Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection). */
-export function sessionContext(lang: Lang, slug: string, tasks: Task[]): string {
+export function sessionContext(lang: Lang, slug: string, tasks: Task[], errors: ErrorRecord[] = []): string {
   const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, key, vars);
   const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE)}`;
   const active = tasks.filter((x) => x.status === 'in-progress' || x.status === 'todo');
@@ -87,6 +90,22 @@ export function sessionContext(lang: Lang, slug: string, tasks: Task[]): string 
       block = next;
     }
     if (block.includes('\n- ')) text += block;
+  }
+  // Open errors go after the history, again only while they fit: ID, task and title, never
+  // their output or cause (free text that may come from tool output).
+  const open = errors.filter((e) => e.status === 'open').sort((a, b) => b.updated.localeCompare(a.updated));
+  if (open.length) {
+    let block = `\n\n${tr('hook.session.errors')}`;
+    let shown = 0;
+    for (const e of open.slice(0, ERRORS_SHOWN)) {
+      const next = `${block}\n- ${e.id} (${e.task}) ${neutralize(flatten(e.title, MAX_TITLE))}`;
+      if (next.length > MAX_ERRORS_BLOCK || text.length + next.length > MAX_CONTEXT) break;
+      block = next;
+      shown++;
+    }
+    const more = `\n${tr('hook.session.errorsMore', { count: open.length - shown })}`;
+    if (shown < open.length && block.length + more.length <= MAX_ERRORS_BLOCK && text.length + block.length + more.length <= MAX_CONTEXT) block += more;
+    if (shown > 0) text += block;
   }
   return text;
 }
@@ -183,7 +202,13 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
 
     if (event === 'session-start') {
       const { tasks } = listTasks(home, project.slug);
-      io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(lang, project.slug, tasks) } }));
+      let errors: ErrorRecord[] = [];
+      try {
+        errors = listErrors(home, project.slug).errors;
+      } catch {
+        // An unreadable errors folder must not hide the tasks.
+      }
+      io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(lang, project.slug, tasks, errors) } }));
       return 0;
     }
     if (event === 'prompt') {

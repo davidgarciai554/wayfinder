@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { WayfinderError, type Warning } from './errors.ts';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { commitPaths } from './git.ts';
-import { assertSlug, ID_PREFIX_RE, projectDir, safeJoin, SLUG_RE } from './paths.ts';
+import { assertSlug, ERROR_ID_PREFIX, ID_PREFIX_RE, projectDir, safeJoin, SLUG_RE } from './paths.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
 
 export interface Project {
@@ -63,6 +63,7 @@ export interface NewProject {
 export function createProject(home: string, input: NewProject): { project: Project; warnings: Warning[] } {
   assertSlug(input.slug);
   if (!ID_PREFIX_RE.test(input.idPrefix)) throw new WayfinderError('store.invalidIdPrefix', { value: input.idPrefix });
+  if (input.idPrefix === ERROR_ID_PREFIX) throw new WayfinderError('store.reservedIdPrefix', { value: input.idPrefix });
   if (!input.repo && !input.localPath) throw new WayfinderError('store.projectNeedsLocation', {});
   return withLock(home, () => {
     const dir = projectDir(home, input.slug);

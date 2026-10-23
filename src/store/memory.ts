@@ -1,6 +1,7 @@
 // Read-only views over task histories and the log, for wf_history and wf_search.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listErrors } from './error-records.ts';
 import { WayfinderError } from './errors.ts';
 import { parseEntries, type HistoryEntry } from './history.ts';
 import { projectDir, safeJoin } from './paths.ts';
@@ -10,6 +11,8 @@ import { flatten } from './text.ts';
 export const MAX_INDEX = 30;
 export const MAX_DAYS = 30;
 export const MAX_RESULTS = 20;
+/** Error records go first in wf_search (the point is to look before investigating), at most this many. */
+export const MAX_ERROR_HITS = 5;
 /** wf_search reads at most this much: a linear scan, fine for a personal store. Index it only if measured slow. */
 export const MAX_SCAN_BYTES = 2 * 1024 * 1024;
 
@@ -67,13 +70,19 @@ export function timeline(home: string, slug: string, days: number): LogEntry[][]
 }
 
 export interface SearchHit {
-  kind: 'history' | 'task' | 'log';
+  kind: 'history' | 'task' | 'log' | 'error';
   id?: string;
+  /** Error records only: open or resolved. */
+  status?: string;
   entry?: number;
   /** "YYYY-MM-DD HH:MM" for history and log hits. */
   when?: string;
   proposed?: boolean;
   snippet: string;
+}
+
+function dirSize(dir: string): number {
+  return readdirSync(dir).reduce((sum, n) => sum + statSync(join(dir, n)).size, 0);
 }
 
 function snippet(text: string, at: number, length: number): string {
@@ -82,10 +91,11 @@ function snippet(text: string, at: number, length: number): string {
   return `${start > 0 ? '…' : ''}${flatten(text.slice(start, end), 200)}${end < text.length ? '…' : ''}`;
 }
 
-/** Case-insensitive literal search (never a regular expression) over tasks, histories and the log. */
+/** Case-insensitive literal search (never a regular expression) over error records, tasks, histories and the log. */
 export function search(home: string, slug: string, query: string, limit: number): { hits: SearchHit[]; truncated: boolean } {
   const needle = query.toLowerCase();
   const find = (text: string) => text.toLowerCase().indexOf(needle);
+  const errors: SearchHit[] = [];
   const dated: SearchHit[] = [];
   const tasks: SearchHit[] = [];
   let budget = MAX_SCAN_BYTES;
@@ -99,6 +109,20 @@ export function search(home: string, slug: string, query: string, limit: number)
     return true;
   };
 
+  // Errors first, newest first. When they do not fit in the budget they are skipped and the
+  // result is marked truncated, but the log and tasks are still searched as before.
+  const errorsDir = safeJoin(projectDir(home, slug), 'errors');
+  const errorsSize = existsSync(errorsDir) ? dirSize(errorsDir) : 0;
+  const errorsSkipped = errorsSize > budget;
+  if (errorsSize > 0 && !errorsSkipped) {
+    budget -= errorsSize;
+    for (const e of listErrors(home, slug).errors.reverse()) {
+      if (errors.length >= MAX_ERROR_HITS) break;
+      const text = [e.title, ...Object.values(e.fields), e.history ?? ''].join('\n');
+      const at = find(text);
+      if (at >= 0) errors.push({ kind: 'error', id: e.id, status: e.status, snippet: snippet(text, at, needle.length) });
+    }
+  }
   for (const day of logDays(home, slug)) {
     const file = safeJoin(projectDir(home, slug), 'log', `${day}.md`);
     if (!spend(statSync(file).size)) break;
@@ -109,8 +133,7 @@ export function search(home: string, slug: string, query: string, limit: number)
   }
   if (!truncated) {
     const dir = safeJoin(projectDir(home, slug), 'tasks');
-    const sizes = existsSync(dir) ? readdirSync(dir).reduce((sum, n) => sum + statSync(join(dir, n)).size, 0) : 0;
-    if (spend(sizes)) {
+    if (spend(existsSync(dir) ? dirSize(dir) : 0)) {
       for (const task of listTasks(home, slug).tasks) {
         const proposed = task.status === 'proposed';
         const head = `${task.title}\n${task.body}`;
@@ -124,5 +147,5 @@ export function search(home: string, slug: string, query: string, limit: number)
     }
   }
   dated.sort((a, b) => (b.when ?? '').localeCompare(a.when ?? ''));
-  return { hits: [...dated, ...tasks].slice(0, Math.min(Math.max(limit, 1), MAX_RESULTS)), truncated };
+  return { hits: [...errors, ...dated, ...tasks].slice(0, Math.min(Math.max(limit, 1), MAX_RESULTS)), truncated: truncated || errorsSkipped };
 }

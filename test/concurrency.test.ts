@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEntries } from '../src/store/history.ts';
 import { createTask, listTasks, readTask } from '../src/store/tasks.ts';
+import { listErrors } from '../src/store/error-records.ts';
 import { commitCount, gitOut, makeHome, makeProject } from './helpers.ts';
 
 const worker = fileURLToPath(new URL('./fixtures/worker.ts', import.meta.url));
@@ -31,6 +32,19 @@ test('20 concurrent processes create 20 distinct IDs and 20 commits', { timeout:
   assert.equal(new Set(ids).size, 20);
   assert.equal(listTasks(home, 'demo').tasks.length, 20);
   assert.equal(commitCount(home), before + 20);
+  assert.equal(gitOut(home, 'status', '--porcelain'), '');
+});
+
+test('10 concurrent processes create 10 distinct error IDs and 10 commits', { timeout: 120_000 }, async (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const task = createTask(home, 'demo', { title: 'Con errores' }, 'mcp').task.id;
+  const before = commitCount(home);
+  const results = await Promise.all(Array.from({ length: 10 }, (_, i) => run(['error', home, 'demo', task, String(i)])));
+  for (const r of results) assert.equal(r.code, 0, r.err);
+  assert.equal(new Set(results.map((r) => r.out)).size, 10);
+  assert.equal(listErrors(home, 'demo').errors.length, 10);
+  assert.equal(commitCount(home), before + 10);
   assert.equal(gitOut(home, 'status', '--porcelain'), '');
 });
 

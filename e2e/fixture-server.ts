@@ -9,6 +9,7 @@ import { createProject } from '../src/store/project.ts';
 import { appendLog } from '../src/store/log.ts';
 import { createTask, logProgress, setStatus, updateTask } from '../src/store/tasks.ts';
 import { startServer } from '../src/server.ts';
+import { createError, noteError, resolveError } from '../src/store/error-records.ts';
 import { e2eGitOffFlag, e2eHome, e2eKeyFile, E2E_PORTS } from './paths.ts';
 
 const lang = process.env.WAYFINDER_LANG === 'en' ? 'en' : 'es';
@@ -69,6 +70,24 @@ logProgress(E2E_HOME, 'historial', memory, 'Avanzamos en el filtro: tests en ver
 const legacy = createTask(E2E_HOME, 'historial', { title: 'Tarea antigua sin historial', body: 'Escrita antes del historial.' }, 'web', clock).task;
 const legacyFile = join(E2E_HOME, legacy.file);
 writeFileSync(legacyFile, readFileSync(legacyFile, 'utf8').replace(/\n## Historial[\s\S]*$/, '\n'));
+
+// Error records plan: its own project, so the counts of the other specs do not change.
+createProject(E2E_HOME, { slug: 'errores', name: 'errores', idPrefix: 'FAL', localPath: 'D:/errores' });
+const build = createTask(E2E_HOME, 'errores', { title: 'Compilar el bundle' }, 'web', clock).task.id;
+createTask(E2E_HOME, 'errores', { title: 'Tarea sin errores' }, 'web', clock);
+const at = (minute: number) => () => new Date(2026, 9, 21, 12, minute);
+createError(E2E_HOME, 'errores', {
+  title: 'El bundle falla con require dinámico <img src=x onerror=window.__xss=6>',
+  task: build,
+  context: 'npm run build en Windows.\n\n<script>window.__xss=7</script>',
+  output: 'Error: Dynamic require of "process" is not supported\n    at node_modules/yaml/dist/compose/composer.js:12:5 una línea muy larga que obliga a desplazar el bloque en horizontal',
+  files: ['scripts/build.mjs'],
+}, at(0));
+noteError(E2E_HOME, 'errores', 'ERR-1', 'Recurrencia: también en Node 24.', at(1));
+for (let i = 2; i <= 13; i++) {
+  createError(E2E_HOME, 'errores', { title: `Error resuelto número ${i}`, task: build, context: 'Contexto.' }, at(i));
+  resolveError(E2E_HOME, 'errores', `ERR-${i}`, { solution: 'Corregido.', validation: 'npm test' }, { clock: at(i) });
+}
 
 // Real git, unless a spec switches it "off" with the flag file (git missing → 200 with a warning).
 rmSync(e2eGitOffFlag(lang), { force: true });

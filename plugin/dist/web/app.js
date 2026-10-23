@@ -124,7 +124,7 @@ function timeEl(iso) {
 }
 
 // ---------- routing ----------
-const PAGES = ['board', 'task', 'log', 'assets', 'project'];
+const PAGES = ['board', 'task', 'log', 'errors', 'assets', 'project'];
 function parseHash() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   const [slug, page = 'board', id, sub] = parts;
@@ -151,7 +151,7 @@ function renderChrome() {
   if (!hasProject) return;
   const current = view.page === 'task' ? 'board' : view.page;
   tabs.replaceChildren(
-    ...['board', 'log', 'assets', 'project'].map((page) =>
+    ...['board', 'log', 'errors', 'assets', 'project'].map((page) =>
       el('a', { href: href(view.slug, page), 'aria-current': page === current ? 'page' : null, text: t(`web.tab.${page}`) }),
     ),
   );
@@ -457,6 +457,8 @@ async function renderBoard() {
 // The URL stays #/<slug>/task/<ID>[/<n>]; closing goes back where the person came from.
 let taskFromApp = false; // opened by navigating inside the app (history.back() returns there)
 let leaving = false; // a navigation away from the task is under way: do not start another
+let taskClosed = null; // ID of the task just closed (Esc or the button), to focus the link that opened it
+let errorOpenedFrom = null; // { task, error }: Back from that error to that task focuses the error link
 
 async function taskDetail() {
   let task;
@@ -497,8 +499,23 @@ async function taskDetail() {
           description,
         ),
         historySection(task),
+        taskErrorsSection(task),
       ),
     ),
+  );
+}
+
+/** The errors recorded on the task; each one opens its own page (Back returns to the task). */
+function taskErrorsSection(task) {
+  const errors = task.errors ?? [];
+  return el('section', { class: 'history', 'aria-labelledby': 'task-errors' },
+    el('h2', { id: 'task-errors', text: t('web.errors.inTask', { n: errors.length }) }),
+    errors.length
+      ? el('ul', { class: 'error-links' }, errors.map((e) => el('li', {},
+          el('a', { href: href(view.slug, 'errors', e.id), 'data-focus': `error:${e.id}`, onclick: () => { errorOpenedFrom = { task: task.id, error: e.id }; } },
+            el('span', { class: 'mono', text: e.id }), ` · ${e.title}`),
+          ' ', errorPill(e.status))))
+      : el('p', { class: 'muted', text: t('web.errors.noneInTask') }),
   );
 }
 
@@ -536,6 +553,7 @@ function hideTask() {
 function leaveTask() {
   if (leaving || parseHash().page !== 'task') return;
   leaving = true;
+  taskClosed = view.id;
   if (taskFromApp) history.back();
   else location.hash = href(view.slug);
 }
@@ -582,6 +600,102 @@ async function renderLog() {
     : null;
   // replaceChildren() would print a null child as the text "null".
   main.replaceChildren(head, list, ...(more ? [el('p', {}, more)] : []));
+}
+
+// ---------- errors (read only) ----------
+let showAllResolved = false;
+
+/** Open or resolved in text; open errors also carry the warning icon (never colour alone). */
+function errorPill(status) {
+  return el('span', { class: `pill ${status === 'open' ? 'f-risk' : 's-done'}` }, status === 'open' ? warningIcon() : null, t(`web.errorStatus.${status}`));
+}
+
+function errorItem(e) {
+  return el('li', { class: 'error-item' },
+    el('div', { class: 'card-meta' }, el('span', { class: 'mono', text: e.id }), timeEl(e.updated)),
+    el('a', { class: 'card-title', href: href(view.slug, 'errors', e.id), 'data-focus': `error:${e.id}`, text: e.title }),
+    el('div', { class: 'tags' }, errorPill(e.status), el('span', { class: 'muted', text: t('web.errors.task', { id: e.task }) })),
+  );
+}
+
+async function renderErrors() {
+  if (view.id) return renderErrorDetail();
+  const data = await api(`/api/projects/${encodeURIComponent(view.slug)}/errors`);
+  const recentFirst = (a, b) => (b.updated || '').localeCompare(a.updated || '') || Number(b.id.split('-')[1]) - Number(a.id.split('-')[1]);
+  const open = data.errors.filter((e) => e.status === 'open').sort(recentFirst);
+  const resolved = data.errors.filter((e) => e.status === 'resolved').sort(recentFirst);
+  const resolvedShown = showAllResolved ? resolved : resolved.slice(0, DONE_LIMIT);
+  const head = el('div', { class: 'page-head' }, el('h1', { text: t('web.tab.errors') }));
+  const unreadable = data.unreadable.length
+    ? [el('div', { class: 'notice', role: 'note' },
+        el('strong', { text: t('web.errors.unreadable', { n: data.unreadable.length }) }),
+        el('ul', {}, data.unreadable.map((u) => el('li', {}, el('span', { class: 'mono', text: u.file }), ` · ${u.reason}`))))]
+    : [];
+  if (data.errors.length === 0) return main.replaceChildren(head, ...unreadable, el('p', { class: 'empty', text: t('web.errors.empty') }));
+  const group = (id, title, items, extra) => el('section', { class: 'error-group', 'aria-labelledby': id },
+    el('h2', { id, tabindex: '-1', 'data-focus': id }, el('span', { text: title }), el('span', { class: 'count', text: String(items.length) })),
+    items.length ? el('ul', { class: 'error-list' }, items.map(errorItem)) : el('p', { class: 'muted', text: t('web.errors.noneInGroup') }),
+    ...(extra ? [extra] : []),
+  );
+  const more = resolved.length > DONE_LIMIT && !showAllResolved
+    ? el('button', { type: 'button', class: 'button button-quiet', 'data-focus': 'show-all-resolved', text: t('web.errors.showAllResolved', { n: resolved.length }),
+        onclick: () => { showAllResolved = true; render({ keepFocus: true, focus: 'errors-resolved' }); } })
+    : null;
+  main.replaceChildren(head, ...unreadable,
+    group('errors-open', t('web.errors.open'), open),
+    group('errors-resolved', t('web.errors.resolved'), resolvedShown, more),
+  );
+}
+
+async function renderErrorDetail() {
+  const back = el('a', { href: href(view.slug, 'errors'), text: t('web.errors.back') });
+  let e;
+  try {
+    e = await api(`/api/projects/${encodeURIComponent(view.slug)}/errors/${encodeURIComponent(view.id)}`);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    return main.replaceChildren(el('p', {}, back), el('h1', { text: t('web.errors.notFoundTitle') }), el('p', { role: 'alert', text: t('web.errors.notFound', { id: view.id }) }));
+  }
+  const row = (label, value) => [el('dt', { text: label }), el('dd', {}, value)];
+  const task = e.taskTitle !== null
+    ? el('a', { href: href(view.slug, 'task', e.task), 'data-focus': `task:${e.task}`, onclick: () => { errorOpenedFrom = null; } },
+        el('span', { class: 'mono', text: e.task }), ` · ${e.taskTitle}`)
+    : el('span', {}, el('span', { class: 'mono', text: e.task }), ` ${t('web.errors.taskMissing')}`);
+  const fields = e.fields.map((f) => {
+    let body;
+    if (f.key === 'output' && f.text) body = el('pre', { class: 'output', tabindex: '0', 'aria-labelledby': `field-${f.key}`, text: f.text });
+    else if (f.html) {
+      body = el('div', { class: 'prose' });
+      body.innerHTML = f.html; // Sanitised by the server (markdown-it, html: false).
+    } else body = el('p', { class: 'muted', text: t('web.errors.noData') });
+    const label = f.key === 'cause' ? `${t('web.errorField.cause')} · ${t(`web.causeKind.${e.causeKind}`)}` : t(`web.errorField.${f.key}`);
+    return el('section', { class: 'error-field', 'aria-labelledby': `field-${f.key}` }, el('h2', { id: `field-${f.key}`, text: label }), body);
+  });
+  const notes = e.history.map((n) => {
+    const text = el('div', { class: 'prose' });
+    text.innerHTML = n.html; // Sanitised by the server.
+    return el('article', { class: 'entry', 'aria-labelledby': `note-${n.n}-time` },
+      el('h3', { id: `note-${n.n}-time` }, el('time', { class: 'mono', datetime: `${n.date}T${n.time}`, text: `${n.date} ${n.time}` })),
+      text);
+  });
+  main.replaceChildren(el('div', { class: 'detail error-detail' },
+    el('p', {}, back),
+    el('header', { class: 'detail-head' },
+      el('span', { class: 'mono muted', text: e.id }),
+      el('h1', { id: 'error-title', tabindex: '-1', text: e.title }),
+      el('div', { class: 'tags' }, errorPill(e.status)),
+    ),
+    el('dl', { class: 'meta' },
+      row(t('web.errors.meta.task'), task),
+      row(t('web.errors.meta.files'), e.files.length ? el('ul', { class: 'file-list' }, e.files.map((f) => el('li', { class: 'mono', text: f }))) : '—'),
+      row(t('web.meta.created'), el('span', { class: 'mono', text: exact(e.created) })),
+      row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(e.updated) })),
+    ),
+    ...fields,
+    el('section', { class: 'history', 'aria-labelledby': 'error-history' },
+      el('h2', { id: 'error-history', text: t('web.errors.history') }),
+      el('div', { class: 'entries' }, notes)),
+  ));
 }
 
 // ---------- assets ----------
@@ -660,6 +774,8 @@ async function doRender(keepFocus, firstPaint, focus) {
   const previous = view;
   view = parseHash();
   leaving = false;
+  const closedTask = taskClosed;
+  taskClosed = null;
   if (!view.slug && projects.length === 1) {
     location.replace(href(projects[0].slug));
     return;
@@ -678,6 +794,7 @@ async function doRender(keepFocus, firstPaint, focus) {
     else if (view.page === 'board') await renderBoard();
     else if (view.page === 'task') await renderBoard();
     else if (view.page === 'log') await renderLog();
+    else if (view.page === 'errors') await renderErrors();
     else if (view.page === 'assets') await renderAssets();
     else if (view.page === 'project') await renderProject();
     const onTask = view.page === 'task' && projects.some((p) => p.slug === view.slug);
@@ -699,9 +816,17 @@ async function doRender(keepFocus, firstPaint, focus) {
     scope.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
   } else if (!keepFocus && (!firstPaint || view.page === 'task')) {
     // Opening a task (also from a link that opens the app) focuses its title or the linked entry.
-    const sameBoard = previous && previous.slug === view.slug && previous.page === 'task' && view.page === 'board' && previous.id;
-    if (view.page === 'task') (view.entry && scope.querySelector(`#entry-${view.entry}`) || scope.querySelector('#task-title'))?.focus();
+    // Coming back puts focus on the link that was followed: the card (board), the task link of an
+    // error page (after closing the task), or the task's link to the error it opened (after Back).
+    const sameProject = previous && previous.slug === view.slug && previous.id;
+    const sameBoard = sameProject && previous.page === 'task' && view.page === 'board';
+    const closedTo = sameProject && closedTask === previous.id && view.page === 'errors' && main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`);
+    const backToTask = sameProject && view.page === 'task' && errorOpenedFrom?.task === view.id && errorOpenedFrom.error === previous.id
+      && scope.querySelector(`[data-focus="error:${CSS.escape(previous.id)}"]`);
+    if (backToTask) backToTask.focus();
+    else if (view.page === 'task') (view.entry && scope.querySelector(`#entry-${view.entry}`) || scope.querySelector('#task-title'))?.focus();
     else if (sameBoard) main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`)?.focus();
+    else if (closedTo) closedTo.focus();
     else {
       const heading = main.querySelector('h1');
       heading?.setAttribute('tabindex', '-1');

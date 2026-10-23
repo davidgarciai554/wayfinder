@@ -11,7 +11,8 @@
 - **Trabajo principal:** saber de un vistazo qué está en curso, qué falta y qué propuestas esperan una decisión.
 - **Incluido:**
   - incremento 4: tablero, detalle de tarea, bitácora, capturas y página del proyecto, con autorefresco;
-  - incremento 5: crear tarea, aprobar y descartar con confirmación.
+  - incremento 5: crear tarea, aprobar y descartar con confirmación;
+  - registro de errores (plan `Planes/2026-10-23-registro-de-errores.md`): pestaña «Errores» de solo lectura, con su detalle, y la lista de errores dentro de cada tarea.
 - **Excluido:** edición libre de tareas, búsqueda (la memoria se consulta con `wf_search` desde Claude; plan `Planes/2026-10-22-bitacora-enlazada-e-historial.md`), arrastrar como única vía, varios usuarios, selector manual de tema.
 - **Señal observable de éxito:** abrir la web y, sin desplazarse en una pantalla de 1440 px, ver las propuestas sin aprobar y las tareas en curso. Todo el flujo se puede completar con teclado.
 
@@ -41,15 +42,17 @@
 
 ## Arquitectura e interacción
 - **Navegación y orientación:**
-  - barra superior con «Wayfinder», selector de proyecto (`<select>`) y pestañas **Tablero · Bitácora · Capturas · Proyecto** (`<nav>`, con `aria-current`);
-  - rutas por hash, con segmentos fijos en inglés que no dependen del idioma configurado: `#/<slug>/board`, `#/<slug>/task/<ID>`, `#/<slug>/log`, `#/<slug>/assets`, `#/<slug>/project`;
+  - barra superior con «Wayfinder», selector de proyecto (`<select>`) y pestañas **Tablero · Bitácora · Errores · Capturas · Proyecto** (`<nav>`, con `aria-current`);
+  - rutas por hash, con segmentos fijos en inglés que no dependen del idioma configurado: `#/<slug>/board`, `#/<slug>/task/<ID>`, `#/<slug>/log`, `#/<slug>/errors`, `#/<slug>/errors/<ERR-n>`, `#/<slug>/assets`, `#/<slug>/project`;
   - el botón de atrás funciona.
 - **Inicio:** con un proyecto se abre su tablero; con varios, una lista de proyectos con contadores por estado.
 - **Jerarquía de contenidos:**
   - el nombre del proyecto es el `h1` de la página;
   - las columnas son `h2` con recuento;
-  - en el detalle, el título de la tarea es el encabezado principal del modal (`h1`), con «Descripción» e «Historial» como `h2`.
+  - en el detalle, el título de la tarea es el encabezado principal del modal (`h1`), con «Descripción», «Historial» y «Errores (n)» como `h2`;
+  - en «Errores», el `h1` es «Errores» y «Abiertos» y «Resueltos» son `h2` con recuento; en el detalle de un error, su título es el `h1` y cada campo es un `h2`.
 - **Flujo principal:** abrir el tablero → ver las columnas → abrir una tarea → volver.
+- **Flujo de errores:** el detalle de un error es una página, no un modal (no se apilan dos diálogos y el registro puede ser largo). Desde la tarea se abre el error (el modal se cierra) y «Atrás» vuelve a la tarea con el foco en el enlace del error. Desde el error se abre su tarea como modal; Esc o «Cerrar» vuelven al error con el foco en el enlace de la tarea.
 - **Acciones:**
   - incremento 4: el enlace a la tarea, «Mostrar descartadas» y «Ver todas las hechas»;
   - incremento 5: «Nueva tarea» como acción principal, y «Aprobar» y «Descartar» en las propuestas.
@@ -118,7 +121,7 @@
 - **Valores locales excepcionales:** ninguno previsto.
 
 ## Componentes mínimos y estados
-- **Inventario:** barra superior, aviso de conexión, columna, tarjeta de tarea, etiqueta de estado o aviso, panel de detalle, lista de bitácora por día, rejilla de capturas con visor (`<dialog>`), página de proyecto, aviso de tareas ilegibles; en el incremento 5, diálogo de nueva tarea, diálogo de confirmación de descarte y mensaje de estado.
+- **Inventario:** barra superior, aviso de conexión, columna, tarjeta de tarea, etiqueta de estado o aviso, panel de detalle, lista de bitácora por día, rejilla de capturas con visor (`<dialog>`), página de proyecto, aviso de tareas ilegibles; en el incremento 5, diálogo de nueva tarea, diálogo de confirmación de descarte y mensaje de estado; con el registro de errores, lista de errores (reutiliza el aspecto de la tarjeta), página de error y bloque de salida observada (`<pre>` desplazable).
 - **Descartados:** librería de componentes, framework, arrastrar y soltar, *skeletons* animados.
 
 ## Componentes y estados
@@ -132,6 +135,9 @@
 | Capturas | Rejilla con el texto alternativo como pie | «Cargando…» | «Aún no hay capturas.» | Imagen rota → texto alternativo visible | — | — | El visor `<dialog>` se cierra con Esc y devuelve el foco |
 | Nueva tarea (incremento 5) | Diálogo con título, descripción y prioridad | Botón deshabilitado y «Creando…» | — | Errores junto al campo, resumen enlazado y foco al primer error; el borrador se conserva | Mensaje durante ≥ 5 s | Enviar sin título → error | — |
 | Descartar (incremento 5) | `alertdialog` con la consecuencia | — | — | Error → mensaje en el diálogo | Mensaje | — | Foco inicial en «Cancelar»; Esc cancela |
+| Errores (lista) | `h2` «Abiertos» y «Resueltos» con recuento, los más recientes primero; cada error con ID, fecha relativa, título como único enlace, estado en texto («Abierto» con icono de aviso y `--wf-flag-risk-*`; «Resuelto» con `--wf-status-done-*`) y su tarea | «Cargando…» | Sin errores: texto que explica que Claude los registra con `wf_error`; grupo vacío: «(ninguno)» | Aviso con «Reintentar»; archivos ilegibles listados arriba con su motivo | — | — | Resueltos: 10 últimos y «Ver los N resueltos» |
+| Error (página) | «← Volver a Errores», ID, título (`h1`), estado, datos (`<dl>`: tarea enlazada, archivos, fechas), un `h2` por campo con etiqueta traducida (la causa indica «hipótesis» o «confirmada») y «Notas y recurrencias» (`article` con `h3` y `<time>`) | «Cargando…» | Campo vacío: «Sin dato» | Error inexistente → `h1` «Error no encontrado» y alerta; tarea inexistente → ID con «(tarea no encontrada)», sin enlace | — | — | Foco en el `h1` al entrar; la salida observada es un `<pre>` enfocable con desplazamiento horizontal propio; la página no desborda a 320 px |
+| Errores en la tarea | `h2` «Errores (n)» tras el historial; cada error como enlace «ERR-n · título» con su estado en texto | — | «Esta tarea no tiene errores registrados.» | — | — | — | Abrir un error cierra el modal; «Atrás» vuelve con el foco en ese enlace |
 
 ## Diseño adaptable y acceso equivalente
 - **Compacto (< 720 px):**
@@ -182,6 +188,7 @@
 | 2026-10-21 | Incremento 4: tablero, detalle, bitácora, capturas, proyecto (es/en) | `wayfinder serve` con datos de prueba; Chromium headless (Playwright 1.64.1); Windows 11 | `npm run test:e2e` 11/11; capturas `test-results/review/` a 320, 768 y 1280 px en claro y oscuro; `test/contrast.test.ts` | Coincide con el lienzo v8. Contraste medido: todos los textos ≥ 4,5:1 y foco, bordes y arcilla ≥ 3:1 en los dos temas | «Descartada» en claro ajustada de `#73726C` a `#5E5D59` (4,15 → 5,67:1). Sin verificar: prueba manual con NVDA y zoom real al 200 % del navegador (aproximado con un viewport de 640 px) |
 | 2026-10-22 | Plan de bitácora e historial, incremento 5: sección Historial, enlaces bitácora ↔ entrada, vista de un día (es/en) | Fixture e2e (`historial`); Chromium headless; Windows 11 | `npm run test:e2e` 27/27 (`e2e/history.spec.ts`: foco en la entrada, «Atrás», teclado, estados vacíos, 320 px sin scroll horizontal, árbol de accesibilidad); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: tokens existentes (`--wf-border-strong`, `--wf-focus`, tipografía mono para fechas), sin colores nuevos | Corregido de paso: la bitácora mostraba un texto «null» al final (defecto previo). Sin verificar: NVDA y zoom real al 200 % |
 | 2026-10-22 | Detalle de tarea en modal (dos columnas; pantalla completa en compacto) | Fixture e2e; Chromium headless; Windows 11 | `npm run test:e2e` 28/28 (foco en el título o en la entrada enlazada, Esc y «Cerrar» vuelven al origen y devuelven el foco a la tarjeta, 640 px sin scroll horizontal); capturas a 320 y 1280 px en claro y oscuro | Coherente con el lienzo v8: mismos tokens, superficie y sombra que los diálogos existentes | Cambia una decisión aprobada (panel lateral) por petición expresa del usuario. Sin verificar: NVDA y zoom real al 200 % |
+| 2026-10-23 | Registro de errores: pestaña «Errores», página de error y «Errores (n)» en la tarea (es/en) | Fixture e2e (`errores`); Chromium headless (Playwright); Windows 11 | `npm run test:e2e` 37/37 (`e2e/errors.spec.ts`: grupos y «Ver los N resueltos», campos y notas, texto hostil inerte, error → tarea → cerrar y tarea → error → Atrás con el foco en el enlace de origen, estados vacío e inexistente, 320 px sin scroll horizontal salvo el `<pre>`, árbol de accesibilidad, inglés); capturas de lista, error y tarea a 320, 768 y 1280 px en claro y oscuro | Coherente con el lienzo v8: tokens existentes (`--wf-flag-risk-*` para abierto, con icono y texto; `--wf-status-done-*` para resuelto), aspecto de tarjeta reutilizado, sin colores nuevos | Añade una pestaña a la navegación aprobada, con el plan `Planes/2026-10-23-registro-de-errores.md` v1 aprobado. Sin verificar: NVDA y zoom real al 200 % |
 | 2026-10-22 | Color por columna (franja y contador) y «Por hacer» en azul pizarra | Fixture e2e; Chromium headless; Windows 11 | `test/contrast.test.ts` (franjas ≥ 3:1 sobre página y columna; textos de estado ≥ 4,5:1); capturas a 320 y 1280 px en claro y oscuro | Las cuatro columnas se distinguen sin depender solo del color (encabezado con nombre) | Amplía la paleta aprobada (nuevo color de «Por hacer» y tokens de franja) por petición expresa del usuario |
 
 ## Regresión visual automatizada

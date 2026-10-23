@@ -124,7 +124,7 @@ export function readTask(home: string, slug: string, id: string): Task {
   return result;
 }
 
-function validateTitle(title: string): string {
+export function validateTitle(title: string): string {
   const clean = title.replace(/\s+/g, ' ').trim();
   if (clean === '' || clean.length > MAX_TITLE || CONTROL_CHARS.test(title)) {
     throw new WayfinderError('store.invalidTitle', { max: MAX_TITLE });

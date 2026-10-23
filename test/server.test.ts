@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { createTask, logProgress } from '../src/store/tasks.ts';
+import { createError, noteError } from '../src/store/error-records.ts';
 import { setGitRunner } from '../src/store/git.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { createServer as createNetServer } from 'node:net';
@@ -345,4 +346,41 @@ test('the task detail includes its history: the creation entry as data, the rest
   assert.doesNotMatch(entry.html, /<script|href="javascript:|<h1/i);
   assert.match(entry.html, /# no es cabecera/);
   assert.match(entry.html, /Next: seguir/);
+});
+
+test('errors: list and detail are read-only, rendered safely, and the task lists its errors', async (t) => {
+  const { home, port, headers } = await writer(t);
+  assert.deepEqual(JSON.parse((await get(port, '/api/projects/demo/errors')).body), { errors: [], unreadable: [] });
+  createTask(home, 'demo', { title: 'Build' }, 'web');
+  const clock = () => new Date('2026-10-23T10:00:00');
+  createError(home, 'demo', {
+    title: 'Falla <img src=x onerror=alert(1)>',
+    task: 'WF-1',
+    context: 'Al compilar\n<script>alert(1)</script> [x](javascript:alert(2))',
+    output: '# línea con almohadilla\n<b>no es html</b>',
+  }, clock);
+  noteError(home, 'demo', 'ERR-1', 'Recurrencia', clock);
+
+  const list = JSON.parse((await get(port, '/api/projects/demo/errors')).body);
+  assert.deepEqual(list.errors.map((e: { id: string; status: string; task: string }) => [e.id, e.status, e.task]), [['ERR-1', 'open', 'WF-1']]);
+
+  const detail = JSON.parse((await get(port, '/api/projects/demo/errors/ERR-1')).body);
+  assert.equal(detail.taskTitle, 'Build');
+  const field = (key: string) => detail.fields.find((f: { key: string }) => f.key === key);
+  assert.doesNotMatch(field('context').html, /<script|href="javascript:/i);
+  assert.equal(field('output').text, '# línea con almohadilla\n<b>no es html</b>');
+  assert.equal(field('cause').html, '');
+  assert.equal(detail.history.length, 2);
+  assert.match(detail.history[1].html, /Recurrencia/);
+
+  const task = JSON.parse((await get(port, '/api/projects/demo/tasks/WF-1')).body);
+  assert.deepEqual(task.errors, [{ id: 'ERR-1', title: 'Falla <img src=x onerror=alert(1)>', status: 'open' }]);
+
+  for (const path of ['/api/projects/demo/errors/ERR-9', '/api/projects/demo/errors/WF-1', '/api/projects/demo/errors/..%2Fx', '/api/projects/nope/errors']) {
+    assert.equal((await get(port, path)).status, 404, path);
+  }
+  const files = tree(home);
+  assert.equal((await post(port, '/api/projects/demo/errors', { title: 'x' }, headers)).status, 405);
+  assert.equal((await post(port, '/api/projects/demo/errors/ERR-1/resolve', {}, headers)).status, 405);
+  assert.deepEqual(tree(home), files);
 });

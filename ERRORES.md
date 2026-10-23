@@ -109,3 +109,14 @@
 - **Solución:** `withLock` trata `EPERM`, `EBUSY` y `EACCES` como contención (espera y reintenta hasta el tiempo límite), igual que ya hacía `writeFileAtomic`.
 - **Archivos modificados:** `src/store/sync.ts`.
 - **Validación:** `node --test test/concurrency.test.ts` 5 veces seguidas en verde; `npm test` completo. Al ser intermitente, no hay una reproducción determinista que demuestre la corrección.
+
+## 2026-10-23 · E2E «create a task…» falla de forma intermitente: el mensaje de éxito ya se ha borrado
+
+- **Contexto:** incremento 4 del plan `Planes/2026-10-23-registro-de-errores.md` (WAY-4). `npm run test:e2e` en Windows 11, Node 24.12.0.
+- **Reproducción:** `npx playwright test e2e/write.spec.ts` varias veces. Falla en algunas ejecuciones, no en todas.
+- **Salida observada:** `e2e/write.spec.ts:101` → `expect(locator('#flash')).toHaveText('Creada ESC-5 en «Por hacer».')` recibe `""`.
+- **Causa (hipótesis muy probable, sin corregir):** carrera de tiempos en el propio test. El mensaje de éxito se borra a los 6 s (`flash` en `web/app.js`). El test, después de verlo, ejecuta tres llamadas síncronas a git y a disco (`commits()`, `lastSubject()`, `read()`) y luego espera 5,2 s más. Si esas llamadas tardan más de ~0,8 s, el mensaje ya no está.
+- **Preexistente, no introducido por WAY-4:** en un worktree limpio de `HEAD` (7f9f6ec, sin los cambios de WAY-4) el mismo test falló 4 de 4 veces. Con los cambios de WAY-4 falló 2 de 4 ejecuciones.
+- **Solución:** ninguna todavía; fuera del alcance de WAY-4. Opción mínima: medir el tiempo desde que aparece el mensaje y esperar solo hasta los 5 s.
+- **Archivos modificados:** ninguno.
+- **Validación:** pendiente.

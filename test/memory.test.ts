@@ -6,6 +6,7 @@ import { WayfinderError } from '../src/store/errors.ts';
 import { appendLog } from '../src/store/log.ts';
 import { historyEntry, historyIndex, MAX_SCAN_BYTES, search, timeline } from '../src/store/memory.ts';
 import { createTask, logProgress } from '../src/store/tasks.ts';
+import { createError, resolveError } from '../src/store/error-records.ts';
 import { makeHome, makeProject } from './helpers.ts';
 
 const isKey = (key: string) => (e: unknown) => e instanceof WayfinderError && e.key === key;
@@ -61,4 +62,24 @@ test('search stops at its read budget and says so', (t) => {
   writeFileSync(join(home, 'projects/demo/log/2026-10-23.md'), `# 2026-10-23\n\n## 09:00\n\n${'x'.repeat(MAX_SCAN_BYTES)}\n`);
   const r = search(home, 'demo', 'avanzamos', 10);
   assert.equal(r.truncated, true);
+});
+
+test('search lists error records first, newest first, at most 5, with their status', (t) => {
+  const home = seed(t);
+  for (let i = 1; i <= 7; i++) {
+    createError(home, 'demo', { title: `Fallo ${i}`, task: 'WF-1', context: `EPERM al borrar el lock, intento ${i}` }, at(`2026-10-23T09:0${i}:00`));
+  }
+  resolveError(home, 'demo', 'ERR-7', { solution: 'reintentar', validation: 'npm test' }, { clock: at('2026-10-23T10:00:00') });
+  logProgress(home, 'demo', 'WF-1', 'Avanzamos: EPERM otra vez.', {}, at('2026-10-23T11:00:00'));
+  const r = search(home, 'demo', 'eperm', 20);
+  assert.deepEqual(r.hits.slice(0, 5).map((h) => [h.kind, h.id, h.status]), [
+    ['error', 'ERR-7', 'resolved'],
+    ['error', 'ERR-6', 'open'],
+    ['error', 'ERR-5', 'open'],
+    ['error', 'ERR-4', 'open'],
+    ['error', 'ERR-3', 'open'],
+  ]);
+  assert.deepEqual(r.hits.slice(5).map((h) => h.kind).sort(), ['history', 'log']);
+  assert.ok(r.hits.every((h) => h.snippet.length <= 202));
+  assert.deepEqual(search(home, 'demo', 'SELECT', 10).hits.map((h) => h.kind), ['history', 'task'], 'unchanged without matching errors');
 });

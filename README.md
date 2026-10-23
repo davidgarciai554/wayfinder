@@ -50,7 +50,7 @@ Cada tarea tiene una sección `## Historial` al final de su archivo. Nace con un
 - **En la tarea:** fecha y hora, qué se hizo, decisiones, archivos, siguiente paso y bloqueos.
 - **En la bitácora del día:** una línea «WAY-3 · título — Avanzamos en…» que enlaza a esa entrada. El trabajo menor sin tarea (por ejemplo, revisar el repositorio) va solo a la bitácora.
 - **En la web:** desde la bitácora llegas a la entrada concreta del historial, y desde cada entrada al día de la bitácora en que se escribió.
-- **Para Claude:** al empezar la sesión recibe el último avance de hasta dos tareas en curso. Bajo demanda, `wf_history` da el índice del historial de una tarea, una entrada completa o la línea temporal de los últimos días, y `wf_search` busca texto literal en tareas, historiales y bitácora.
+- **Para Claude:** al empezar la sesión recibe el último avance de hasta dos tareas en curso. Bajo demanda, `wf_history` da el índice del historial de una tarea, una entrada completa o la línea temporal de los últimos días, y `wf_search` busca texto literal en errores, tareas, historiales y bitácora.
 
 Reglas del historial:
 
@@ -58,6 +58,18 @@ Reglas del historial:
 - Tiene su propio límite de 100 000 caracteres por tarea. Avisa al pasar del 80 % y, al llegar al límite, rechaza la entrada con un mensaje claro.
 - Lo que Claude lee del historial se trata como dato no confiable, igual que las descripciones.
 - Las tareas creadas antes de esta versión no se migran: muestran el historial vacío hasta su primer avance.
+
+### Registro de errores
+
+Cuando algo falla (compilación, pruebas, análisis, ejecución o un comportamiento inesperado), Claude lo registra con `wf_error`, ligado a la tarea en la que trabaja. Es el equivalente, dentro de Wayfinder, del `ERRORES.md` que piden las instrucciones base.
+
+- **Un archivo por error:** `projects/<slug>/errors/ERR-n-<título>.md`, con contexto, reproducción, salida observada, causa (hipótesis o confirmada), solución, validación, resultado y archivos. Estado abierto o resuelto. El prefijo `ERR` está reservado: ningún proyecto nuevo puede usarlo.
+- **Acciones:** `create` (necesita la tarea, que debe existir, y el contexto), `update` (causa, solución, validación, resultado y archivos; también reabrir con una nota), `note` (una recurrencia o una corrección) y `resolve` (exige solución y validación). El contexto, la reproducción y la salida no se cambian: se corrigen con una nota.
+- **Antes de investigar:** `wf_search` muestra primero hasta 5 errores, y al crear uno Claude ve los posibles duplicados abiertos. Si es el mismo fallo, añade una nota en lugar de crear otro.
+- **Para Claude:** `wf_get ERR-n` da el error completo y `wf_get` de una tarea lista sus errores. Al empezar la sesión recibe hasta 5 errores abiertos (solo ID, tarea y título), si caben.
+- **En la web:** pestaña «Errores» con abiertos y resueltos, una página por error y la sección «Errores (n)» en cada tarea. Solo lectura.
+- **Secretos:** un campo que parece contener un secreto se rechaza y no se guarda nada. El detector es heurístico y no reconoce datos personales (por ejemplo, carpetas de usuario o correos): resume la salida en vez de pegarla entera.
+- El texto de los errores se trata como dato no confiable, igual que el de las tareas.
 
 ### Aprobar ideas desde el chat
 

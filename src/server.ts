@@ -8,7 +8,8 @@ import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { isCreationEntry, parseEntries } from './store/history.ts';
 import { modifiedOutside } from './store/git.ts';
-import { isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
+import { ERROR_FIELDS, errorsForTask, listErrors, readError, unescapeField, type ErrorRecord } from './store/error-records.ts';
+import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
 import { findSecrets } from './store/secrets.ts';
 import { createTask, listTasks, readTask, setStatus, type Task, type WriteResult } from './store/tasks.ts';
@@ -70,7 +71,11 @@ const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const MAX_JSON = 256 * 1024;
 /** Store errors caused by the current state of the task rather than by the request. */
 const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition']);
-const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound']);
+const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound', 'store.errorNotFound']);
+
+function errorMeta(error: ErrorRecord) {
+  return { id: error.id, title: error.title, status: error.status, task: error.task, created: error.created, updated: error.updated };
+}
 
 function taskMeta(home: string, task: Task) {
   return {
@@ -172,7 +177,31 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       const history = parseEntries(task.history).map((e) =>
         isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) },
       );
-      return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history });
+      const errors = errorsForTask(home, slug, task.id).map((e) => ({ id: e.id, title: e.title, status: e.status }));
+      return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history, errors });
+    }
+    if (parts[2] === 'errors' && parts.length === 3) {
+      const { errors, unreadable } = listErrors(home, slug);
+      return json(res, 200, {
+        errors: errors.map(errorMeta),
+        unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) })),
+      });
+    }
+    if (parts[2] === 'errors' && parts.length === 4) {
+      if (!ERROR_ID_RE.test(parts[3])) return notFound(res);
+      const error = readError(home, slug, parts[3]);
+      let taskTitle: string | null = null;
+      try {
+        taskTitle = readTask(home, slug, error.task).title;
+      } catch {
+        // The page shows the ID without a link when the task no longer exists.
+      }
+      const fields = ERROR_FIELDS.map(([key]) =>
+        // The observed output is shown as plain text, exactly as written.
+        key === 'output' ? { key, text: unescapeField(error.fields[key]) } : { key, html: error.fields[key] ? md.render(error.fields[key]) : '' },
+      );
+      const history = parseEntries(error.history).map((e) => ({ n: e.n, date: e.date, time: e.time, html: md.render(e.text) }));
+      return json(res, 200, { ...errorMeta(error), taskTitle, causeKind: error.causeKind, files: error.files, fields, history });
     }
     if (parts[2] === 'log' && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), 'log');

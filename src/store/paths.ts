@@ -6,6 +6,9 @@ import { WayfinderError } from './errors.ts';
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const ID_RE = /^[A-Z]{2,6}-[1-9]\d{0,8}$/;
 export const ID_PREFIX_RE = /^[A-Z]{2,6}$/;
+/** Error records use their own IDs; ERR is reserved so no project can produce the same ones. */
+export const ERROR_ID_PREFIX = 'ERR';
+export const ERROR_ID_RE = /^ERR-[1-9]\d{0,8}$/;
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 
 export function getHome(env: NodeJS.ProcessEnv = process.env): string {
@@ -23,6 +26,10 @@ export function assertSlug(slug: string): void {
 
 export function assertId(id: string): void {
   if (!ID_RE.test(id)) throw new WayfinderError('store.invalidId', { value: id });
+}
+
+export function assertErrorId(id: string): void {
+  if (!ERROR_ID_RE.test(id)) throw new WayfinderError('store.invalidErrorId', { value: id });
 }
 
 /** Turns a title into an ASCII file slug that always satisfies SLUG_RE. */
