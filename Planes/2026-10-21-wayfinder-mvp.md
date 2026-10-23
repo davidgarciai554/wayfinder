@@ -865,3 +865,19 @@ Los hooks obtienen `WAYFINDER_HOME` y el idioma de `CLAUDE_PLUGIN_OPTION_HOME` y
     - `npm test` 74/74.
   - **No verificado:** el aviso de primer uso en una sesión real (tu carpeta ya estaba inicializada; cubierto por un test del hook) y la instalación desde GitHub o npm, que depende de publicar (incremento 8).
   - Queda en tu `~/.wayfinder` el proyecto de demostración `demo-wayfinder`, como acordamos.
+- **Incremento 8 (2026-10-23), distribución sin registro:**
+  - Tus decisiones:
+    - P2 = (c), la imagen se queda en build local;
+    - P1 sin publicar: no se publica nada en npm, solo se deja preparada la instalación;
+    - repositorio público en GitHub con push de `main`, con el autor de los commits reescrito al email noreply de GitHub antes del primer push.
+  - Cambios:
+    - `prepack` → `prepare`, porque npm no ejecuta `prepack` al instalar desde git y el paquete quedaba sin `dist/`; `prepare` también corre en `npm pack` y `npm publish`, y Docker lo omite con `--ignore-scripts`;
+    - README con la instalación del plugin, de la CLI (`npm install -g github:davidgarciai554/wayfinder`) y de la imagen (`docker build … https://github.com/davidgarciai554/wayfinder.git#main`) desde GitHub.
+  - Validación:
+    - instalación desde la URL git local antes del cambio: sin `dist/` (reproduce el defecto); después, con `dist/` y `wayfinder --version` → 0.1.0;
+    - desde GitHub, en carpetas temporales ya borradas:
+      - `npm install github:davidgarciai554/wayfinder`: `--version` y `--help` correctos;
+      - `claude plugin marketplace add davidgarciai554/wayfinder` e `install` con un `CLAUDE_CONFIG_DIR` aislado, sin tocar tu configuración; el bundle instalado responde;
+      - `docker build` desde la URL de GitHub: git 2.39.5 dentro, `--version` 0.1.0, y `serve` sin carpeta montada sale con código 1 y el mensaje;
+    - `check:dist` correcto.
+  - **No verificado:** publicación en npm o en un registro de imágenes (descartada por ahora).
