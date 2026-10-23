@@ -92,13 +92,15 @@ test.describe('web writes', () => {
     await expect(dialog).toBeHidden();
     const message = page.locator('#flash');
     await expect(message).toHaveText('Creada ESC-5 en «Por hacer».');
+    // The message must stay ≥ 5 s: count from when it appeared, not after the git checks below.
+    const shownAt = Date.now();
     const card = page.locator('#column-todo').getByRole('link', { name: 'Tarea creada desde la web' });
     await expect(card).toBeFocused();
     expect(commits()).toBe(before + 1);
     expect(lastSubject()).toBe('wf: create ESC-5');
     expect(read('ESC-5')).toMatch(/status: todo[\s\S]*priority: high[\s\S]*origin: user/);
-    await page.waitForTimeout(5200);
-    await expect(message).toHaveText('Creada ESC-5 en «Por hacer».');
+    await page.waitForTimeout(Math.max(0, shownAt + 5000 - Date.now()));
+    await expect(message).toHaveText('Creada ESC-5 en «Por hacer».', { timeout: 200 });
   });
 
   test('approve a proposal: it moves to To do without reloading, approvedVia web', async ({ page }) => {

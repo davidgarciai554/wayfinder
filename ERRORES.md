@@ -117,6 +117,16 @@
 - **Salida observada:** `e2e/write.spec.ts:101` → `expect(locator('#flash')).toHaveText('Creada ESC-5 en «Por hacer».')` recibe `""`.
 - **Causa (hipótesis muy probable, sin corregir):** carrera de tiempos en el propio test. El mensaje de éxito se borra a los 6 s (`flash` en `web/app.js`). El test, después de verlo, ejecuta tres llamadas síncronas a git y a disco (`commits()`, `lastSubject()`, `read()`) y luego espera 5,2 s más. Si esas llamadas tardan más de ~0,8 s, el mensaje ya no está.
 - **Preexistente, no introducido por WAY-4:** en un worktree limpio de `HEAD` (7f9f6ec, sin los cambios de WAY-4) el mismo test falló 4 de 4 veces. Con los cambios de WAY-4 falló 2 de 4 ejecuciones.
-- **Solución:** ninguna todavía; fuera del alcance de WAY-4. Opción mínima: medir el tiempo desde que aparece el mensaje y esperar solo hasta los 5 s.
-- **Archivos modificados:** ninguno.
-- **Validación:** pendiente.
+- **Solución (2026-10-23, después de WAY-4):** el test mide el tiempo desde que aparece el mensaje y comprueba que sigue visible a los 5 s exactos (el requisito de `DESIGN.md` es «≥ 5 s»), con una espera máxima de 200 ms en esa comprobación. Antes contaba después de las llamadas a git. No cambia el producto.
+- **Archivos modificados:** `e2e/write.spec.ts`.
+- **Validación:** `npx playwright test e2e/write.spec.ts` 5 de 5 en verde (antes fallaba 2 de 4); `npm run test:e2e` completo 37/37 dos veces seguidas.
+
+## 2026-10-23 · Regresión de WAY-4: al reabrir una tarea justo después de cerrarla, el modal se cierra solo
+
+- **Contexto:** al intentar estabilizar la suite e2e tras WAY-4 (commit fdaa554). Windows 11, Chromium headless.
+- **Reproducción:** `npx playwright test e2e/read.spec.ts -g "keyboard only: open a task" --repeat-each 10`. Abre la tarea con Enter, la cierra con el botón y vuelve a pulsar Enter enseguida.
+- **Salida observada:** 5 de 10 fallan en `read.spec.ts:77` (`dialog` no visible). En el commit anterior a WAY-4 (7f9f6ec) pasan 10 de 10.
+- **Causa confirmada (con un test de diagnóstico que registraba los eventos):** al cerrar, el router cierra el `<dialog>`, pero su evento `close` llega a veces después de que Enter haya vuelto a abrir la tarea (`hash board → foco en la tarjeta → hash task → close`). El respaldo de ese evento (`leaveTask`) veía la ruta de tarea y navegaba atrás, cerrando el modal recién abierto. La carrera existía en el diseño; los cambios de WAY-4 en el render alteraron los tiempos y la hicieron frecuente.
+- **Solución:** `hideTask` marca los cierres hechos por el router (`closedByRouter`) y el respaldo `onTaskDialogClose` ignora el evento `close` que corresponde a esos cierres; solo navega cuando el diálogo lo ha cerrado el navegador por su cuenta. A diferencia del intento anterior (`closingByRoute`), la marca se consume en el propio evento, no de forma síncrona.
+- **Archivos modificados:** `web/app.js`, `plugin/dist/web/app.js`.
+- **Validación:** el mismo test con `--repeat-each 20`: 20/20. `npm run test:e2e` completo 37/37 dos veces seguidas; `npm test` 116/116; `npm run check:dist` en verde.

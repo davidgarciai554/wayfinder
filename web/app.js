@@ -457,6 +457,7 @@ async function renderBoard() {
 // The URL stays #/<slug>/task/<ID>[/<n>]; closing goes back where the person came from.
 let taskFromApp = false; // opened by navigating inside the app (history.back() returns there)
 let leaving = false; // a navigation away from the task is under way: do not start another
+let closedByRouter = false; // the router closed the dialog: its late "close" event is not a request to leave
 let taskClosed = null; // ID of the task just closed (Esc or the button), to focus the link that opened it
 let errorOpenedFrom = null; // { task, error }: Back from that error to that task focuses the error link
 
@@ -543,7 +544,19 @@ async function showTask(firstPaint) {
 }
 
 function hideTask() {
-  if ($('task-dialog').open) $('task-dialog').close();
+  if (!$('task-dialog').open) return;
+  // Its "close" event may arrive after the task was opened again: it must not navigate then.
+  closedByRouter = true;
+  $('task-dialog').close();
+}
+
+/** Fallback for a dialog closed by the browser itself; closes made by the router are ignored. */
+function onTaskDialogClose() {
+  if (closedByRouter) {
+    closedByRouter = false;
+    return;
+  }
+  leaveTask();
 }
 
 /**
@@ -921,7 +934,7 @@ async function start() {
     e.preventDefault(); // Esc: navigate instead, so the URL and the dialog never disagree
     leaveTask();
   });
-  $('task-dialog').addEventListener('close', leaveTask);
+  $('task-dialog').addEventListener('close', onTaskDialogClose);
   for (const dialog of document.querySelectorAll('dialog:not(#task-dialog)')) {
     dialog.addEventListener('close', () => {
       // Restore focus unless the action that closed the dialog moves it itself.
