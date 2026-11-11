@@ -17,6 +17,9 @@ export interface ChatApproval {
 }
 
 const squash = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+/** The whole ID, in any case: "way-5" names WAY-5, "WAY-50" does not. */
+const quoteNamesId = (quote: string, id: string) =>
+  new RegExp(`(?<![\\p{L}\\p{N}])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'iu').test(quote);
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
@@ -35,7 +38,7 @@ export function approveByChat(
 ): { task: Task; warnings: Warning[]; riskAcknowledged: boolean } {
   const clock = options.clock ?? systemClock;
   const quote = input.userQuote.replace(/\s+/g, ' ').trim();
-  if (quote === '' || quote.length > MAX_QUOTE || !quote.includes(id)) {
+  if (quote === '' || quote.length > MAX_QUOTE || !quoteNamesId(quote, id)) {
     throw new WayfinderError('chat.invalidQuote', { id, max: MAX_QUOTE });
   }
   assertNoSecrets(quote);

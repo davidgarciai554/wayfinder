@@ -130,3 +130,14 @@
 - **Solución:** `hideTask` marca los cierres hechos por el router (`closedByRouter`) y el respaldo `onTaskDialogClose` ignora el evento `close` que corresponde a esos cierres; solo navega cuando el diálogo lo ha cerrado el navegador por su cuenta. A diferencia del intento anterior (`closingByRoute`), la marca se consume en el propio evento, no de forma síncrona.
 - **Archivos modificados:** `web/app.js`, `plugin/dist/web/app.js`.
 - **Validación:** el mismo test con `--repeat-each 20`: 20/20. `npm run test:e2e` completo 37/37 dos veces seguidas; `npm test` 116/116; `npm run check:dist` en verde.
+
+## 2026-11-11 · La aprobación por chat rechaza «apruebo way-5»: ID en minúsculas y verbo no reconocido
+
+- **Contexto:** aprobación de WAY-5 desde el chat con el plugin instalado. Windows 11.
+- **Reproducción:** escribir «apruebo way-5», llamar a `wf_review` y después a `wf_set_status` con `status: "todo"`, `user_requested: true` y la frase literal en `user_quote`.
+- **Salida observada:** `chat.invalidQuote` («La cita de la petición debe contener WAY-5…»).
+- **Causa confirmada:** `approveByChat` comprobaba la cita con `quote.includes(id)`, que distingue mayúsculas y además aceptaba «WAY-50» como si nombrara WAY-5. `extractOrders` (hook `UserPromptSubmit`) buscaba el ID con una expresión regular que también distinguía mayúsculas, y «apruebo» no estaba entre los verbos de aprobación, así que la orden tampoco se habría registrado.
+- **Solución:** `extractOrders` busca el ID sin distinguir mayúsculas y lo guarda en forma canónica (`PREFIJO-N`) y reconoce «apruebo». `approveByChat` exige el ID completo en cualquier combinación de mayúsculas y minúsculas. Las protecciones de negación, pregunta, código y citas no cambian.
+- **Archivos modificados:** `src/store/mentions.ts`, `src/store/approve.ts`, `test/chat.test.ts`, `plugin/dist/wayfinder.mjs`.
+- **Validación:** `npm run typecheck` sin errores; `node --test test/chat.test.ts` 11/11 con casos nuevos («apruebo wf-12», «Aprueba Wf-12», cita «haz WF-10» rechazada para WF-1, aprobación completa en minúsculas); `npm test` 117/117; `npm run check:dist` coincide con un build limpio.
+- **Resultado:** corregido en el repositorio. El plugin instalado mantiene la versión anterior hasta que se actualice. Registro en Wayfinder vinculado a WAY-5.

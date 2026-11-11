@@ -42599,6 +42599,7 @@ var FILE = "chat-mentions.json";
 var ORDER_TTL_MS = 15 * 60 * 1e3;
 var APPROVAL_VERBS = [
   "aprueba",
+  "apruebo",
   "apru\xE9bala",
   "apruebala",
   "aprobar",
@@ -42617,7 +42618,7 @@ var WINDOW = 3;
 function extractOrders(prompt, idPrefix) {
   const text2 = prompt.normalize("NFKC").replace(/[​-‏‪-‮⁠-⁤﻿]/g, "").replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ").split("\n").filter((line) => !line.trimStart().startsWith(">")).join("\n");
   const found = /* @__PURE__ */ new Set();
-  const idRe = new RegExp(`\\b(${idPrefix}-[1-9]\\d{0,8})\\b`, "g");
+  const idRe = new RegExp(`\\b${idPrefix}-([1-9]\\d{0,8})\\b`, "gi");
   for (const sentence of text2.split(/(?<=[.!?¡¿\n])/)) {
     if (/[¿?]/.test(sentence)) continue;
     for (const match of sentence.matchAll(idRe)) {
@@ -42625,7 +42626,7 @@ function extractOrders(prompt, idPrefix) {
       const words = before.split(/[^\p{L}'’]+/u).filter(Boolean).slice(-WINDOW);
       const joined = words.join(" ");
       if (NEGATIONS.some((n) => n.includes(" ") ? joined.includes(n) : words.includes(n))) continue;
-      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(match[1]);
+      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(`${idPrefix}-${match[1]}`);
     }
   }
   return [...found];
@@ -43062,11 +43063,12 @@ function consumeReviewUnlocked(home, slug, id) {
 // src/store/approve.ts
 var MAX_QUOTE = 500;
 var squash = (s) => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+var quoteNamesId = (quote, id) => new RegExp(`(?<![\\p{L}\\p{N}])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "iu").test(quote);
 var truncate = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
 function approveByChat(home, slug, id, input2, options = {}) {
   const clock = options.clock ?? systemClock;
   const quote = input2.userQuote.replace(/\s+/g, " ").trim();
-  if (quote === "" || quote.length > MAX_QUOTE || !quote.includes(id)) {
+  if (quote === "" || quote.length > MAX_QUOTE || !quoteNamesId(quote, id)) {
     throw new WayfinderError("chat.invalidQuote", { id, max: MAX_QUOTE });
   }
   assertNoSecrets(quote);

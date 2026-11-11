@@ -8,7 +8,7 @@ export const ORDER_TTL_MS = 15 * 60 * 1000;
 type Mentions = Record<string, { ts: number; ids: string[] }>;
 
 const APPROVAL_VERBS = [
-  'aprueba', 'apruébala', 'apruebala', 'aprobar', 'haz', 'hazla', 'empieza', 'empiézala', 'empiezala', 'arranca',
+  'aprueba', 'apruebo', 'apruébala', 'apruebala', 'aprobar', 'haz', 'hazla', 'empieza', 'empiézala', 'empiezala', 'arranca',
   'approve', 'do', 'start',
 ];
 const NEGATIONS = ['no', 'nunca', 'ni', 'sin', "don't", 'dont', 'do not', 'never', 'not'];
@@ -29,7 +29,8 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
     .filter((line) => !line.trimStart().startsWith('>'))
     .join('\n');
   const found = new Set<string>();
-  const idRe = new RegExp(`\\b(${idPrefix}-[1-9]\\d{0,8})\\b`, 'g');
+  // The ID is matched case-insensitively ("aprueba way-5") and stored in its canonical form.
+  const idRe = new RegExp(`\\b${idPrefix}-([1-9]\\d{0,8})\\b`, 'gi');
   for (const sentence of text.split(/(?<=[.!?¡¿\n])/)) {
     if (/[¿?]/.test(sentence)) continue;
     for (const match of sentence.matchAll(idRe)) {
@@ -37,7 +38,7 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
       const words = before.split(/[^\p{L}'’]+/u).filter(Boolean).slice(-WINDOW);
       const joined = words.join(' ');
       if (NEGATIONS.some((n) => (n.includes(' ') ? joined.includes(n) : words.includes(n)))) continue;
-      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(match[1]);
+      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(`${idPrefix}-${match[1]}`);
     }
   }
   return [...found];

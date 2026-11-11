@@ -12,7 +12,7 @@ import { commitCount, gitOut, makeHome, makeProject, sha } from './helpers.ts';
 const isKey = (key: string) => (e: unknown) => e instanceof WayfinderError && e.key === key;
 
 test('explicit orders are recognised in Spanish and English', () => {
-  for (const prompt of ['aprueba WF-12', 'haz WF-12', 'empieza WF-12', 'approve WF-12', 'do WF-12', 'please start WF-12', 'apruébala WF-12', 'Vale, haz WF-12 cuando puedas.']) {
+  for (const prompt of ['aprueba WF-12', 'apruebo wf-12', 'Aprueba Wf-12', 'haz WF-12', 'empieza WF-12', 'approve WF-12', 'do WF-12', 'please start WF-12', 'apruébala WF-12', 'Vale, haz WF-12 cuando puedas.']) {
     assert.deepEqual(extractOrders(prompt, 'WF'), ['WF-12'], prompt);
   }
   assert.deepEqual(extractOrders('aprueba WF-1 y haz WF-2', 'WF').sort(), ['WF-1', 'WF-2']);
@@ -82,6 +82,7 @@ test('a clean approval needs an order, a fresh review and a quote that is not ta
   reviewTask(home, 'demo', id);
   reject('chat.invalidQuote', { userQuote: '', verdict: 'clean' });
   reject('chat.invalidQuote', { userQuote: 'hazlo', verdict: 'clean' });
+  reject('chat.invalidQuote', { userQuote: `haz ${id}0`, verdict: 'clean' });
   reject('chat.reasonsRequired', { userQuote: quote, verdict: 'suspicious' } as never);
 
   const { task, riskAcknowledged } = approveByChat(home, 'demo', id, { userQuote: quote, verdict: 'clean' });
@@ -97,6 +98,15 @@ test('a clean approval needs an order, a fresh review and a quote that is not ta
 
   // The order was consumed: a second approval attempt of another task with the same order fails.
   assert.throws(() => approveByChat(home, 'demo', id, { userQuote: quote, verdict: 'clean' }), isKey('store.invalidTransition'));
+});
+
+test('an order and a quote that name the ID in lowercase approve the task', (t) => {
+  const { home, id } = setup(t);
+  const prompt = `apruebo ${id.toLowerCase()}`;
+  recordOrders(home, 'demo', extractOrders(prompt, 'WF'), Date.now());
+  reviewTask(home, 'demo', id);
+  const { task } = approveByChat(home, 'demo', id, { userQuote: prompt, verdict: 'clean' });
+  assert.equal(task.status, 'todo');
 });
 
 test('an expired or consumed order is rejected', (t) => {
