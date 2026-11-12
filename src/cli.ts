@@ -4,10 +4,7 @@ import { assertInitialized, initHome } from './store/init.ts';
 import { getHome } from './store/paths.ts';
 import { runMcp } from './mcp.ts';
 import { HOOK_EVENTS, readStdin, runHook } from './hook.ts';
-import { DEFAULT_PORT, startServer } from './server.ts';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { DEFAULT_PORT, startServer, webDir } from './server.ts';
 
 // Replaced at build time by esbuild; the fallback covers running the sources directly.
 declare const __WAYFINDER_VERSION__: string | undefined;
@@ -93,11 +90,6 @@ function option(args: string[], name: string): string | undefined {
   return i === -1 ? undefined : args[i + 1];
 }
 
-function webDir(): string {
-  // Bundle: dist/wayfinder.mjs → dist/web. Sources: src/cli.ts → web/.
-  const bundled = fileURLToPath(new URL('./web', import.meta.url));
-  return existsSync(join(bundled, 'index.html')) ? bundled : fileURLToPath(new URL('../web', import.meta.url));
-}
 
 async function runServe(args: string[], lang: Lang, io: Io, env: NodeJS.ProcessEnv): Promise<number> {
   const home = getHome(env);

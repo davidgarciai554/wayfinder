@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,7 +10,7 @@ const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
 function run(args: string[], env: Record<string, string> = {}) {
   const { WAYFINDER_LANG: _lang, WAYFINDER_HOME: _home, ...base } = process.env;
-  return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env: { ...base, ...env } });
+  return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env: { ...base, ...env }, timeout: 30_000 });
 }
 
 test('--help lists the subcommands in Spanish by default', () => {
@@ -34,15 +34,19 @@ test('an unknown subcommand exits with a non-zero code and a message on stderr',
   assert.match(r.stderr, /Comando desconocido: «nope»/);
 });
 
-test('serve and mcp refuse a data folder that init has not prepared (empty Docker volume)', () => {
+test('serve refuses a data folder that init has not prepared (empty Docker volume); mcp starts without one', () => {
   const empty = mkdtempSync(join(tmpdir(), 'wf-empty-'));
   try {
-    for (const command of ['serve', 'mcp']) {
-      const r = run([command], { WAYFINDER_HOME: empty });
-      assert.equal(r.status, 1, command);
-      assert.match(r.stderr, /No hay carpeta de datos .*wayfinder init/, command);
-      assert.equal(r.stdout, '', `${command}: stdout stays clean (it carries JSON-RPC for mcp)`);
-    }
+    const serve = run(['serve'], { WAYFINDER_HOME: empty });
+    assert.equal(serve.status, 1);
+    assert.match(serve.stderr, /No hay carpeta de datos .*wayfinder init/);
+    assert.equal(serve.stdout, '');
+    // The MCP must be available on a fresh install so the first project can be registered; each
+    // tool checks the folder itself. With stdin closed it ends cleanly and creates nothing.
+    const mcp = run(['mcp'], { WAYFINDER_HOME: join(empty, 'home') });
+    assert.equal(mcp.status, 0, mcp.stderr);
+    assert.equal(mcp.stdout, '', 'stdout stays clean: it carries JSON-RPC');
+    assert.equal(existsSync(join(empty, 'home')), false);
   } finally {
     rmSync(empty, { recursive: true, force: true });
   }

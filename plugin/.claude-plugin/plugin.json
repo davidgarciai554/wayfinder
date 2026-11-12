@@ -19,6 +19,12 @@
       "title": "Screenshots folder",
       "description": "Optional folder from which screenshots may be attached, besides the current repository."
     },
+    "webHost": {
+      "type": "string",
+      "title": "Web address for other devices",
+      "description": "Optional. This PC's IP on your network or on Tailscale (a literal IP such as 192.168.1.20), used when you ask Claude \"abre Wayfinder\". Empty or not a valid IP: the web is only available on this PC.",
+      "default": ""
+    },
     "language": {
       "type": "string",
       "title": "Language / Idioma",

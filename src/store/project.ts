@@ -61,25 +61,32 @@ export interface NewProject {
 }
 
 export function createProject(home: string, input: NewProject): { project: Project; warnings: Warning[] } {
+  assertNewProject(input);
+  return withLock(home, () => createProjectUnlocked(home, input));
+}
+
+export function assertNewProject(input: NewProject): void {
   assertSlug(input.slug);
   if (!ID_PREFIX_RE.test(input.idPrefix)) throw new WayfinderError('store.invalidIdPrefix', { value: input.idPrefix });
   if (input.idPrefix === ERROR_ID_PREFIX) throw new WayfinderError('store.reservedIdPrefix', { value: input.idPrefix });
   if (!input.repo && !input.localPath) throw new WayfinderError('store.projectNeedsLocation', {});
-  return withLock(home, () => {
-    const dir = projectDir(home, input.slug);
-    if (existsSync(join(dir, 'PROJECT.md'))) throw new WayfinderError('store.projectExists', { slug: input.slug });
-    for (const other of listProjects(home)) {
-      if (other.idPrefix === input.idPrefix) throw new WayfinderError('store.idPrefixTaken', { value: input.idPrefix, slug: other.slug });
-      if (input.repo && other.repo === input.repo) throw new WayfinderError('store.repoTaken', { value: input.repo, slug: other.slug });
-    }
-    const data: Record<string, unknown> = { slug: input.slug, name: input.name };
-    if (input.repo) data.repo = input.repo;
-    if (input.localPath) data.localPath = input.localPath;
-    data.idPrefix = input.idPrefix;
-    data.stack = [];
-    for (const sub of ['tasks', 'log', 'assets']) mkdirSync(safeJoin(home, 'projects', input.slug, sub), { recursive: true });
-    writeFileAtomic(join(dir, 'PROJECT.md'), serializeFrontmatter(data, input.body ?? ''));
-    const warnings = commitPaths(home, [`projects/${input.slug}/PROJECT.md`], `wf: register ${input.slug}`);
-    return { project: readProject(home, input.slug)!, warnings };
-  });
+}
+
+/** Must run inside the store lock, after assertNewProject. */
+export function createProjectUnlocked(home: string, input: NewProject): { project: Project; warnings: Warning[] } {
+  const dir = projectDir(home, input.slug);
+  if (existsSync(join(dir, 'PROJECT.md'))) throw new WayfinderError('store.projectExists', { slug: input.slug });
+  for (const other of listProjects(home)) {
+    if (other.idPrefix === input.idPrefix) throw new WayfinderError('store.idPrefixTaken', { value: input.idPrefix, slug: other.slug });
+    if (input.repo && other.repo === input.repo) throw new WayfinderError('store.repoTaken', { value: input.repo, slug: other.slug });
+  }
+  const data: Record<string, unknown> = { slug: input.slug, name: input.name };
+  if (input.repo) data.repo = input.repo;
+  if (input.localPath) data.localPath = input.localPath;
+  data.idPrefix = input.idPrefix;
+  data.stack = [];
+  for (const sub of ['tasks', 'log', 'assets']) mkdirSync(safeJoin(home, 'projects', input.slug, sub), { recursive: true });
+  writeFileAtomic(join(dir, 'PROJECT.md'), serializeFrontmatter(data, input.body ?? ''));
+  const warnings = commitPaths(home, [`projects/${input.slug}/PROJECT.md`], `wf: register ${input.slug}`);
+  return { project: readProject(home, input.slug)!, warnings };
 }

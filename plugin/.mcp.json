@@ -6,7 +6,8 @@
       "env": {
         "WAYFINDER_HOME": "${user_config.home}",
         "WAYFINDER_CAPTURES_DIR": "${user_config.capturesDir}",
-        "WAYFINDER_LANG": "${user_config.language}"
+        "WAYFINDER_LANG": "${user_config.language}",
+        "WAYFINDER_WEB_HOST": "${user_config.webHost}"
       }
     }
   }

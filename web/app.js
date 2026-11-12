@@ -1,7 +1,9 @@
 // Wayfinder web board. Design: docs/design/DESIGN.md.
 // Everything that comes from data is written with textContent; only Markdown rendered and
 // sanitised by the server (markdown-it, html: false) is inserted as HTML.
-// Writes (create, approve, discard) need the per-start key cookie set by the link `serve` prints.
+// Writes (create, approve, discard) need the per-start key cookie, set by opening the link with
+// the key (on this PC the page offers it; `serve` also prints it). Outside this PC every request
+// needs that cookie.
 
 const DONE_LIMIT = 10;
 const LOG_PAGE = 7;
@@ -17,6 +19,8 @@ let refreshTimer;
 let pendingChanges = 0;
 let returnFocusTo = null;
 let canWrite = false;
+/** Links with the key, only when this page is served on this PC (loopback): { local, remote }. */
+let share = null;
 let lastOwnWrite = 0;
 let flashTimer;
 
@@ -58,9 +62,23 @@ function writePref(key, value) {
 }
 
 async function api(path) {
-  const res = await fetch(path, { headers: { Accept: 'application/json' } });
+  let res;
+  try {
+    res = await fetch(path, { headers: { Accept: 'application/json' } });
+  } catch {
+    // No answer at all: the PC is off, on another network, or the Claude session closed the web.
+    const error = new Error(t('web.disconnected'));
+    error.status = 0;
+    throw error;
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // 401: the key of this page is missing, expired or wrong (another device, a new session).
+    // Reloading shows the server's access page, which says which one and what to do.
+    if (res.status === 401 && body.reason) {
+      location.reload();
+      return new Promise(() => {});
+    }
     const error = new Error(body.error || t('web.error'));
     error.status = res.status;
     throw error;
@@ -442,7 +460,11 @@ async function renderBoard() {
         canWrite ? el('button', { type: 'button', class: 'button button-primary', 'data-focus': 'new-task', text: t('web.newTask'), onclick: (e) => openCreate(e.currentTarget) }) : null,
       ),
     ),
-    canWrite ? null : el('p', { class: 'info', text: t('web.readOnly') }),
+    canWrite ? null : el('p', { class: 'info' },
+      t('web.readOnly'),
+      // On this PC the page can get its own key: one click enables writing here.
+      share?.local ? [' ', el('a', { href: share.local, 'data-focus': 'enable-write', text: t('web.enableWrite') })] : null,
+    ),
     unreadable,
     data.tasks.length === 0 ? el('p', { class: 'empty', text: t('web.emptyBoard') }) : null,
     jump,
@@ -899,7 +921,47 @@ function connect() {
       $('banner').hidden = false;
       setLive(t('web.offline'), 'offline');
     }
+    // While the server is down the browser keeps retrying by itself. A server that answers without
+    // the stream (401 after a new session, with another key) closes it for good: ask the API, which
+    // reloads into the access page on 401, and otherwise reconnect shortly.
+    if (source.readyState === EventSource.CLOSED) {
+      setTimeout(() => {
+        api('/api/session').then(connect, connect);
+      }, 3000);
+    }
   });
+}
+
+// ---------- open on another device ----------
+/** The panel exists only on this PC: elsewhere /api/share answers 404 and the panel stays hidden. */
+async function setupShare() {
+  try {
+    share = await api('/api/share');
+  } catch {
+    share = null;
+    return;
+  }
+  $('share').hidden = false;
+  if (!share.remote) {
+    $('share-text').textContent = t('web.share.noRemote');
+    return;
+  }
+  $('share-text').textContent = t('web.share.text');
+  $('share-note').textContent = t('web.share.note');
+  $('share-link').value = share.remote;
+  $('share-row').hidden = false;
+  $('share-copy').addEventListener('click', async () => {
+    const status = $('share-status');
+    try {
+      await navigator.clipboard.writeText(share.remote);
+      status.textContent = t('web.share.copied');
+    } catch {
+      // No clipboard access: leave the link selected so it can be copied by hand.
+      $('share-link').select();
+      status.textContent = t('web.share.copyFailed');
+    }
+  });
+  $('share-link').addEventListener('focus', (e) => e.target.select());
 }
 
 // ---------- start ----------
@@ -948,7 +1010,15 @@ async function start() {
   } catch {
     canWrite = false;
   }
+  await setupShare();
   window.addEventListener('hashchange', () => render());
+  // Phones suspend background pages and may drop the live connection: on return, reconnect if it
+  // closed and refresh the data, without moving the focus.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (!source || source.readyState === EventSource.CLOSED) connect();
+    refresh({ announce: false });
+  });
   try {
     await loadProjects();
   } catch (error) {

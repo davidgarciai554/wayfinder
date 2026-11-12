@@ -29,6 +29,19 @@
     <span data-i18n="web.disconnected">Sin conexión con Wayfinder; los datos pueden estar desactualizados.</span>
     <button type="button" class="button" id="banner-retry" data-i18n="web.retry">Reintentar</button>
   </div>
+  <details class="share" id="share" hidden>
+    <summary data-i18n="web.share.title">Abrir en otro dispositivo</summary>
+    <div class="share-body">
+      <p id="share-text"></p>
+      <div class="share-row" id="share-row" hidden>
+        <label class="visually-hidden" for="share-link" data-i18n="web.share.label">Enlace para otros dispositivos</label>
+        <input id="share-link" type="text" readonly>
+        <button type="button" class="button" id="share-copy" data-i18n="web.share.copy">Copiar enlace</button>
+      </div>
+      <p class="hint" id="share-note"></p>
+      <p class="hint" id="share-status" role="status" aria-live="polite"></p>
+    </div>
+  </details>
   <div id="flash" class="flash" role="status" aria-live="polite"></div>
   <main id="main" tabindex="-1">
     <p class="status-text" role="status" data-i18n="web.loading">Cargando…</p>

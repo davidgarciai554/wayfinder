@@ -2,12 +2,13 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
 import { listErrors, type ErrorRecord } from './store/error-records.ts';
-import { isInitialized } from './store/init.ts';
+import { initHome, isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
-import { extractOrders, recordOrders } from './store/mentions.ts';
+import { extractOrders, extractRegisterOrder, extractWebOrder, recordOrders, recordRegisterOrder, recordWebOrder } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
-import { matchProject, findRepoRoot } from './store/resolve.ts';
+import { isDeclined } from './store/register.ts';
+import { matchProject, findRepoRoot, rootKey } from './store/resolve.ts';
 import { listTasks, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
@@ -59,11 +60,59 @@ export function hookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 
+function consumerDir(input: Record<string, unknown>, env: NodeJS.ProcessEnv): string {
+  return env.CLAUDE_PROJECT_DIR?.trim() || (typeof input.cwd === 'string' ? input.cwd : '');
+}
+
 function projectFor(home: string, input: Record<string, unknown>, env: NodeJS.ProcessEnv) {
-  const dir = env.CLAUDE_PROJECT_DIR?.trim() || (typeof input.cwd === 'string' ? input.cwd : '');
+  const dir = consumerDir(input, env);
   if (!dir) return null;
   const root = findRepoRoot(dir) ?? resolve(dir);
   return matchProject(home, root);
+}
+
+/**
+ * Ask only in a git repository with an identifiable root that the person has not declined. With no
+ * data folder yet (fresh install) nothing can be declined, so it asks; a folder outside git is silent.
+ */
+function shouldAskRegistration(home: string, input: Record<string, unknown>, env: NodeJS.ProcessEnv): boolean {
+  const dir = consumerDir(input, env);
+  const root = dir ? findRepoRoot(dir) : null;
+  if (!root) return false;
+  return !(isInitialized(home) && isDeclined(home, root));
+}
+
+/**
+ * In an unregistered repository, the person's own «registra este proyecto» is recorded as a
+ * register order for wf_project register. The data folder is created only then (the order lives in
+ * its `.state/`); a message without the order writes nothing, or clears an earlier order.
+ */
+function recordRegistration(home: string, lang: Lang, input: Record<string, unknown>, env: NodeJS.ProcessEnv, nowMs: number): void {
+  const root = consumerRoot(input, env);
+  if (!root) return;
+  const ordered = extractRegisterOrder(typeof input.prompt === 'string' ? input.prompt : '');
+  if (!ordered && !isInitialized(home)) return;
+  if (ordered) initHome(home, { lang });
+  recordRegisterOrder(home, rootKey(root), ordered, nowMs);
+}
+
+/**
+ * «abre Wayfinder», in any repository (registered or not): wf_web starts the board only with this
+ * order from the person's own message. Same storage rules as the register order.
+ */
+function recordWebOpening(home: string, lang: Lang, input: Record<string, unknown>, env: NodeJS.ProcessEnv, nowMs: number): void {
+  const root = consumerRoot(input, env);
+  if (!root) return;
+  const ordered = extractWebOrder(typeof input.prompt === 'string' ? input.prompt : '');
+  if (!ordered && !isInitialized(home)) return;
+  if (ordered) initHome(home, { lang });
+  recordWebOrder(home, rootKey(root), ordered, nowMs);
+}
+
+/** Same root as wf_project and wf_web: the git root, or the folder itself outside git. */
+function consumerRoot(input: Record<string, unknown>, env: NodeJS.ProcessEnv): string | null {
+  const dir = consumerDir(input, env);
+  return dir ? (findRepoRoot(dir) ?? resolve(dir)) : null;
 }
 
 /** Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection). */
@@ -159,6 +208,19 @@ function denyReason(home: string, input: Record<string, unknown>): string | null
   return null;
 }
 
+/**
+ * SEC-1: a command that asks the local web for the links with the key (`/api/share`) or forges the
+ * browser headers that endpoint requires. Heuristic, like denyReason: it raises the bar against an
+ * agent steered by untrusted text; it cannot stop one determined to obfuscate the command.
+ */
+function asksForWebKey(input: Record<string, unknown>): boolean {
+  const tool = String(input.tool_name ?? '');
+  if (tool !== 'Bash' && tool !== 'PowerShell') return false;
+  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  const cmd = (typeof toolInput.command === 'string' ? toolInput.command : '').replaceAll('\\', '/').toLowerCase();
+  return cmd.includes('/api/share') || cmd.includes('sec-fetch-');
+}
+
 /** Hooks never break the session: any failure exits 0 without output. */
 export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = process.env, now: () => number = Date.now): number {
   try {
@@ -174,31 +236,32 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
     }
 
     if (event === 'pre-tool') {
-      const target = denyReason(home, input);
-      if (target !== null) {
+      const reason = denyReason(home, input) !== null ? 'hook.preTool.denied' : asksForWebKey(input) ? 'hook.preTool.deniedKey' : null;
+      if (reason) {
         io.out(JSON.stringify({
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'deny',
-            permissionDecisionReason: t(lang, 'hook.preTool.denied'),
+            permissionDecisionReason: t(lang, reason),
           },
         }));
       }
       return 0;
     }
 
-    // First run after installing the plugin: the MCP refuses an uninitialised folder, so say how
-    // to create it (to the person and to Claude) instead of failing silently.
-    if (event === 'session-start' && !isInitialized(home)) {
-      const root = env.CLAUDE_PLUGIN_ROOT?.trim();
-      const command = root ? `node "${join(root, 'dist', 'wayfinder.mjs')}" init` : 'wayfinder init';
-      const message = t(lang, 'hook.session.notInitialized', { path: home, command });
-      io.out(JSON.stringify({ systemMessage: message, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: message } }));
+    const project = projectFor(home, input, env);
+    if (!project) {
+      if (event === 'session-start' && shouldAskRegistration(home, input, env)) {
+        // Fixed text: nothing from the repository (folder name, remote) reaches the context.
+        const ask = `${t(lang, 'hook.session.askRegister')}\nlanguage: ${lang}`;
+        io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: ask } }));
+      }
+      if (event === 'prompt') {
+        recordRegistration(home, lang, input, env, now());
+        recordWebOpening(home, lang, input, env, now());
+      }
       return 0;
     }
-
-    const project = projectFor(home, input, env);
-    if (!project) return 0;
 
     if (event === 'session-start') {
       const { tasks } = listTasks(home, project.slug);
@@ -215,6 +278,7 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
       const prompt = typeof input.prompt === 'string' ? input.prompt : '';
       // Every message replaces the previous orders, so only the latest message counts.
       recordOrders(home, project.slug, extractOrders(prompt, project.idPrefix), now());
+      recordWebOpening(home, lang, input, env, now());
       return 0;
     }
     if (event === 'stop') {

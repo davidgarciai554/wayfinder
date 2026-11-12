@@ -48,10 +48,13 @@ export function normalizeRemote(url: string): string {
   return [host.replace(/:\d+$/, '').toLowerCase(), ...rest].join('/').replace(/\.git\/?$/, '').replace(/\/+$/, '');
 }
 
-const samePath = (a: string, b: string) => {
-  const norm = (p: string) => resolve(p).replaceAll('\\', '/').replace(/\/+$/, '');
-  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
-};
+/** Comparable form of a folder path: absolute, forward slashes, no trailing slash, case-folded on Windows. */
+export function rootKey(path: string): string {
+  const norm = resolve(path).replaceAll('\\', '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? norm.toLowerCase() : norm;
+}
+
+const samePath = (a: string, b: string) => rootKey(a) === rootKey(b);
 
 export interface Resolved {
   project: Project;

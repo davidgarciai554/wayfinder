@@ -3,7 +3,8 @@ import { connect } from 'node:net';
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { extname, join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { dictionaries, t, translateReason, type Lang } from './i18n/index.ts';
+import { fileURLToPath } from 'node:url';
+import { dictionaries, t, translateReason, type Lang, type MessageKey } from './i18n/index.ts';
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { isCreationEntry, parseEntries } from './store/history.ts';
@@ -25,16 +26,26 @@ export interface ServeOptions {
   poll?: boolean;
   /** Folder with index.html, app.js and styles.css. */
   webDir: string;
+  /**
+   * A second address of this machine (LAN or VPN) that also serves the board, on the same port and
+   * with the same key. Used by `wf_web` ("abre Wayfinder") from the webHost option; never from the agent.
+   */
+  remoteHost?: string;
 }
 
 export interface RunningServer {
   url: string;
   /** `url` plus the per-start key; opening it enables writes in that browser. */
   writeUrl: string;
+  /** The link with the key for other devices, when `remoteHost` is set. */
+  remoteUrl: string | null;
   port: number;
   token: string;
   close: () => Promise<void>;
 }
+
+/** Why a request has no valid key: none, a key of an earlier start (another `gen`), or a wrong one. */
+type KeyCheck = 'ok' | 'missing' | 'expired' | 'wrong';
 
 const CSP = [
   "default-src 'none'",
@@ -93,16 +104,38 @@ function taskMeta(home: string, task: Task) {
   };
 }
 
+/** The web files: bundle dist/wayfinder.mjs → dist/web; sources src/*.ts → web/. */
+export function webDir(): string {
+  const bundled = fileURLToPath(new URL('./web', import.meta.url));
+  return existsSync(join(bundled, 'index.html')) ? bundled : fileURLToPath(new URL('../web', import.meta.url));
+}
+
+/** IPv6 literals go in brackets inside a URL or a Host header. */
+const hostPart = (h: string) => (h.includes(':') ? `[${h}]` : h);
+
+/** The socket's own address, not the Host header (which the client chooses), says how it arrived. */
+function viaLoopback(req: IncomingMessage): boolean {
+  const address = req.socket.localAddress ?? '';
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
 export function startServer(options: ServeOptions): Promise<RunningServer> {
   const { home, lang, webDir } = options;
   const host = options.host ?? '127.0.0.1';
-  const token = randomBytes(24).toString('hex');
+  const remoteHost = options.remoteHost?.trim() || undefined;
+  // `<gen>.<secret>`: a new key on every start invalidates the previous one, and the public `gen`
+  // tells an old link (another start) from a wrong one without keeping any state.
+  const gen = randomBytes(3).toString('hex');
+  const token = `${gen}.${randomBytes(24).toString('hex')}`;
   const clients = new Set<ServerResponse>();
   let boundPort = 0;
+  let remoteUrl: string | null = null;
+  let localWriteUrl = '';
 
   const allowedHosts = () => {
     const ports = new Set([boundPort, options.publicPort].filter((p): p is number => typeof p === 'number' && p > 0));
-    const names = new Set(['127.0.0.1', 'localhost', '[::1]', ...(LOOPBACK.has(host) || host === '0.0.0.0' ? [] : [host])]);
+    const own = LOOPBACK.has(host) || host === '0.0.0.0' ? [] : [hostPart(host)];
+    const names = new Set(['127.0.0.1', 'localhost', '[::1]', ...own, ...(remoteHost ? [hostPart(remoteHost)] : [])]);
     const out = new Set<string>();
     for (const n of names) for (const p of ports) out.add(`${n}:${p}`.toLowerCase());
     return out;
@@ -123,7 +156,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   const notFound = (res: ServerResponse) => json(res, 404, { error: t(lang, 'web.notFound') });
 
   // Writes need the per-start key. Opening `/?k=<key>` (printed by `serve`) stores it in an
-  // HttpOnly, SameSite=Strict cookie; the name carries the port because cookies ignore ports.
+  // HttpOnly, SameSite=Lax cookie; the name carries the port because cookies ignore ports.
   const cookieName = () => `wayfinder_${options.publicPort ?? boundPort}`;
   const tokenBuffer = Buffer.from(token);
   const sameToken = (value: string | undefined) => {
@@ -138,11 +171,39 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     return undefined;
   };
   const canWrite = (req: IncomingMessage) => sameToken(cookieToken(req));
+  const checkKey = (value: string | undefined): KeyCheck => {
+    if (!value) return 'missing';
+    if (sameToken(value)) return 'ok';
+    const candidateGen = value.split('.')[0] ?? '';
+    return /^[0-9a-f]{6}$/.test(candidateGen) && candidateGen !== gen ? 'expired' : 'wrong';
+  };
+  const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+  /** Static page without JS: says why there is no access and what to do. */
+  const accessPage = (res: ServerResponse, reason: Exclude<KeyCheck, 'ok'>) => {
+    const title = escapeHtml(t(lang, 'web.access.title'));
+    const message = escapeHtml(t(lang, `web.access.${reason}` as MessageKey));
+    const html = `<!doctype html>\n<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><link rel="stylesheet" href="/styles.css"></head><body><main class="access"><h1>${title}</h1><p role="alert">${message}</p></main></body></html>\n`;
+    send(res, 401, html, 'text/html; charset=utf-8');
+  };
 
   const renderFor = (slug: string) => createRenderer(`/api/projects/${encodeURIComponent(slug)}/assets`);
 
   function handleApi(req: IncomingMessage, res: ServerResponse, parts: string[]): void {
     if (parts[0] === 'session' && parts.length === 1) return json(res, 200, { canWrite: canWrite(req) });
+    // The links with the key (write access on this PC, and access from other devices): only this
+    // PC (loopback) can read them. The agent gets just the plain local URL, so the key never goes
+    // through the conversation.
+    if (parts[0] === 'share' && parts.length === 1) {
+      if (!viaLoopback(req)) return notFound(res);
+      // SEC-1: only this page's own fetch gets the keys. Browsers add Sec-Fetch-* and pages cannot
+      // change them; a command-line client (an agent running curl) does not send them unless it
+      // forges them on purpose, and the PreToolUse hook denies commands that try. Best effort, not
+      // a boundary: anything on this PC can also read the data folder.
+      const fromPage =
+        req.headers['sec-fetch-site'] === 'same-origin' && req.headers['sec-fetch-mode'] === 'cors' && req.headers['sec-fetch-dest'] === 'empty';
+      if (!fromPage) return json(res, 403, { error: t(lang, 'web.shareBrowserOnly') });
+      return json(res, 200, { local: localWriteUrl, remote: remoteUrl });
+    }
     if (parts[0] === 'i18n' && parts.length === 1) {
       const messages = Object.fromEntries(Object.entries(dictionaries[lang]).filter(([k]) => k.startsWith('web.') || k.startsWith('status.')));
       return json(res, 200, { lang, messages });
@@ -255,12 +316,26 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (pathname.includes('\0') || pathname.includes('\\')) return notFound(res);
     if (req.method === 'POST') return handleWrite(req, res, pathname.split('/').filter(Boolean));
+    const page = pathname === '/' || pathname === '/index.html';
 
-    // `/?k=<key>`: remember the key in this browser and drop it from the address bar.
-    if ((pathname === '/' || pathname === '/index.html') && url.searchParams.has('k')) {
-      const headers: Record<string, string> = { Location: '/' };
-      if (sameToken(url.searchParams.get('k') ?? '')) headers['Set-Cookie'] = `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Strict`;
-      return send(res, 303, '', 'text/plain; charset=utf-8', headers);
+    // `/?k=<key>`: remember the key in this browser and drop it from the address bar. A key of an
+    // earlier start, or a wrong one, gets a page that says so instead of a silent redirect.
+    if (page && url.searchParams.has('k')) {
+      const check = checkKey(url.searchParams.get('k') ?? '');
+      if (check !== 'ok') return accessPage(res, check);
+      // Lax, not Strict: a link opened from another site (a chat, the PC's page) is a cross-site
+      // navigation, and Strict would drop the cookie on the redirect to `/`. Writes stay protected
+      // by the Origin check, the JSON-only body and the key itself.
+      return send(res, 303, '', 'text/plain; charset=utf-8', { Location: '/', 'Set-Cookie': `${cookieName()}=${token}; Path=/; HttpOnly; SameSite=Lax` });
+    }
+    // Outside loopback every route needs the key (reads included); only the stylesheet of the
+    // access page is public. Loopback keeps anonymous reads, as before.
+    if (!viaLoopback(req) && pathname !== '/styles.css') {
+      const check = checkKey(cookieToken(req));
+      if (check !== 'ok') {
+        if (page) return accessPage(res, check);
+        return json(res, 401, { error: t(lang, `web.access.${check}` as MessageKey), reason: check });
+      }
     }
 
     const file = STATIC[pathname];
@@ -407,6 +482,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
   }, 25_000);
 
   const server = createServer(handle);
+  const remote = remoteHost ? createServer(handle) : undefined;
   const port = options.port ?? DEFAULT_PORT;
   const stopWatching = () => {
     clearInterval(heartbeat);
@@ -414,46 +490,65 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     clearTimeout(debounce);
     watcher?.close();
   };
+  const closeServer = (s: ReturnType<typeof createServer>) =>
+    new Promise<void>((done) => {
+      if (!s.listening) return done();
+      s.close(() => done());
+      s.closeAllConnections();
+    });
   return new Promise((resolvePromise, reject) => {
     const failed = (error: unknown) => {
       stopWatching();
       server.close();
-      reject((error as NodeJS.ErrnoException)?.code === 'EADDRINUSE' ? new WayfinderError('serve.portInUse', { port }) : error);
+      remote?.close();
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === 'EADDRINUSE') return reject(new WayfinderError('serve.portInUse', { port }));
+      if (code === 'EADDRNOTAVAIL' && remoteHost) return reject(new WayfinderError('web.hostUnavailable', { host: remoteHost }));
+      reject(error);
     };
     server.once('error', failed);
+    remote?.once('error', failed);
     // Windows lets 127.0.0.1:<port> coexist with another app bound to 0.0.0.0:<port>, and the
-    // browser would then reach whichever answers. Refuse a port where something already listens.
-    portAnswers(port).then((busy) => {
-      if (busy) return failed(new WayfinderError('serve.portInUse', { port }));
+    // browser would then reach whichever answers. Refuse a port where something already listens,
+    // on loopback and on the second address.
+    Promise.all([portAnswers(port), remoteHost ? portAnswers(port, remoteHost) : Promise.resolve(false)]).then(([busy, busyRemote]) => {
+      if (busy || busyRemote) return failed(new WayfinderError('serve.portInUse', { port }));
       server.listen(port, host, onListening);
     }, failed);
     function onListening() {
       const address = server.address();
       boundPort = typeof address === 'object' && address ? address.port : 0;
-      const shownHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+      if (!remote || !remoteHost) return done();
+      remote.listen(boundPort, remoteHost, () => {
+        remoteUrl = `http://${hostPart(remoteHost)}:${boundPort}/?k=${token}`;
+        done();
+      });
+    }
+    function done() {
+      const shownHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : hostPart(host);
       const url = `http://${shownHost}:${options.publicPort ?? boundPort}/`;
+      localWriteUrl = `${url}?k=${token}`;
       resolvePromise({
         url,
         writeUrl: `${url}?k=${token}`,
+        remoteUrl,
         port: boundPort,
         token,
-        close: () =>
-          new Promise<void>((done) => {
-            stopWatching();
-            for (const c of clients) c.end();
-            server.close(() => done());
-            server.closeAllConnections();
-          }),
+        close: async () => {
+          stopWatching();
+          for (const c of clients) c.end();
+          await Promise.all([closeServer(server), ...(remote ? [closeServer(remote)] : [])]);
+        },
       });
     }
   });
 }
 
-/** True when something accepts connections on 127.0.0.1:<port>. Port 0 means "any free port". */
-function portAnswers(port: number): Promise<boolean> {
+/** True when something accepts connections on <address>:<port>. Port 0 means "any free port". */
+function portAnswers(port: number, address = '127.0.0.1'): Promise<boolean> {
   if (port === 0) return Promise.resolve(false);
   return new Promise((resolve) => {
-    const socket = connect({ host: '127.0.0.1', port });
+    const socket = connect({ host: address, port });
     const done = (busy: boolean) => {
       socket.destroy();
       resolve(busy);

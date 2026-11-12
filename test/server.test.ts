@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { createTask, logProgress } from '../src/store/tasks.ts';
@@ -90,6 +90,113 @@ test('refuses a port where another app already listens (even on 0.0.0.0), and se
   const landing = await get(port, `/index.html?k=${server.token}`);
   assert.equal(landing.status, 303);
   assert.match(String(landing.headers['set-cookie']), /HttpOnly/);
+});
+
+/** A non-internal IPv4 of this machine, to exercise the second listener without leaving it. */
+const lanAddress = Object.values(networkInterfaces())
+  .flat()
+  .find((i) => i && i.family === 'IPv4' && !i.internal)?.address;
+
+function at(
+  address: string,
+  port: number,
+  path: string,
+  options: { host?: string; cookie?: string; method?: string; body?: string; origin?: string; browserFetch?: boolean } = {},
+): Promise<{ status: number; headers: Record<string, unknown>; body: string }> {
+  return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = { Host: options.host ?? `${address}:${port}` };
+    // What a browser adds to the page's own same-origin fetch.
+    if (options.browserFetch) Object.assign(headers, { 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty' });
+    if (options.cookie) headers.Cookie = options.cookie;
+    if (options.origin) headers.Origin = options.origin;
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    const req = request({ host: address, port, path, method: options.method ?? 'GET', headers }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => (body += d));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }));
+    });
+    req.on('error', reject);
+    // SSE never ends: give up quickly, the status line is enough.
+    req.setTimeout(3000, () => req.destroy(new Error('timeout')));
+    req.end(options.body);
+  });
+}
+
+test('the key is <gen>.<secret> and changes on every start; an earlier key is reported as expired', async (t) => {
+  const first = await serve(t);
+  const second = await serve(t);
+  assert.match(first.server.token, /^[0-9a-f]{6}\.[0-9a-f]{48}$/);
+  assert.notEqual(first.server.token.split('.')[0], second.server.token.split('.')[0]);
+  const expired = await get(second.port, `/?k=${first.server.token}`);
+  assert.equal(expired.status, 401);
+  assert.match(expired.body, /<h1>Wayfinder access<\/h1><p role="alert">This link is no longer valid/);
+  assert.equal(expired.headers['set-cookie'], undefined);
+  const [gen] = second.server.token.split('.');
+  assert.match((await get(second.port, `/?k=${gen}.${'0'.repeat(48)}`)).body, /not correct/);
+});
+
+test('a second address needs the key for every route; loopback keeps anonymous reads and alone gets the links', { skip: lanAddress ? false : 'no non-internal IPv4 interface' }, async (t) => {
+  const lan = lanAddress as string;
+  const home = makeHome(t);
+  makeProject(home);
+  createTask(home, 'demo', { title: 'Secret plan', body: 'x' }, 'web');
+  const webDir = mkdtempSync(join(tmpdir(), 'wf-web-'));
+  writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>x</title>');
+  writeFileSync(join(webDir, 'styles.css'), 'body{}');
+  const server = await startServer({ home, lang: 'en', port: 0, webDir, remoteHost: lan });
+  t.after(async () => {
+    await server.close();
+    rmSync(webDir, { recursive: true, force: true });
+  });
+  const port = server.port;
+  assert.equal(server.remoteUrl, `http://${lan}:${port}/?k=${server.token}`);
+
+  for (const path of ['/api/projects', '/api/projects/demo/tasks', '/api/projects/demo/tasks/DEM-1', '/api/i18n', '/api/session', '/app.js']) {
+    const r = await at(lan, port, path);
+    assert.equal(r.status, 401, path);
+    assert.doesNotMatch(r.body, /Secret plan|demo/, path);
+  }
+  assert.equal((await at(lan, port, '/api/events')).status, 401, 'SSE is not opened without the key');
+  const page = await at(lan, port, '/');
+  assert.equal(page.status, 401);
+  assert.match(page.body, /role="alert">This page needs the key/);
+  assert.equal((await at(lan, port, '/styles.css')).status, 200, 'the access page can be styled');
+  assert.equal((await at(lan, port, '/api/projects', { host: `evil.example.com:${port}` })).status, 403);
+
+  const landing = await at(lan, port, `/?k=${server.token}`);
+  assert.equal(landing.status, 303);
+  const cookie = String((landing.headers['set-cookie'] as string[])[0]).split(';')[0];
+  assert.match((await at(lan, port, '/api/projects', { cookie })).body, /demo/);
+  assert.equal((await at(lan, port, '/api/share', { cookie })).status, 404, 'the links never leave this PC');
+
+  // SEC-1: a plain client on this PC (an agent running curl) does not get the keys...
+  const plain = await get(port, '/api/share');
+  assert.equal(plain.status, 403);
+  assert.doesNotMatch(plain.body, /k=|[0-9a-f]{6}\.[0-9a-f]{48}/);
+  // ...only the page's own fetch, which the browser marks with Sec-Fetch-* headers.
+  const share = JSON.parse((await at('127.0.0.1', port, '/api/share', { host: `127.0.0.1:${port}`, browserFetch: true })).body);
+  assert.deepEqual(share, { local: server.writeUrl, remote: server.remoteUrl });
+  assert.equal((await get(port, '/api/projects')).status, 200, 'loopback reads stay anonymous');
+
+  const before = commitCount(home);
+  const body = JSON.stringify({ title: 'From the phone' });
+  const origin = `http://${lan}:${port}`;
+  assert.equal((await at(lan, port, '/api/projects/demo/tasks', { method: 'POST', body, origin })).status, 401);
+  assert.equal((await at(lan, port, '/api/projects/demo/tasks', { method: 'POST', body, cookie, origin: 'http://evil.example.com' })).status, 403);
+  assert.equal(commitCount(home), before);
+  const created = await at(lan, port, '/api/projects/demo/tasks', { method: 'POST', body, cookie, origin });
+  assert.equal(created.status, 201, created.body);
+  assert.equal(commitCount(home), before + 1);
+});
+
+test('a second address that is not on this machine is refused with a clear error', async (t) => {
+  const home = makeHome(t);
+  // 203.0.113.0/24 is reserved for documentation (TEST-NET-3): never a local interface.
+  await assert.rejects(startServer({ home, lang: 'en', port: 0, webDir: tmpdir(), remoteHost: '203.0.113.7' }), (error: WayfinderError) => {
+    assert.equal(error.key, 'web.hostUnavailable');
+    return true;
+  });
 });
 
 test('WAYFINDER_PUBLIC_PORT is accepted in the Host header (Docker port mapping)', async (t) => {
@@ -228,16 +335,17 @@ async function writer(t: Parameters<typeof makeHome>[0], extra: { lang?: 'es' | 
   assert.equal(landing.status, 303);
   assert.equal(landing.headers.location, '/');
   const setCookie = String((landing.headers['set-cookie'] as string[])[0]);
-  assert.match(setCookie, /; Path=\/; HttpOnly; SameSite=Strict$/);
+  assert.match(setCookie, /; Path=\/; HttpOnly; SameSite=Lax$/);
   const headers = { Origin: `http://127.0.0.1:${ctx.port}`, 'Content-Type': 'application/json', Cookie: setCookie.split(';')[0] };
   return { ...ctx, headers };
 }
 
-test('the key link sets an HttpOnly SameSite=Strict cookie; a wrong key sets nothing', async (t) => {
+test('the key link sets an HttpOnly SameSite=Lax cookie; a wrong key sets nothing', async (t) => {
   const { port, server, headers } = await writer(t);
   assert.equal(server.writeUrl, `${server.url}?k=${server.token}`);
   const wrong = await get(port, '/?k=nope');
-  assert.equal(wrong.status, 303);
+  assert.equal(wrong.status, 401, 'a wrong key gets the access page instead of a silent redirect');
+  assert.match(wrong.body, /role="alert">The key of this link is not correct/);
   assert.equal(wrong.headers['set-cookie'], undefined);
   assert.equal(JSON.parse((await get(port, '/api/session')).body).canWrite, false);
   assert.equal(JSON.parse(await getWithCookie(port, '/api/session', headers.Cookie)).canWrite, true);

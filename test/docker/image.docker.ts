@@ -60,12 +60,15 @@ test('the image has git and runs as an unprivileged user', () => {
   assert.equal(docker('image', 'inspect', IMAGE, '--format', '{{json .Config.Volumes}}'), 'null', 'no VOLUME instruction');
 });
 
-test('without a mounted, initialised folder serve and mcp exit with a clear error', () => {
-  for (const command of [[], ['mcp']]) {
-    const r = spawnSync(DOCKER, ['run', '--rm', ...HARDENING, '-e', 'WAYFINDER_LANG=es', IMAGE, ...command], { encoding: 'utf8', input: '' });
-    assert.notEqual(r.status, 0, command.join(' ') || 'serve');
-    assert.match(r.stderr, /No hay carpeta de datos en \/data/);
-  }
+test('without a mounted, initialised folder serve exits with a clear error; mcp starts and ends with stdin', () => {
+  const serve = spawnSync(DOCKER, ['run', '--rm', ...HARDENING, '-e', 'WAYFINDER_LANG=es', IMAGE], { encoding: 'utf8', input: '' });
+  assert.notEqual(serve.status, 0);
+  assert.match(serve.stderr, /No hay carpeta de datos en \/data/);
+  // The MCP no longer refuses to start (a fresh install must be able to register); each tool
+  // checks the folder. With stdin closed it ends cleanly.
+  const mcp = spawnSync(DOCKER, ['run', '--rm', '-i', ...HARDENING, '-e', 'WAYFINDER_LANG=es', IMAGE, 'mcp'], { encoding: 'utf8', input: '' });
+  assert.equal(mcp.status, 0, mcp.stderr);
+  assert.equal(mcp.stdout, '');
 });
 
 test('web: loopback only, Host allow-list, writes commit in LF, host edits appear with polling', { timeout: 120_000 }, async (t) => {
@@ -74,7 +77,9 @@ test('web: loopback only, Host allow-list, writes commit in LF, host edits appea
   const name = `wf-web-${process.pid}`;
   docker('run', '-d', '--name', name, '-p', `127.0.0.1:${port}:4747`, '-e', `WAYFINDER_PUBLIC_PORT=${port}`, '-v', `${home}:/data`, ...HARDENING, IMAGE);
   t.after(() => void spawnSync(DOCKER, ['rm', '-f', name]));
-  assert.ok(await waitFor(async () => (await http(port, '/api/projects')).status === 200, 30_000), docker('logs', name));
+  // Inside the container the web listens on 0.0.0.0, so even reads need the key: wait for the
+  // public stylesheet instead.
+  assert.ok(await waitFor(async () => (await http(port, '/styles.css')).status === 200, 30_000), docker('logs', name));
 
   const inspect = JSON.parse(docker('inspect', name))[0];
   assert.equal(inspect.HostConfig.ReadonlyRootfs, true);
@@ -83,16 +88,17 @@ test('web: loopback only, Host allow-list, writes commit in LF, host edits appea
   assert.equal(docker('exec', name, 'id', '-u'), '1000');
 
   assert.equal((await http(port, '/api/projects', { host: 'evil.example.com' })).status, 403);
-  assert.equal((await http(port, '/api/projects', { host: `localhost:${port}` })).status, 200);
+  assert.equal((await http(port, '/api/projects', { host: `localhost:${port}` })).status, 401, 'reads need the key outside loopback');
   const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal)?.address;
   if (lan) await assert.rejects(http(port, '/api/projects', { address: lan, host: `${lan}:${port}` }), 'not reachable from the LAN address');
 
   // The key is printed in the container log (documented risk); use it like the person would.
-  const key = docker('logs', name).match(/k=([0-9a-f]{48})/)?.[1];
+  const key = docker('logs', name).match(/k=([0-9a-f]{6}\.[0-9a-f]{48})/)?.[1];
   assert.ok(key, 'serve prints the key link');
   assert.match(docker('logs', name), new RegExp(`127\\.0\\.0\\.1:${port}/\\?k=`), 'the link shows the published port');
   const landing = await http(port, `/?k=${key}`);
   const cookie = String((landing.headers['set-cookie'] as string[])[0]).split(';')[0];
+  assert.equal((await http(port, '/api/projects', { host: `localhost:${port}`, headers: { Cookie: cookie } })).status, 200);
   const before = commitCount(home);
   const created = await http(port, '/api/projects/demo/tasks', {
     method: 'POST',
@@ -108,7 +114,7 @@ test('web: loopback only, Host allow-list, writes commit in LF, host edits appea
 
   // An edit on the host reaches the browser through polling within 3 s.
   const changed = new Promise<boolean>((resolve) => {
-    const req = request({ host: '127.0.0.1', port, path: '/api/events', headers: { Host: `127.0.0.1:${port}` } }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path: '/api/events', headers: { Host: `127.0.0.1:${port}`, Cookie: cookie } }, (res) => {
       res.setEncoding('utf8');
       res.on('data', (d: string) => d.includes('event: change') && (req.destroy(), resolve(true)));
     });
@@ -146,8 +152,9 @@ test('MCP over stdio in a container: explicit project, captures, plan rule and c
 
   // Without the consumer repository mounted.
   const bare = await mcpClient(t, ['-v', `${home}:/data`, '-v', `${captures}:/captures:ro`], { ...common, WAYFINDER_CAPTURES_DIR: '/captures' });
-  const tools = (await bare.client.listTools()).tools.map((x) => x.name);
-  assert.equal(tools.length, 11);
+  const tools = (await bare.client.listTools()).tools.map((x) => x.name).sort();
+  // Names, not a count: a count went stale silently when wf_error was added.
+  assert.deepEqual(tools, ['wf_attach', 'wf_create', 'wf_error', 'wf_get', 'wf_history', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_search', 'wf_set_status', 'wf_update', 'wf_web']);
   assert.match((await bare.call('wf_create', { title: 'Docker task' })).text, /DEM-1 .*proposed/);
   assert.match((await bare.call('wf_list')).text, /DEM-1 \[proposed\]/);
   const attached = await bare.call('wf_attach', { path: '/captures/shot.png', alt: 'Board', task_id: 'DEM-1' });

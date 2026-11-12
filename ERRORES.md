@@ -141,3 +141,25 @@
 - **Archivos modificados:** `src/store/mentions.ts`, `src/store/approve.ts`, `test/chat.test.ts`, `plugin/dist/wayfinder.mjs`.
 - **Validación:** `npm run typecheck` sin errores; `node --test test/chat.test.ts` 11/11 con casos nuevos («apruebo wf-12», «Aprueba Wf-12», cita «haz WF-10» rechazada para WF-1, aprobación completa en minúsculas); `npm test` 117/117; `npm run check:dist` coincide con un build limpio.
 - **Resultado:** corregido en el repositorio. El plugin instalado mantiene la versión anterior hasta que se actualice. Registro en Wayfinder vinculado a WAY-5.
+
+## 2026-11-11 · `test:docker` desfasado: espera 11 herramientas MCP desde que se añadió `wf_error`
+
+- **Contexto:** incremento 4 de WAY-6 (plan `Planes/2026-11-11-instalacion-web-remota-y-alta-guiada.md` v3). Windows 11, Docker 29.9.2, imagen `wayfinder:dev` recién construida.
+- **Reproducción:** `docker build -t wayfinder:dev .` y `npm run test:docker`.
+- **Salida observada:** falla «MCP over stdio in a container…» con `AssertionError`: se esperaban 11 herramientas y hay 13.
+- **Causa confirmada:** la prueba solo comprobaba el número de herramientas. Se quedó desfasada en `fdaa554` (`wf_error`, 12 herramientas): la última edición del archivo es anterior a ese commit y desde entonces no se había ejecutado `test:docker`. `wf_web` sube el total a 13. Es un fallo previo a WAY-6, que además añade una herramienta.
+- **Solución:** la prueba compara la lista ordenada de nombres, como `test/mcp.integration.test.ts`, en lugar del número.
+- **Archivos modificados:** `test/docker/image.docker.ts`.
+- **Validación:** `npm run test:docker` → 5/5. También se adaptó la prueba al cambio de WAY-6: dentro del contenedor la web escucha en `0.0.0.0` y exige la clave también para leer, y la clave tiene el formato `<gen>.<secreto>`.
+- **Resultado:** resuelto. Registrado en Wayfinder como error de WAY-6.
+
+## 2026-11-11 · El enlace para otros dispositivos pide la clave si se abre desde otra web (cookie `SameSite=Strict`)
+
+- **Contexto:** incremento 5 de WAY-6 (plan `Planes/2026-11-11-instalacion-web-remota-y-alta-guiada.md` v3), revisión visual en el navegador integrado (Chromium). Windows 11. Servidor de vista previa con los datos e2e en `127.0.0.1` y en una IPv4 de la LAN.
+- **Reproducción:** desde la página del PC (`127.0.0.1`), navegar con `location.href` al enlace remoto `http://<ip>:<puerto>/?k=<clave>`.
+- **Salida observada:** página «Acceso a Wayfinder» con HTTP 401 y el aviso «Esta web necesita la clave de su enlace», aunque la clave era la vigente.
+- **Causa confirmada:** la respuesta a `?k=` ponía la cookie con `SameSite=Strict` y redirigía (303) a `/`. Como la navegación empezaba en otro sitio, el navegador no enviaba la cookie en la redirección y el listener remoto respondía 401. Desde la barra de direcciones funcionaba; desde un chat o un correo, no.
+- **Solución:** la cookie pasa a `SameSite=Lax`, que se envía en las navegaciones de nivel superior. Las escrituras siguen protegidas por la comprobación de Origin, el cuerpo solo JSON y la clave. Nueva prueba e2e que abre el enlace desde otra web.
+- **Archivos modificados:** `src/server.ts`, `test/server.test.ts`, `e2e/access.spec.ts`.
+- **Validación:** `npx playwright test e2e/access.spec.ts` (caso «abrir el enlace desde otra web»); `node --test test/server.test.ts` 18/18. En el navegador integrado, el móvil (390 px) muestra los proyectos. Suite completa: `npm test` 133/133, `npm run test:e2e` 41/41, `npm run test:docker` 5/5, `npm run check:dist` OK.
+- **Resultado:** resuelto antes de publicar. Registrado en Wayfinder como error de WAY-6.

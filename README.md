@@ -11,32 +11,41 @@ Los datos viven en una carpeta privada (`~/.wayfinder`): un repositorio git **si
 
 - Windows 11 (es la única plataforma verificada).
 - Node.js 22 o superior y git.
-- Claude Code 2.1.271 o superior, para el plugin.
+- Claude Code 2.1.271 o superior, para el plugin. La instalación con un solo comando está probada con Claude Code 2.1.318.
 
 ## Instalación del plugin de Claude Code
 
-Desde GitHub:
+Desde GitHub, con un solo comando:
+
+```powershell
+claude plugin install wayfinder --marketplace davidgarciai554/wayfinder --config language=es
+```
+
+Añade el marketplace de Wayfinder si aún no lo tienes e instala el plugin. Desde una copia local de este repositorio, cambia `davidgarciai554/wayfinder` por la ruta, por ejemplo `--marketplace D:\ruta\a\wayfinder`.
+
+Si tu versión de Claude Code no acepta `--marketplace`, usa los dos pasos:
 
 ```powershell
 claude plugin marketplace add davidgarciai554/wayfinder
 claude plugin install wayfinder@wayfinder --config language=es
 ```
 
-O desde una copia local de este repositorio, con `claude plugin marketplace add D:\ruta\a\wayfinder` en la primera línea.
+Al terminar, Claude Code puede avisar de que hay opciones sin configurar: son `home`, `capturesDir` y `webHost`, que son opcionales y puedes dejar así.
 
 - `language`: `es` o `en`. Idioma de los mensajes, de la web y de las respuestas de Claude sobre Wayfinder.
 - `home` (opcional): carpeta de datos. Por defecto, `~/.wayfinder`.
 - `capturesDir` (opcional): carpeta extra desde la que se pueden adjuntar capturas, además del repositorio actual.
+- `webHost` (opcional): la IP de este PC en tu red o en Tailscale (una IP, por ejemplo `192.168.1.20`; no un nombre ni `0.0.0.0`), para abrir la web también en otros dispositivos. Vacía o no válida, la web solo se abre en este PC.
 
 Puedes cambiarlas después con `/plugin` o con `claude plugin configure wayfinder`.
 
 ### Primer uso
 
-1. Crea la carpeta de datos una sola vez. En la primera sesión tras instalar, Claude Code te muestra el comando exacto con la ruta del plugin. Por ejemplo:
-   ```powershell
-   node "<carpeta del plugin>\dist\wayfinder.mjs" init
-   ```
-2. En el repositorio que quieras seguir, pide a Claude: «registra este proyecto en Wayfinder». El registro es siempre explícito, proyecto a proyecto.
+1. En el repositorio que quieras seguir, escribe tú en el chat: «registra este proyecto» (o «register this project»).
+   - Tiene que ser esa frase, escrita por ti: un «sí» no basta. Así Claude no puede registrar un repositorio por su cuenta.
+   - La orden vale 15 minutos y para un solo registro.
+   - Si aún no existe la carpeta de datos (`~/.wayfinder`), se crea en ese momento. Ya no hace falta `wayfinder init`, aunque sigue disponible.
+2. Si no quieres seguir un repositorio, díselo a Claude: lo anota y Wayfinder deja de preguntar en él. Puedes registrarlo más adelante con la misma frase.
 3. A partir de ahí, cada sesión empieza con la lista de pendientes y las propuestas sin aprobar.
    - Claude mueve los estados mientras trabaja.
    - Cada avance queda en el historial de la tarea y en una línea de la bitácora que enlaza a él (ver «Historial y memoria»).
@@ -79,16 +88,44 @@ Escribe la orden con el ID, por ejemplo «aprueba WAY-4».
 2. Si ve algo sospechoso (instrucciones ocultas, peticiones de secretos, comandos de red…), te explica el motivo y no la aprueba hasta que repitas la orden, por ejemplo «aprueba WAY-4 igualmente».
 3. Solo se aprueban por chat las propuestas creadas por Claude, y quedan marcadas como «Aprobada por chat».
 
-## Web local
+## Web
+
+Escribe en el chat **«abre Wayfinder»** (o «open Wayfinder»). Como en el registro, tiene que ser esa frase, escrita por ti: un «sí» no basta.
+
+- Claude abre la web para esa sesión y te da una dirección de este PC, por ejemplo `http://127.0.0.1:4747/`. Ábrela en el navegador del PC.
+- Si la web se abre también en la red (opción `webHost`), Claude te da además el enlace para el móvil, que se abre con un toque. Si usas Claude desde el móvil (Remote Control), púlsalo ahí mismo.
+- En esa página:
+  - **«Activar la escritura en este PC»** habilita crear, aprobar y descartar en ese navegador.
+  - **«Abrir en otro dispositivo»** muestra el enlace para el móvil u otro equipo, con un botón para copiarlo.
+- Para usarla en otros dispositivos, configura la opción `webHost` del plugin con la IP de este PC en tu red o en Tailscale. Sin `webHost`, la web solo se abre en este PC.
+- Fuera de este PC, todo pide la clave del enlace, también leer.
+- Cada vez que se abre la web hay una clave nueva, y la anterior deja de valer. Un enlace antiguo muestra «Este enlace ya no es válido».
+- Al abrir el enlace, la clave se guarda en una cookie de ese navegador y desaparece de la dirección. Por eso, ese navegador puede volver a entrar sin el enlace mientras dure la sesión. Otros navegadores y dispositivos siguen necesitando el enlace, y la cookie deja de valer cuando cambia la clave.
+- La web se cierra al terminar la sesión de Claude.
+- El tráfico no va cifrado: úsala en tu red de casa o con Tailscale.
+- **La primera vez que abras Wayfinder en la red, acepta en el PC el aviso del cortafuegos.** Si no lo aceptas, el móvil no podrá conectar. Wayfinder no cambia las reglas del cortafuegos.
+  - Windows pregunta si permite que Node.js acceda a la red: marca solo **redes privadas** y pulsa «Permitir». Tu red de casa tiene que estar marcada como privada.
+  - En Mac el cortafuegos viene desactivado por defecto. Si lo tienes activado, macOS pregunta si permite conexiones entrantes a `node`: pulsa «Permitir».
+  - Si cerraste el aviso sin aceptarlo, en Windows puedes crear la regla a mano desde «Firewall de Windows Defender» › «Permitir una aplicación a través del firewall» › «Cambiar la configuración». Las dos vías piden permisos de administrador. Si usas el comando, abre PowerShell con «Ejecutar como administrador»; si no, Windows responde «Acceso denegado». En un equipo de empresa puede que solo pueda hacerlo el departamento de IT.
+
+    ```powershell
+    New-NetFirewallRule -DisplayName "Wayfinder (Node) - red privada" -Direction Inbound -Action Allow -Protocol TCP -Program "C:\Program Files\nodejs\node.exe" -LocalPort 4747 -Profile Private
+    ```
+- Límites:
+  - La web solo existe mientras dura la sesión de Claude que la abrió. Con Claude cerrado, el móvil no puede conectar, y un enlace antiguo no puede mostrar el aviso de caducado.
+  - Si tu router asigna otra IP al PC (DHCP), actualiza `webHost`. Con Tailscale, la IP de la red de Tailscale no cambia.
+  - Si otra sesión de Claude ya usa el puerto 4747, la web se abre en otro puerto libre, con su propia clave.
+
+Para desarrollo o Docker sigue existiendo `wayfinder serve`:
 
 ```powershell
 node "<carpeta del plugin>\dist\wayfinder.mjs" serve
 ```
 
-- Abre el enlace que imprime, `http://127.0.0.1:4747/?k=…`.
-- La clave de ese enlace habilita crear, aprobar y descartar en ese navegador, y cambia en cada arranque. Sin ella, la web es de solo lectura. No compartas el enlace.
-- La web solo escucha en este equipo.
-- Opciones: `--port <n>` (o `WAYFINDER_PORT`) y `--poll`, para detectar cambios por sondeo en unidades de red. Si el puerto está ocupado por otra aplicación, `serve` lo dice y no arranca.
+- Imprime un enlace con clave, `http://127.0.0.1:4747/?k=…`, que también cambia en cada arranque. Sin la clave, en este equipo la web es de solo lectura.
+- Opciones:
+  - `--port <n>` (o `WAYFINDER_PORT`): el puerto. Si está ocupado por otra aplicación, `serve` lo dice y no arranca.
+  - `--poll`: detecta los cambios por sondeo, para unidades de red.
 
 ## Línea de comandos sin el plugin
 
@@ -107,6 +144,14 @@ El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la w
 - Nunca guardes secretos ni datos personales en tareas, bitácoras o capturas. Wayfinder rechaza los patrones de secreto más comunes, pero es una ayuda, no una garantía.
 - Mantén la carpeta de datos privada y sin remoto. Wayfinder nunca hace `push`.
 - El contenido de las tareas se trata como datos no confiables: Claude no sigue instrucciones escritas dentro de ellas.
+- Para registrar un repositorio, aprobar una propuesta o abrir la web hacen falta tus propias palabras en el chat: «registra este proyecto», «aprueba WAY-n», «abre Wayfinder». El hook las detecta en tu mensaje, así que un «sí», o el texto de una tarea que Claude lea, no bastan.
+  - Es una protección de mejor esfuerzo, como el detector de secretos.
+  - Un Claude manipulado que pueda ejecutar comandos podría saltársela escribiendo directamente en el estado de Wayfinder. Y cuando la web se abre en la red, Claude recibe el enlace con la clave para dártelo, así que también podría usarlo para escribir o aprobar desde la web. La skill le prohíbe usarlo, pero eso no es una barrera técnica.
+  - Siguen dos barreras de antes: la página local solo entrega la clave a peticiones del propio navegador, y el hook bloquea los comandos que la piden. Ya no impiden que Claude conozca la clave cuando la web está en la red.
+  - Si trabajas con permisos automáticos, revisa qué comandos ejecuta.
+  - Un texto ajeno que pegues sin citar (`>`) ni poner en un bloque de código cuenta como tuyo.
+- Si la web solo se abre en este PC, Claude recibe la dirección sin la clave. Si se abre en la red, recibe también el enlace para otros dispositivos, que lleva la clave y queda en el historial de la conversación hasta que esa clave caduca al cerrar la sesión. Cualquier programa de tu PC puede leer la página local, igual que puede leer tu carpeta de datos.
+- Fuera de tu PC la web pide la clave para todo y va sin cifrar: úsala en tu red de casa o con Tailscale, y no compartas el enlace.
 
 ## Desarrollo
 
@@ -150,7 +195,7 @@ docker run --rm -p 127.0.0.1:4747:4747 -e WAYFINDER_PUBLIC_PORT=4747 `
   wayfinder:dev
 ```
 
-- Abre el enlace que imprime, `http://127.0.0.1:4747/?k=…`: lleva la clave de escritura de ese arranque. Sin la clave, la web es de solo lectura.
+- Abre el enlace que imprime, `http://127.0.0.1:4747/?k=…`: lleva la clave de ese arranque. Como dentro del contenedor la web escucha en `0.0.0.0`, sin la clave no deja ni leer: muestra una página de acceso. Un enlace de un arranque anterior avisa de que ya no es válido.
 - Publica el puerto **solo en `127.0.0.1`** y no uses `--network host`. Dentro del contenedor la web escucha en `0.0.0.0` (por eso avisa al arrancar), pero solo se publica en este equipo.
 - Si cambias el puerto publicado, cambia también `WAYFINDER_PUBLIC_PORT`; la web solo acepta peticiones dirigidas a ese puerto.
 - La clave aparece en `docker logs`: no compartas esos registros.
