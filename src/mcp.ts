@@ -229,7 +229,13 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
 
   // Decision 16 (plan v4, accepted risk): the link with the key for other devices reaches the model so
   // it can hand the person a one-tap link. Only when the web listens on the network.
-  const remoteLink = (running: RunningServer) => (running.remoteUrl ? `\n${tr('mcp.web.remoteLink', { url: running.remoteUrl })}` : '');
+  // The firewall rule in the README opens only DEFAULT_PORT: on any other port the link for other
+  // devices may be blocked, so say so next to the link (ERR-4).
+  const remoteLink = (running: RunningServer) =>
+    running.remoteUrl
+      ? `\n${tr('mcp.web.remoteLink', { url: running.remoteUrl })}` +
+        (running.port === DEFAULT_PORT ? '' : `\n${tr('mcp.web.otherPort', { usual: DEFAULT_PORT, port: running.port })}`)
+      : '';
 
   server.registerTool(
     'wf_web',

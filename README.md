@@ -114,7 +114,7 @@ Escribe en el chat **«abre Wayfinder»** (o «open Wayfinder»). Como en el reg
 - Límites:
   - La web solo existe mientras dura la sesión de Claude que la abrió. Con Claude cerrado, el móvil no puede conectar, y un enlace antiguo no puede mostrar el aviso de caducado.
   - Si tu router asigna otra IP al PC (DHCP), actualiza `webHost`. Con Tailscale, la IP de la red de Tailscale no cambia.
-  - Si otra sesión de Claude ya usa el puerto 4747, la web se abre en otro puerto libre, con su propia clave.
+  - Si otra sesión de Claude ya usa el puerto 4747, la web se abre en otro puerto libre, con su propia clave. La regla del cortafuegos de arriba solo abre el 4747, así que en ese caso el móvil no podrá conectar; Claude te avisa al darte el enlace. Cierra la web de la otra sesión (o esa sesión) y vuelve a escribir «abre Wayfinder».
 
 Para desarrollo o Docker sigue existiendo `wayfinder serve`:
 

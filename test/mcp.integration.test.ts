@@ -9,6 +9,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { initHome } from '../src/store/init.ts';
 import { request as httpRequest } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { recordOrders, recordRegisterOrder, recordWebOrder } from '../src/store/mentions.ts';
 import { isDeclined } from '../src/store/register.ts';
@@ -288,6 +289,26 @@ test('with webHost, «abre Wayfinder» also listens on the network, where the ke
   assert.match((await call('wf_web', { action: 'status' })).text, new RegExp(`Link for other devices: ${share.remote.replace(/[.?]/g, '\\$&')}`));
   await call('wf_web', { action: 'stop' });
   assert.ok(await closedWithin(share.remote, 3000), 'the link dies with the web');
+});
+
+test('ERR-4: when 4747 is taken, the link for other devices comes with a firewall warning naming both ports', { timeout: 60_000, skip: lanAddress ? false : 'no non-internal IPv4 interface' }, async (t) => {
+  // Hold 4747 on loopback; if another Wayfinder already holds it, it stays taken all the same.
+  const holder = createNetServer();
+  await new Promise<void>((done) => {
+    holder.once('error', () => done());
+    holder.listen(4747, '127.0.0.1', () => done());
+  });
+  t.after(() => void holder.close());
+  const env = makeEnv(t);
+  const { call } = await connect(env, { WAYFINDER_WEB_HOST: lanAddress as string });
+  recordWebOrder(env.home, rootKey(env.repo), true, Date.now());
+  const started = await call('wf_web', { action: 'start' });
+  assert.equal(started.isError, false, started.text);
+  const port = /http:\/\/127\.0\.0\.1:(\d+)\//.exec(started.text)?.[1];
+  assert.ok(port && port !== '4747', started.text);
+  assert.match(started.text, new RegExp(`Link for other devices: [^\\n]+\\n[\\s\\S]*port 4747 is already used[\\s\\S]*opened on port ${port}\\.[\\s\\S]*firewall`));
+  assert.match((await call('wf_web', { action: 'status' })).text, /port 4747 is already used/, 'status repeats the warning');
+  await call('wf_web', { action: 'stop' });
 });
 
 test('handshake, tool list and the not-registered path', { timeout: 60_000 }, async (t) => {

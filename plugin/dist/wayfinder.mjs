@@ -7753,6 +7753,7 @@ var es_default = {
   "mcp.web.noOrder": "No se ha abierto la web: falta la orden de la persona. Tiene que escribir en su propio mensaje \xABabre Wayfinder\xBB; un \xABs\xED\xBB no basta. Despu\xE9s vuelve a llamar a wf_web con action: start. La orden caduca a los 15 minutos.",
   "mcp.web.noWebHost": "Aviso para la persona: solo se ha abierto en este PC porque falta la direcci\xF3n de red. Para abrirla tambi\xE9n en otros dispositivos, configura la opci\xF3n webHost del plugin (por ejemplo con /plugin) con la IP de este PC en tu red o en Tailscale.",
   "mcp.web.invalidWebHost": "Aviso para la persona: solo se ha abierto en este PC porque la opci\xF3n webHost no es una IP v\xE1lida. Pon la IP de este PC en tu red o en Tailscale (por ejemplo 192.168.1.20), no un nombre ni 0.0.0.0.",
+  "mcp.web.otherPort": "Aviso para la persona: el puerto {usual} ya lo usa otra sesi\xF3n de Claude u otra aplicaci\xF3n, as\xED que la web se ha abierto en el {port}. Si el cortafuegos de este PC solo deja pasar el {usual}, como la regla del README, los otros dispositivos no podr\xE1n conectar. Cierra la web que usa el {usual} y vuelve a escribir \xABabre Wayfinder\xBB, o permite tambi\xE9n este puerto.",
   "mcp.web.sessionEnded": "No se ha abierto la web: la sesi\xF3n termin\xF3 mientras arrancaba.",
   "mcp.declined": "Anotado: Wayfinder no volver\xE1 a preguntar si registrar este repositorio. Para registrarlo m\xE1s adelante, la persona puede escribir \xABregistra este proyecto\xBB.",
   "register.noOrder": "No se ha registrado nada: falta la orden de la persona. Para registrar este repositorio, la persona debe escribir en su propio mensaje \xABregistra este proyecto\xBB (un \xABs\xED\xBB no basta); despu\xE9s vuelve a llamar a wf_project con action: register. La orden caduca a los 15 minutos.",
@@ -8091,6 +8092,7 @@ Give it to the person once as a clickable link (for example "[Open Wayfinder on 
   "mcp.web.noOrder": `The web was not opened: the person's order is missing. They have to write "open Wayfinder" in their own message; a "yes" is not enough. Then call wf_web with action: start again. The order expires after 15 minutes.`,
   "mcp.web.noWebHost": "Note for the person: it opened on this PC only because the network address is missing. To open it on other devices too, set the plugin's webHost option (for example with /plugin) to this PC's IP on your network or on Tailscale.",
   "mcp.web.invalidWebHost": "Note for the person: it opened on this PC only because the webHost option is not a valid IP. Use this PC's IP on your network or on Tailscale (for example 192.168.1.20), not a name or 0.0.0.0.",
+  "mcp.web.otherPort": `Note for the person: port {usual} is already used by another Claude session or another app, so the web opened on port {port}. If this PC's firewall only lets {usual} through, like the README rule, other devices will not be able to connect. Close the web that uses {usual} and write "open Wayfinder" again, or allow this port too.`,
   "mcp.web.sessionEnded": "The web was not opened: the session ended while it was starting.",
   "mcp.declined": 'Noted: Wayfinder will not ask again whether to register this repository. To register it later, the person can write "register this project".',
   "register.noOrder": `Nothing was registered: the person's order is missing. To register this repository, the person must write "register this project" in their own message (a "yes" is not enough); then call wf_project with action: register again. The order expires after 15 minutes.`,
@@ -49860,7 +49862,8 @@ ${e.fields[key]}`).join("\n\n")) || "\u2014",
     }, false)
   );
   const remoteLink = (running) => running.remoteUrl ? `
-${tr("mcp.web.remoteLink", { url: running.remoteUrl })}` : "";
+${tr("mcp.web.remoteLink", { url: running.remoteUrl })}` + (running.port === DEFAULT_PORT ? "" : `
+${tr("mcp.web.otherPort", { usual: DEFAULT_PORT, port: running.port })}`) : "";
   server.registerTool(
     "wf_web",
     {
