@@ -234,12 +234,12 @@ function card(task, selectedId) {
     ),
     el('a', { class: 'card-title', href: href(view.slug, 'task', task.id), 'data-focus': `task:${task.id}`, text: task.title }),
     tags.length ? el('div', { class: 'tags' }, tags) : null,
-    task.status === 'proposed' ? actions(task, 'card-actions') : null,
+    task.status === 'proposed' || task.reopensTo ? actions(task, 'card-actions') : null,
   );
 }
 
 // ---------- actions (increment 5) ----------
-/** Approve (proposals) and Discard (anything still open). Buttons are named with the title. */
+/** Approve (proposals), Discard (anything still open) and Reopen (done or discarded). Buttons are named with the title. */
 function actions(task, className) {
   if (!canWrite) return null;
   const buttons = [];
@@ -255,6 +255,13 @@ function actions(task, className) {
       type: 'button', class: 'button button-small button-danger-quiet', 'data-focus': `discard:${task.id}`,
       'aria-label': t('web.discardLabel', { title: task.title }), text: t('web.discard'),
       onclick: (e) => openDiscard(task, e.currentTarget),
+    }));
+  }
+  if (task.reopensTo) {
+    buttons.push(el('button', {
+      type: 'button', class: 'button button-small', 'data-focus': `reopen:${task.id}`,
+      'aria-label': t('web.reopenLabel', { title: task.title }), text: t('web.reopen'),
+      onclick: (e) => openReopen(task, e.currentTarget),
     }));
   }
   return buttons.length ? el('div', { class: className }, buttons) : null;
@@ -311,6 +318,66 @@ async function confirmDiscard() {
     $('discard-error').textContent = error.message;
     $('discard-error').hidden = false;
     confirm.focus();
+    if (error.status === 409 || error.status === 404) pendingChanges += 1;
+  }
+}
+
+// Reopen (WAY-12): not destructive, so a plain dialog with the focus on the reason. The text says
+// where the task goes back to; the server decides it again (reopensTo) and keeps the reason.
+let reopening = null; // { task, done }
+function openReopen(task, opener) {
+  reopening = { task, done: false };
+  $('reopen-title').textContent = t('web.reopenTitle', { title: task.title });
+  $('reopen-text').textContent = t(`web.reopenText.${task.reopensTo}`, { id: task.id });
+  $('reopen-error').hidden = true;
+  $('reopen-note').value = '';
+  setNoteError(null);
+  setBusy($('reopen-confirm'), false, 'web.reopen');
+  $('reopen-cancel').disabled = false;
+  returnFocusTo = opener;
+  $('reopen-dialog').showModal();
+  $('reopen-note').focus();
+}
+
+function setNoteError(message) {
+  $('reopen-note-error').textContent = message ?? '';
+  $('reopen-note-error').hidden = !message;
+  if (message) $('reopen-note').setAttribute('aria-invalid', 'true');
+  else $('reopen-note').removeAttribute('aria-invalid');
+}
+
+async function submitReopen(event) {
+  event.preventDefault();
+  const { task } = reopening;
+  const note = $('reopen-note').value.trim();
+  $('reopen-error').hidden = true;
+  if (!note) {
+    setNoteError(t('web.reopenNoteRequired'));
+    $('reopen-note').focus();
+    return;
+  }
+  setNoteError(null);
+  const confirm = $('reopen-confirm');
+  setBusy(confirm, true, 'web.reopening');
+  $('reopen-cancel').disabled = true;
+  try {
+    const result = await post(taskPath(task, 'reopen'), { expectedUpdated: task.updated, note });
+    reopening.done = true;
+    $('reopen-dialog').close();
+    flash(t('web.reopened', { id: task.id, status: statusLabel(result.task.status) }), 'ok', result.warnings);
+    await reload(view.page === 'task' && view.id === task.id ? 'task-title' : `col-${result.task.status}`);
+  } catch (error) {
+    // The reason stays in the field: a conflict or a rejected note never loses it.
+    setBusy(confirm, false, 'web.reopen');
+    $('reopen-cancel').disabled = false;
+    if (error.field === 'note') {
+      setNoteError(error.message);
+      $('reopen-note').focus();
+    } else {
+      $('reopen-error').textContent = error.message;
+      $('reopen-error').hidden = false;
+      confirm.focus();
+    }
     if (error.status === 409 || error.status === 404) pendingChanges += 1;
   }
 }
@@ -537,6 +604,7 @@ function taskErrorsSection(task) {
       ? el('ul', { class: 'error-links' }, errors.map((e) => el('li', {},
           el('a', { href: href(view.slug, 'errors', e.id), 'data-focus': `error:${e.id}`, onclick: () => { errorOpenedFrom = { task: task.id, error: e.id }; } },
             el('span', { class: 'mono', text: e.id }), ` · ${e.title}`),
+          ' ', el('span', { class: 'muted', text: kindLabel(e.kind) }),
           ' ', errorPill(e.status))))
       : el('p', { class: 'muted', text: t('web.errors.noneInTask') }),
   );
@@ -638,11 +706,23 @@ async function renderLog() {
 }
 
 // ---------- errors (read only) ----------
-let showAllResolved = false;
+/** Closed groups show their 10 latest errors until the person asks for all of them. */
+const showAllClosed = { resolved: false, discarded: false };
+/** Same order as ERROR_KINDS in src/store/error-records.ts; unclassified (null) goes last. */
+const ERROR_KIND_ORDER = ['build', 'test', 'analysis', 'runtime', 'behavior', 'environment', null];
 
-/** Open or resolved in text; open errors also carry the warning icon (never colour alone). */
+function kindLabel(kind) {
+  return t(`errorKind.${kind ?? 'none'}`);
+}
+
+/**
+ * The status in text, never colour alone: open carries the warning icon, discarded is struck
+ * through. A status this version does not know (a newer one) is shown as it is, never as resolved.
+ */
+const ERROR_PILLS = { open: 'f-risk', resolved: 's-done', discarded: 's-discarded' };
 function errorPill(status) {
-  return el('span', { class: `pill ${status === 'open' ? 'f-risk' : 's-done'}` }, status === 'open' ? warningIcon() : null, t(`web.errorStatus.${status}`));
+  const known = Object.hasOwn(ERROR_PILLS, status);
+  return el('span', { class: `pill ${known ? ERROR_PILLS[status] : ''}` }, status === 'open' ? warningIcon() : null, known ? t(`web.errorStatus.${status}`) : status);
 }
 
 function errorItem(e) {
@@ -657,9 +737,9 @@ async function renderErrors() {
   if (view.id) return renderErrorDetail();
   const data = await api(`/api/projects/${encodeURIComponent(view.slug)}/errors`);
   const recentFirst = (a, b) => (b.updated || '').localeCompare(a.updated || '') || Number(b.id.split('-')[1]) - Number(a.id.split('-')[1]);
-  const open = data.errors.filter((e) => e.status === 'open').sort(recentFirst);
-  const resolved = data.errors.filter((e) => e.status === 'resolved').sort(recentFirst);
-  const resolvedShown = showAllResolved ? resolved : resolved.slice(0, DONE_LIMIT);
+  const withStatus = (status) => data.errors.filter((e) => e.status === status).sort(recentFirst);
+  const open = withStatus('open');
+  const other = data.errors.filter((e) => !Object.hasOwn(ERROR_PILLS, e.status)).sort(recentFirst);
   const head = el('div', { class: 'page-head' }, el('h1', { text: t('web.tab.errors') }));
   const unreadable = data.unreadable.length
     ? [el('div', { class: 'notice', role: 'note' },
@@ -667,18 +747,34 @@ async function renderErrors() {
         el('ul', {}, data.unreadable.map((u) => el('li', {}, el('span', { class: 'mono', text: u.file }), ` · ${u.reason}`))))]
     : [];
   if (data.errors.length === 0) return main.replaceChildren(head, ...unreadable, el('p', { class: 'empty', text: t('web.errors.empty') }));
+  // Each state is an h2; inside it, one h3 per kind that has errors (unclassified last).
+  const byKind = (id, items) => ERROR_KIND_ORDER.map((kind) => [kind, items.filter((e) => (e.kind ?? null) === kind)])
+    .filter(([, list]) => list.length)
+    .map(([kind, list]) => {
+      const kindId = `${id}-${kind ?? 'none'}`;
+      return el('section', { class: 'error-kind', 'aria-labelledby': kindId },
+        el('h3', { id: kindId }, el('span', { text: kindLabel(kind) }), el('span', { class: 'count', text: String(list.length) })),
+        el('ul', { class: 'error-list' }, list.map(errorItem)));
+    });
   const group = (id, title, items, extra) => el('section', { class: 'error-group', 'aria-labelledby': id },
     el('h2', { id, tabindex: '-1', 'data-focus': id }, el('span', { text: title }), el('span', { class: 'count', text: String(items.length) })),
-    items.length ? el('ul', { class: 'error-list' }, items.map(errorItem)) : el('p', { class: 'muted', text: t('web.errors.noneInGroup') }),
+    ...(items.length ? byKind(id, items) : [el('p', { class: 'muted', text: t('web.errors.noneInGroup') })]),
     ...(extra ? [extra] : []),
   );
-  const more = resolved.length > DONE_LIMIT && !showAllResolved
-    ? el('button', { type: 'button', class: 'button button-quiet', 'data-focus': 'show-all-resolved', text: t('web.errors.showAllResolved', { n: resolved.length }),
-        onclick: () => { showAllResolved = true; render({ keepFocus: true, focus: 'errors-resolved' }); } })
-    : null;
+  // Resolved and discarded: the 10 latest, then a button for the rest.
+  const closed = (status, titleKey, moreKey) => {
+    const items = withStatus(status);
+    const all = showAllClosed[status] || items.length <= DONE_LIMIT;
+    const more = all ? null
+      : el('button', { type: 'button', class: 'button button-quiet', 'data-focus': `show-all-${status}`, text: t(moreKey, { n: items.length }),
+          onclick: () => { showAllClosed[status] = true; render({ keepFocus: true, focus: `errors-${status}` }); } });
+    return group(`errors-${status}`, t(titleKey), all ? items : items.slice(0, DONE_LIMIT), more);
+  };
   main.replaceChildren(head, ...unreadable,
     group('errors-open', t('web.errors.open'), open),
-    group('errors-resolved', t('web.errors.resolved'), resolvedShown, more),
+    closed('resolved', 'web.errors.resolved', 'web.errors.showAllResolved'),
+    closed('discarded', 'web.errors.discarded', 'web.errors.showAllDiscarded'),
+    ...(other.length ? [group('errors-other', t('web.errors.other'), other)] : []),
   );
 }
 
@@ -722,6 +818,7 @@ async function renderErrorDetail() {
     ),
     el('dl', { class: 'meta' },
       row(t('web.errors.meta.task'), task),
+      row(t('web.errors.meta.kind'), kindLabel(e.kind)),
       row(t('web.errors.meta.files'), e.files.length ? el('ul', { class: 'file-list' }, e.files.map((f) => el('li', { class: 'mono', text: f }))) : '—'),
       row(t('web.meta.created'), el('span', { class: 'mono', text: exact(e.created) })),
       row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(e.updated) })),
@@ -992,6 +1089,11 @@ async function start() {
   $('discard-dialog').addEventListener('cancel', (e) => {
     if ($('discard-confirm').disabled) e.preventDefault();
   });
+  $('reopen-form').addEventListener('submit', submitReopen);
+  $('reopen-cancel').addEventListener('click', () => $('reopen-dialog').close());
+  $('reopen-dialog').addEventListener('cancel', (e) => {
+    if ($('reopen-confirm').disabled) e.preventDefault();
+  });
   $('task-dialog').addEventListener('cancel', (e) => {
     e.preventDefault(); // Esc: navigate instead, so the URL and the dialog never disagree
     leaveTask();
@@ -1000,7 +1102,8 @@ async function start() {
   for (const dialog of document.querySelectorAll('dialog:not(#task-dialog)')) {
     dialog.addEventListener('close', () => {
       // Restore focus unless the action that closed the dialog moves it itself.
-      if (!(dialog.id === 'discard-dialog' && discarding?.done)) returnFocusTo?.focus();
+      const movedByAction = (dialog.id === 'discard-dialog' && discarding?.done) || (dialog.id === 'reopen-dialog' && reopening?.done);
+      if (!movedByAction) returnFocusTo?.focus();
       returnFocusTo = null;
       if (pendingChanges > 0) refresh();
     });

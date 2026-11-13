@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   createError,
+  discardError,
   errorsForTask,
   listErrors,
   MAX_FIELD,
@@ -225,4 +226,92 @@ test('a project without errors/ lists nothing and the ERR prefix is reserved', (
   assert.equal(existsSync(join(home, 'projects/demo/errors')), false);
   assert.throws(() => createProject(home, { slug: 'otro', name: 'Otro', idPrefix: 'ERR', localPath: 'D:/otro' }), isKey('store.reservedIdPrefix'));
   makeProject(home, 'otro', 'ER');
+});
+
+test('kind: optional, from a closed list, editable, and invalid values write nothing', (t) => {
+  const { home, clock, task } = setup(t);
+  const plain = createError(home, 'demo', base(task), clock).error;
+  assert.equal(plain.kind, null);
+  assert.doesNotMatch(readFileSync(join(home, plain.file), 'utf8'), /^kind:/m);
+  const typed = createError(home, 'demo', { ...base(task), title: 'Falla un test de pruebas e2e', kind: 'test' }, clock).error;
+  assert.equal(typed.kind, 'test');
+  assert.match(readFileSync(join(home, typed.file), 'utf8'), /^kind: test$/m);
+  const before = tree(home);
+  assert.throws(() => createError(home, 'demo', { ...base(task), title: 'Otro fallo distinto', kind: 'severity' }, clock), isKey('store.invalidKind'));
+  assert.throws(() => updateError(home, 'demo', typed.id, { kind: 'Build' }, { clock }), isKey('store.invalidKind'));
+  assert.deepEqual(tree(home), before);
+  const { error } = updateError(home, 'demo', plain.id, { kind: 'environment' }, { clock });
+  assert.equal(error.kind, 'environment');
+  assert.match(parseEntries(error.history).at(-1)!.text, /Fields: kind\./);
+  assert.equal(readError(home, 'demo', plain.id).kind, 'environment');
+});
+
+test('an unknown kind on disk reads as unclassified and is kept until a valid one replaces it', (t) => {
+  const { home, clock, task } = setup(t);
+  const { error } = createError(home, 'demo', base(task), clock);
+  const path = join(home, error.file);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/^status: open$/m, 'status: open\nkind: security'));
+  const read = readError(home, 'demo', error.id);
+  assert.equal(read.kind, null);
+  assert.equal(listErrors(home, 'demo').unreadable.length, 0);
+  noteError(home, 'demo', error.id, 'Se repite en otra máquina', clock);
+  assert.match(readFileSync(path, 'utf8'), /^kind: security$/m);
+  updateError(home, 'demo', error.id, { kind: 'runtime' }, { clock });
+  assert.match(readFileSync(path, 'utf8'), /^kind: runtime$/m);
+});
+
+test('discard needs a reason, keeps it in the notes, is idempotent and can be reopened', (t) => {
+  const { home, clock, task } = setup(t);
+  const { error } = createError(home, 'demo', base(task), clock);
+  const before = tree(home);
+  for (const note of ['', '   ', 'x'.repeat(5000)]) {
+    assert.throws(() => discardError(home, 'demo', error.id, note, clock), (e) => e instanceof WayfinderError, JSON.stringify(note.slice(0, 5)));
+  }
+  assert.throws(() => discardError(home, 'demo', error.id, 'token ghp_' + 'a'.repeat(36), clock), isKey('store.secretRejected'));
+  assert.deepEqual(tree(home), before, 'a rejected discard writes nothing');
+
+  const commits = commitCount(home);
+  const discarded = discardError(home, 'demo', error.id, 'Falsa alarma: el puerto lo tenía otra app.', clock);
+  assert.equal(discarded.written, true);
+  assert.equal(discarded.error.status, 'discarded');
+  assert.equal(commitCount(home), commits + 1);
+  assert.equal(gitOut(home, 'log', '-1', '--format=%s'), `wf: error discard ${error.id}`);
+  assert.match(parseEntries(discarded.error.history).at(-1)!.text, /^Discarded\.\n\nFalsa alarma: el puerto lo tenía otra app\.$/);
+  assert.equal(readError(home, 'demo', error.id).status, 'discarded');
+
+  const again = discardError(home, 'demo', error.id, 'otra vez', clock);
+  assert.equal(again.written, false);
+  assert.deepEqual(again.warnings.map((w) => w.key), ['store.errorAlreadyDiscarded']);
+  assert.equal(commitCount(home), commits + 1);
+
+  assert.throws(() => updateError(home, 'demo', error.id, {}, { reopen: true, clock }), isKey('store.errorReopenNeedsNote'));
+  const reopened = updateError(home, 'demo', error.id, {}, { reopen: true, note: 'Vuelve a pasar con el puerto libre.', clock });
+  assert.equal(reopened.error.status, 'open');
+  assert.match(parseEntries(reopened.error.history).at(-1)!.text, /^Reopened\.\n\nVuelve a pasar/);
+});
+
+test('a discarded error is not an open duplicate, and a resolved one can be discarded too', (t) => {
+  const { home, clock, task } = setup(t);
+  createError(home, 'demo', base(task), clock);
+  discardError(home, 'demo', 'ERR-1', 'No se va a corregir.', clock);
+  assert.deepEqual(createError(home, 'demo', base(task), clock).duplicates, []);
+  resolveError(home, 'demo', 'ERR-2', { solution: 's', validation: 'v' }, { clock });
+  assert.equal(discardError(home, 'demo', 'ERR-2', 'Se resolvió por error.', clock).error.status, 'discarded');
+});
+
+test('an unknown status (a newer version) is listed as it is and cannot be changed here', (t) => {
+  const { home, clock, task } = setup(t);
+  const { error } = createError(home, 'demo', base(task), clock);
+  const path = join(home, error.file);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/^status: open$/m, 'status: snoozed'));
+  const { errors, unreadable } = listErrors(home, 'demo');
+  assert.deepEqual(unreadable, []);
+  assert.equal(errors[0].status, 'snoozed');
+  const before = sha(path);
+  assert.throws(() => noteError(home, 'demo', error.id, 'nota', clock), isKey('store.errorUnknownStatus'));
+  assert.throws(() => discardError(home, 'demo', error.id, 'motivo', clock), isKey('store.errorUnknownStatus'));
+  assert.throws(() => updateError(home, 'demo', error.id, {}, { reopen: true, note: 'x', clock }), isKey('store.errorUnknownStatus'));
+  assert.equal(sha(path), before);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/^status: snoozed$/m, 'status: "<b>x</b>"'));
+  assert.equal(listErrors(home, 'demo').unreadable.length, 1, 'anything that is not a plain word stays unreadable');
 });

@@ -74,6 +74,8 @@ export interface SearchHit {
   id?: string;
   /** Error records only: open or resolved. */
   status?: string;
+  /** Error records only: the error kind, or null when unclassified. */
+  errorKind?: string | null;
   entry?: number;
   /** "YYYY-MM-DD HH:MM" for history and log hits. */
   when?: string;
@@ -120,7 +122,7 @@ export function search(home: string, slug: string, query: string, limit: number)
       if (errors.length >= MAX_ERROR_HITS) break;
       const text = [e.title, ...Object.values(e.fields), e.history ?? ''].join('\n');
       const at = find(text);
-      if (at >= 0) errors.push({ kind: 'error', id: e.id, status: e.status, snippet: snippet(text, at, needle.length) });
+      if (at >= 0) errors.push({ kind: 'error', id: e.id, status: e.status, errorKind: e.kind, snippet: snippet(text, at, needle.length) });
     }
   }
   for (const day of logDays(home, slug)) {

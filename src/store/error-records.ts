@@ -17,10 +17,31 @@ import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.t
  * Error records: one Markdown file per error under projects/<slug>/errors/, linked to a task.
  * The task file is never touched; its list of errors is computed when reading.
  */
-export const ERROR_STATUSES = ['open', 'resolved'] as const;
+/** discarded = closed without a fix (a false alarm or a failure that will not be fixed), with a note. */
+export const ERROR_STATUSES = ['open', 'resolved', 'discarded'] as const;
 export type ErrorStatus = (typeof ERROR_STATUSES)[number];
+/**
+ * A status this version does not know (written by a newer one) is read as it is, so the record
+ * stays visible, but it cannot be changed here: see readForWrite.
+ */
+const STATUS_RE = /^[a-z][a-z-]{0,19}$/;
+
+export function isErrorStatus(value: unknown): value is ErrorStatus {
+  return typeof value === 'string' && (ERROR_STATUSES as readonly string[]).includes(value);
+}
 export const CAUSE_KINDS = ['hypothesis', 'confirmed'] as const;
 export type CauseKind = (typeof CAUSE_KINDS)[number];
+/**
+ * What failed: the kinds AGENTS.md uses for error records plus the environment (ports,
+ * permissions, configuration, dependencies). Optional; a missing or unknown value reads as
+ * unclassified (null), so records written before kinds existed, or by a newer version, still load.
+ */
+export const ERROR_KINDS = ['build', 'test', 'analysis', 'runtime', 'behavior', 'environment'] as const;
+export type ErrorKind = (typeof ERROR_KINDS)[number];
+
+export function isErrorKind(value: unknown): value is ErrorKind {
+  return typeof value === 'string' && (ERROR_KINDS as readonly string[]).includes(value);
+}
 
 /** Body sections in order. Their headings are data, fixed in Spanish like "## Historial". */
 export const ERROR_FIELDS = [
@@ -50,10 +71,13 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 export interface ErrorRecord {
   id: string;
   title: string;
-  status: ErrorStatus;
+  /** One of ERROR_STATUSES, or an unknown status from a newer version (shown, never written). */
+  status: ErrorStatus | (string & {});
   /** ID of the task the error belongs to. */
   task: string;
   causeKind: CauseKind;
+  /** null = unclassified (no kind, or one this version does not know). */
+  kind: ErrorKind | null;
   files: string[];
   created: string;
   updated: string;
@@ -117,7 +141,7 @@ function toRecord(rel: string, raw: string): ErrorRecord | ErrorUnreadable {
   const id = str('id');
   if (!id || !ERROR_ID_RE.test(id)) return { file: rel, reason: 'missing or invalid id' };
   const status = str('status');
-  if (!status || !(ERROR_STATUSES as readonly string[]).includes(status)) return { file: rel, reason: `unknown status: ${String(d.status)}` };
+  if (!status || !STATUS_RE.test(status)) return { file: rel, reason: `unknown status: ${String(d.status)}` };
   const title = str('title');
   if (!title) return { file: rel, reason: 'missing title' };
   const task = str('task');
@@ -128,9 +152,10 @@ function toRecord(rel: string, raw: string): ErrorRecord | ErrorUnreadable {
   return {
     id,
     title,
-    status: status as ErrorStatus,
+    status,
     task,
     causeKind,
+    kind: isErrorKind(d.kind) ? d.kind : null,
     files,
     created: str('created') ?? '',
     updated: str('updated') ?? '',
@@ -229,6 +254,12 @@ function validateCauseKind(value: string | undefined): CauseKind | undefined {
   return value as CauseKind;
 }
 
+function validateKind(value: string | undefined): ErrorKind | undefined {
+  if (value === undefined) return undefined;
+  if (!isErrorKind(value)) throw new WayfinderError('store.invalidKind', { value: flatten(value, 40), valid: ERROR_KINDS.join(', ') });
+  return value;
+}
+
 function validateNote(note: string | undefined): string | undefined {
   const clean = note?.replace(/\r\n?/g, '\n').trim();
   if (!clean) return undefined;
@@ -267,6 +298,8 @@ function serializeRecord(record: ErrorRecord): string {
     updated: record.updated,
   };
   for (const [k, v] of Object.entries(known)) data[k] = v;
+  // An unknown kind already in the file (a newer version) is kept as it is until a valid one replaces it.
+  if (record.kind !== null) data.kind = record.kind;
   return serializeFrontmatter(data, joinBody(serializeSections(record.fields), record.history));
 }
 
@@ -324,6 +357,7 @@ export interface NewError extends ErrorFields {
   title: string;
   task: string;
   causeKind?: string;
+  kind?: string;
   files?: string[];
 }
 
@@ -340,6 +374,7 @@ export function createError(
   const values = validateFields(input);
   if (!values.context) throw new WayfinderError('store.errorContextRequired', {});
   const causeKind = validateCauseKind(input.causeKind) ?? 'hypothesis';
+  const kind = validateKind(input.kind) ?? null;
   const files = validateFiles(input.files ?? []);
   const fields = { ...emptyFields(), ...values };
   assertTotal(fields);
@@ -355,6 +390,7 @@ export function createError(
       status: 'open',
       task: input.task,
       causeKind,
+      kind,
       files,
       created: now,
       updated: now,
@@ -371,6 +407,7 @@ export function createError(
 
 export interface ErrorPatch extends ErrorFields {
   causeKind?: string;
+  kind?: string;
   files?: string[];
   /** Rejected: kept here so callers get a clear error instead of a silent no-op. */
   title?: string;
@@ -388,6 +425,7 @@ function applyPatch(
   record: ErrorRecord,
   values: ErrorFields,
   causeKind: CauseKind | undefined,
+  kind: ErrorKind | undefined,
   files: string[] | undefined,
 ): string[] {
   const changed: string[] = [];
@@ -401,6 +439,10 @@ function applyPatch(
   if (causeKind !== undefined && causeKind !== record.causeKind) {
     record.causeKind = causeKind;
     changed.push('cause_kind');
+  }
+  if (kind !== undefined && kind !== record.kind) {
+    record.kind = kind;
+    changed.push('kind');
   }
   if (files !== undefined && files.join('\n') !== record.files.join('\n')) {
     record.files = files;
@@ -421,6 +463,7 @@ function prepare(patch: ErrorPatch, note: string | undefined) {
   return {
     values: validateFields(patch),
     causeKind: validateCauseKind(patch.causeKind),
+    kind: validateKind(patch.kind),
     files: patch.files === undefined ? undefined : validateFiles(patch.files),
     note: validateNote(note),
   };
@@ -428,10 +471,11 @@ function prepare(patch: ErrorPatch, note: string | undefined) {
 
 function readForWrite(home: string, slug: string, id: string): { record: ErrorRecord; previous: string } {
   const record = readError(home, slug, id);
+  if (!isErrorStatus(record.status)) throw new WayfinderError('store.errorUnknownStatus', { id, status: record.status });
   return { record, previous: readFileSync(safeJoin(home, record.file), 'utf8') };
 }
 
-/** Edits the editable fields, or reopens a resolved error (`reopen` needs a note with the reason). */
+/** Edits the editable fields, or reopens a resolved or discarded error (`reopen` needs a note with the reason). */
 export function updateError(
   home: string,
   slug: string,
@@ -446,8 +490,8 @@ export function updateError(
   if (options.reopen && !p.note) throw new WayfinderError('store.errorReopenNeedsNote', {});
   return withLock(home, () => {
     const { record, previous } = readForWrite(home, slug, id);
-    if (options.reopen && record.status !== 'resolved') throw new WayfinderError('store.errorNotResolved', { id });
-    const changed = applyPatch(record, p.values, p.causeKind, p.files);
+    if (options.reopen && record.status !== 'resolved' && record.status !== 'discarded') throw new WayfinderError('store.errorNotResolved', { id });
+    const changed = applyPatch(record, p.values, p.causeKind, p.kind, p.files);
     if (changed.length === 0 && !options.reopen) throw new WayfinderError('store.errorNothingToUpdate', { id });
     // A resolved error keeps its evidence: emptying the solution or validation needs a reopen first.
     if (!options.reopen && record.status === 'resolved' && (!record.fields.solution || !record.fields.validation)) {
@@ -479,13 +523,42 @@ export function resolveError(
     if (record.status === 'resolved') {
       return { error: record, warnings: [{ key: 'store.errorAlreadyResolved', vars: { id } }], written: false };
     }
-    const changed = applyPatch(record, p.values, p.causeKind, p.files);
+    const changed = applyPatch(record, p.values, p.causeKind, p.kind, p.files);
     if (!record.fields.solution || !record.fields.validation) throw new WayfinderError('store.errorResolveNeedsSolution', { id });
     const date = clock();
     record.status = 'resolved';
     record.updated = isoLocal(date);
     addEntry(record, date, entryText('Resolved.', changed, p.note));
     const warnings = saveUnlocked(home, record, previous, `wf: error resolve ${id}`);
+    return { error: record, warnings, written: true };
+  });
+}
+
+/**
+ * Closes an error without a fix: a false alarm or a failure that will not be fixed. The reason is
+ * required and stays in the error's notes; the web lists it under «Descartados».
+ */
+export function discardError(
+  home: string,
+  slug: string,
+  id: string,
+  note: string,
+  clock: Clock = systemClock,
+): ErrorWriteResult & { written: boolean } {
+  requireProject(home, slug);
+  assertErrorId(id);
+  const text = validateNote(note);
+  if (!text) throw new WayfinderError('store.errorDiscardNeedsNote', {});
+  return withLock(home, () => {
+    const { record, previous } = readForWrite(home, slug, id);
+    if (record.status === 'discarded') {
+      return { error: record, warnings: [{ key: 'store.errorAlreadyDiscarded', vars: { id } }], written: false };
+    }
+    const date = clock();
+    record.status = 'discarded';
+    record.updated = isoLocal(date);
+    addEntry(record, date, `Discarded.\n${text}`);
+    const warnings = saveUnlocked(home, record, previous, `wf: error discard ${id}`);
     return { error: record, warnings, written: true };
   });
 }

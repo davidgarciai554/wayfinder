@@ -72,13 +72,22 @@ Reglas del historial:
 
 Cuando algo falla (compilación, pruebas, análisis, ejecución o un comportamiento inesperado), Claude lo registra con `wf_error`, ligado a la tarea en la que trabaja. Es el equivalente, dentro de Wayfinder, del `ERRORES.md` que piden las instrucciones base.
 
-- **Un archivo por error:** `projects/<slug>/errors/ERR-n-<título>.md`, con contexto, reproducción, salida observada, causa (hipótesis o confirmada), solución, validación, resultado y archivos. Estado abierto o resuelto. El prefijo `ERR` está reservado: ningún proyecto nuevo puede usarlo.
-- **Acciones:** `create` (necesita la tarea, que debe existir, y el contexto), `update` (causa, solución, validación, resultado y archivos; también reabrir con una nota), `note` (una recurrencia o una corrección) y `resolve` (exige solución y validación). El contexto, la reproducción y la salida no se cambian: se corrigen con una nota.
+- **Un archivo por error:** `projects/<slug>/errors/ERR-n-<título>.md`, con contexto, reproducción, salida observada, causa (hipótesis o confirmada), solución, validación, resultado y archivos. Estado abierto, resuelto o descartado.
+- **Tipo (opcional):** compilación (`build`), pruebas (`test`), análisis (`analysis`: lint, tipos), ejecución (`runtime`), comportamiento inesperado (`behavior`) o entorno (`environment`: puertos, permisos, configuración, dependencias). Se puede poner al crear el error o después con `update`. Los errores sin tipo, incluidos los anteriores a esta versión, aparecen como «Sin clasificar». El prefijo `ERR` está reservado: ningún proyecto nuevo puede usarlo.
+- **Acciones:** `create` (necesita la tarea, que debe existir, y el contexto), `update` (tipo, causa, solución, validación, resultado y archivos; también reabrir con una nota), `note` (una recurrencia o una corrección), `resolve` (exige solución y validación) y `discard` (cierra sin solución una falsa alarma o un fallo que no se va a corregir; exige una nota con el motivo, y Claude te lo dice). Un error resuelto o descartado se reabre con `update`, `reopen` y una nota. El contexto, la reproducción y la salida no se cambian: se corrigen con una nota.
 - **Antes de investigar:** `wf_search` muestra primero hasta 5 errores, y al crear uno Claude ve los posibles duplicados abiertos. Si es el mismo fallo, añade una nota en lugar de crear otro.
-- **Para Claude:** `wf_get ERR-n` da el error completo y `wf_get` de una tarea lista sus errores. Al empezar la sesión recibe hasta 5 errores abiertos (solo ID, tarea y título), si caben.
-- **En la web:** pestaña «Errores» con abiertos y resueltos, una página por error y la sección «Errores (n)» en cada tarea. Solo lectura.
+- **Para Claude:** `wf_get ERR-n` da el error completo y `wf_get` de una tarea lista sus errores. Al empezar la sesión recibe hasta 5 errores abiertos (solo ID, tarea, tipo y título) y un recuento por tipo, si caben.
+- **En la web:** pestaña «Errores» con abiertos, resueltos y descartados (con el motivo en sus notas), cada grupo dividido en secciones por tipo con su recuento; una página por error y la sección «Errores (n)» en cada tarea. Solo lectura.
+- **Versiones anteriores:** un plugin anterior a la versión con errores descartados, si usa la misma carpeta de datos, muestra esos errores como «ilegibles» (sin borrarlos ni cambiarlos) hasta que lo actualices. Desde esta versión, un estado que Wayfinder no conozca se muestra tal cual y no se puede cambiar.
 - **Secretos:** un campo que parece contener un secreto se rechaza y no se guarda nada. El detector es heurístico y no reconoce datos personales (por ejemplo, carpetas de usuario o correos): resume la salida en vez de pegarla entera.
 - El texto de los errores se trata como dato no confiable, igual que el de las tareas.
+
+### Reabrir una tarea
+
+Una tarea hecha o descartada se reabre solo desde la web, con el botón «Reabrir» y un motivo obligatorio, que queda en el historial de la tarea y en la bitácora.
+
+- Vuelve a «Por hacer» si es tuya o si se aprobó. Una propuesta de Claude que nadie aprobó vuelve a «Propuestas» y hay que aprobarla de nuevo (por chat, con una revisión nueva).
+- Claude no puede reabrir tareas: si hace falta, te pide que lo hagas en la web.
 
 ### Aprobar ideas desde el chat
 
@@ -95,7 +104,7 @@ Escribe en el chat **«abre Wayfinder»** (o «open Wayfinder»). Como en el reg
 - Claude abre la web para esa sesión y te da una dirección de este PC, por ejemplo `http://127.0.0.1:4747/`. Ábrela en el navegador del PC.
 - Si la web se abre también en la red (opción `webHost`), Claude te da además el enlace para el móvil, que se abre con un toque. Si usas Claude desde el móvil (Remote Control), púlsalo ahí mismo.
 - En esa página:
-  - **«Activar la escritura en este PC»** habilita crear, aprobar y descartar en ese navegador.
+  - **«Activar la escritura en este PC»** habilita crear, aprobar, descartar y reabrir en ese navegador.
   - **«Abrir en otro dispositivo»** muestra el enlace para el móvil u otro equipo, con un botón para copiarlo.
 - Para usarla en otros dispositivos, configura la opción `webHost` del plugin con la IP de este PC en tu red o en Tailscale. Sin `webHost`, la web solo se abre en este PC.
 - Fuera de este PC, todo pide la clave del enlace, también leer.

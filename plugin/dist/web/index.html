@@ -97,5 +97,22 @@
       <button type="button" class="button button-danger" id="discard-confirm" data-i18n="web.discard">Descartar</button>
     </div>
   </dialog>
+  <dialog class="modal" id="reopen-dialog" aria-labelledby="reopen-title" aria-describedby="reopen-text">
+    <form id="reopen-form" novalidate>
+      <h2 id="reopen-title"></h2>
+      <p id="reopen-text"></p>
+      <p id="reopen-error" class="notice" role="alert" hidden></p>
+      <div class="field">
+        <label for="reopen-note" data-i18n="web.reopenNote">Motivo (obligatorio)</label>
+        <p class="hint" id="reopen-note-hint" data-i18n="web.reopenNoteHint"></p>
+        <textarea id="reopen-note" name="note" rows="4" maxlength="4000" aria-describedby="reopen-note-hint reopen-note-error" required></textarea>
+        <p class="field-error" id="reopen-note-error" hidden></p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button" id="reopen-cancel" data-i18n="web.cancel">Cancelar</button>
+        <button type="submit" class="button button-primary" id="reopen-confirm" data-i18n="web.reopen">Reabrir</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

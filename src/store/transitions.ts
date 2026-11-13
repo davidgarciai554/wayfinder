@@ -20,6 +20,10 @@ const TABLE: Record<Actor, Partial<Record<Status, Partial<Record<Status, Rule>>>
     proposed: { todo: {}, discarded: {} },
     todo: { discarded: {} },
     'in-progress': { discarded: {} },
+    // Reopening (WAY-12): only the person, from the web, with a reason. setStatus also checks
+    // that the target is reopenTarget(task): a proposal never approved goes back to proposed.
+    done: { todo: { needsNote: true } },
+    discarded: { todo: { needsNote: true }, proposed: { needsNote: true } },
   },
   mcp: {
     proposed: { discarded: { needsNote: true } },

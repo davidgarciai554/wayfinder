@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
-import { createTask, logProgress } from '../src/store/tasks.ts';
+import { createTask, logProgress, setStatus } from '../src/store/tasks.ts';
 import { createError, noteError } from '../src/store/error-records.ts';
 import { setGitRunner } from '../src/store/git.ts';
 import { WayfinderError } from '../src/store/errors.ts';
@@ -427,6 +427,29 @@ test('stale or invalid state answers 409; invalid input names the field', async 
   assert.equal(JSON.parse((await post(port, '/api/projects/demo/tasks', { title: 'Bien', priority: 'urgent' }, headers)).body).field, 'priority');
 });
 
+test('reopen from the web: needs the key, the Origin, a fresh expectedUpdated and a reason; the store picks the target', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const idea = createTask(home, 'demo', { title: 'Idea' }, 'mcp').task.id;
+  setStatus(home, 'demo', idea, 'discarded', 'mcp', { note: 'no' });
+  const tasks = JSON.parse((await get(port, '/api/projects/demo/tasks')).body).tasks;
+  const meta = tasks.find((x: { id: string }) => x.id === idea);
+  assert.equal(meta.reopensTo, 'proposed');
+  const path = `/api/projects/demo/tasks/${idea}/reopen`;
+  const files = tree(home);
+  assert.equal((await post(port, path, { expectedUpdated: meta.updated, note: 'otra vez' }, { ...headers, Origin: 'http://evil.example' })).status, 403);
+  assert.equal((await post(port, path, { expectedUpdated: meta.updated, note: 'otra vez' }, { Origin: headers.Origin, 'Content-Type': 'application/json' })).status, 401);
+  const noNote = await post(port, path, { expectedUpdated: meta.updated }, headers);
+  assert.equal(noNote.status, 400);
+  assert.equal(JSON.parse(noNote.body).field, 'note');
+  assert.equal((await post(port, path, { expectedUpdated: '2000-01-01T00:00:00+01:00', note: 'otra vez' }, headers)).status, 409);
+  assert.deepEqual(tree(home), files);
+  const ok = await post(port, path, { expectedUpdated: meta.updated, note: 'La quiero revisar.' }, headers);
+  assert.equal(ok.status, 200);
+  assert.equal(JSON.parse(ok.body).task.status, 'proposed');
+  assert.equal(JSON.parse(ok.body).task.reopensTo, null);
+  assert.equal((await post(port, path, { expectedUpdated: JSON.parse(ok.body).task.updated, note: 'x' }, headers)).status, 409, 'an open task cannot be reopened');
+});
+
 test('git missing: the write is kept and answers 201 with a visible warning', async (t) => {
   const { port, headers } = await writer(t, { lang: 'es' });
   const restore = setGitRunner(() => ({ ok: false, missing: true, stdout: '', stderr: 'spawn git ENOENT' }));
@@ -466,14 +489,16 @@ test('errors: list and detail are read-only, rendered safely, and the task lists
     task: 'WF-1',
     context: 'Al compilar\n<script>alert(1)</script> [x](javascript:alert(2))',
     output: '# línea con almohadilla\n<b>no es html</b>',
+    kind: 'build',
   }, clock);
   noteError(home, 'demo', 'ERR-1', 'Recurrencia', clock);
 
   const list = JSON.parse((await get(port, '/api/projects/demo/errors')).body);
-  assert.deepEqual(list.errors.map((e: { id: string; status: string; task: string }) => [e.id, e.status, e.task]), [['ERR-1', 'open', 'WF-1']]);
+  assert.deepEqual(list.errors.map((e: { id: string; status: string; task: string; kind: string }) => [e.id, e.status, e.task, e.kind]), [['ERR-1', 'open', 'WF-1', 'build']]);
 
   const detail = JSON.parse((await get(port, '/api/projects/demo/errors/ERR-1')).body);
   assert.equal(detail.taskTitle, 'Build');
+  assert.equal(detail.kind, 'build');
   const field = (key: string) => detail.fields.find((f: { key: string }) => f.key === key);
   assert.doesNotMatch(field('context').html, /<script|href="javascript:/i);
   assert.equal(field('output').text, '# línea con almohadilla\n<b>no es html</b>');
@@ -482,7 +507,7 @@ test('errors: list and detail are read-only, rendered safely, and the task lists
   assert.match(detail.history[1].html, /Recurrencia/);
 
   const task = JSON.parse((await get(port, '/api/projects/demo/tasks/WF-1')).body);
-  assert.deepEqual(task.errors, [{ id: 'ERR-1', title: 'Falla <img src=x onerror=alert(1)>', status: 'open' }]);
+  assert.deepEqual(task.errors, [{ id: 'ERR-1', title: 'Falla <img src=x onerror=alert(1)>', status: 'open', kind: 'build' }]);
 
   for (const path of ['/api/projects/demo/errors/ERR-9', '/api/projects/demo/errors/WF-1', '/api/projects/demo/errors/..%2Fx', '/api/projects/nope/errors']) {
     assert.equal((await get(port, path)).status, 404, path);

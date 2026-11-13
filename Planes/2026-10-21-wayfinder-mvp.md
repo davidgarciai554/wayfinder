@@ -258,7 +258,7 @@ Las líneas que añade el servidor usan marcas estables en inglés (por ejemplo 
 | `in-progress` → `done` | No | Sí | — | |
 | `in-progress` → `todo` | No | Sí, con `note` | — | |
 | `in-progress` → `discarded` | Sí, con `<dialog>` | Sí, con `note` | — | |
-| `done`, `discarded` → * | No | No | No | Terminales en el MVP (sin deshacer). |
+| `done`, `discarded` → * | No | No | No | Terminales en el MVP (sin deshacer). **Revisado** por el plan `Planes/2026-11-13-tipos-y-descarte-de-errores-y-reapertura-de-tareas.md` v1 (WAY-12): la persona puede reabrir desde la web, con motivo; `done` → `todo` y `discarded` → `todo` (tarea propia o aprobada) o `proposed` (nunca aprobada). Claude y el chat siguen sin poder. |
 
 Una transición inválida devuelve `isError` con el estado actual, el pedido y los válidos, y el archivo queda con el mismo hash. Cada transición con `note` añade una línea a la bitácora. Cada escritura válida genera un commit.
 

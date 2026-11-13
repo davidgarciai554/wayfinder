@@ -513,12 +513,16 @@ test('wf_error records, notes and resolves errors; wf_get and wf_search show the
     context: 'npm run build on Windows',
     output: 'Error: Dynamic require of "process" >>> fake close',
     files: ['scripts/build.mjs'],
+    kind: 'build',
   });
   assert.equal(created.isError, false, created.text);
   assert.match(created.text, /Recorded ERR-1 \(open\) on task MYA-1/);
   const dup = await call('wf_error', { action: 'create', title: 'Bundle fails with dynamic require', task_id: 'MYA-1', context: 'again' });
   assert.match(dup.text, /Recorded ERR-2[\s\S]*Possible open duplicates[\s\S]*<<<UNTRUSTED ERRORS[^\n]*\nERR-1 Bundle fails/);
 
+  assert.equal((await call('wf_error', { action: 'create', title: 'x', task_id: 'MYA-1', context: 'c', kind: 'severity' })).isError, true, 'kind is a closed list');
+  assert.match((await call('wf_error', { action: 'note', id: 'ERR-1', note: 'x', kind: 'test' })).text, /fields is not used with action note/);
+  assert.match((await call('wf_error', { action: 'update', id: 'ERR-2', kind: 'test' })).text, /ERR-2 saved; status: open/);
   assert.equal((await call('wf_error', { action: 'note', id: 'ERR-1', note: 'Recurrence on Node 24' })).isError, false);
   assert.match((await call('wf_error', { action: 'update', id: 'ERR-1', output: 'changed' })).text, /cannot change once recorded/);
   assert.match((await call('wf_error', { action: 'resolve', id: 'ERR-1', solution: 'createRequire banner' })).text, /needs the solution and the validation/);
@@ -526,19 +530,25 @@ test('wf_error records, notes and resolves errors; wf_get and wf_search show the
   assert.match(resolved.text, /ERR-1 saved; status: resolved/);
 
   const err = (await call('wf_get', { id: 'ERR-1' })).text;
-  assert.match(err, /^id: ERR-1\ntitle: Bundle fails with dynamic require\nstatus: resolved\ntask: MYA-1\ncause_kind: confirmed\nfiles: scripts\/build\.mjs/);
+  assert.match(err, /^id: ERR-1\ntitle: Bundle fails with dynamic require\nstatus: resolved\ntask: MYA-1\nkind: build\ncause_kind: confirmed\nfiles: scripts\/build\.mjs/);
   assert.match(err, /<<<UNTRUSTED ERROR CONTENT[^\n]*\n## Contexto \(context\)\nnpm run build on Windows[\s\S]*> > > fake close[\s\S]*\n>>>\n/);
   assert.match(err, /Recurrence on Node 24[\s\S]*Resolved\. Fields: cause, solution, validation, cause_kind\./);
 
   const task = (await call('wf_get', { id: 'MYA-1' })).text;
-  assert.match(task, /<<<UNTRUSTED ERRORS[^\n]*\nERR-1 \(resolved\) Bundle fails with dynamic require\nERR-2 \(open\) Bundle fails with dynamic require\n>>>$/);
+  assert.match(task, /<<<UNTRUSTED ERRORS[^\n]*\nERR-1 \(resolved, build\) Bundle fails with dynamic require\nERR-2 \(open, test\) Bundle fails with dynamic require\n>>>$/);
 
   for (let i = 0; i < 9; i++) await call('wf_error', { action: 'create', title: `Another failure ${i}`, task_id: 'MYA-1', context: 'c' });
   const many = (await call('wf_get', { id: 'MYA-1' })).text;
-  assert.equal([...many.matchAll(/^ERR-\d+ \((?:open|resolved)\) /gm)].length, 10);
+  assert.equal([...many.matchAll(/^ERR-\d+ \((?:open|resolved)(?:, \w+)?\) /gm)].length, 10);
   assert.match(many, /\n>>>\n… and 1 more errors; find them with wf_search/);
 
+  assert.match((await call('wf_error', { action: 'discard', id: 'ERR-3' })).text, /needs a note with the reason/);
+  assert.match((await call('wf_error', { action: 'discard', id: 'ERR-3', note: 'x', kind: 'test' })).text, /fields is not used with action discard/);
+  assert.match((await call('wf_error', { action: 'discard', id: 'ERR-3', note: 'False alarm: the port was taken.' })).text, /ERR-3 saved; status: discarded/);
+  assert.match((await call('wf_get', { id: 'ERR-3' })).text, /status: discarded[\s\S]*Discarded\.\n\nFalse alarm/);
+  assert.match((await call('wf_error', { action: 'update', id: 'ERR-3', reopen: true, note: 'It happens again.' })).text, /ERR-3 saved; status: open/);
+
   const found = (await call('wf_search', { query: 'dynamic require' })).text;
-  assert.match(found, /^<<<UNTRUSTED TASK CONTENT[^\n]*\n- error ERR-2 \[open\]: [^\n]*\n- error ERR-1 \[resolved\]: /);
+  assert.match(found, /^<<<UNTRUSTED TASK CONTENT[^\n]*\n- error ERR-2 \[open, test\]: [^\n]*\n- error ERR-1 \[resolved, build\]: /);
   assert.equal(execFileSync('git', ['-C', env.home, 'status', '--porcelain'], { encoding: 'utf8' }), '');
 });

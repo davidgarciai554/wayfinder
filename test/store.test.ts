@@ -7,7 +7,8 @@ import { initHome } from '../src/store/init.ts';
 import { appendLog } from '../src/store/log.ts';
 import { assertSlug, safeJoin } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
-import { createTask, listTasks, readTask, setStatus, updateTask } from '../src/store/tasks.ts';
+import { createTask, listTasks, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
+import { parseEntries } from '../src/store/history.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { commitCount, fixedClock, gitOut, makeHome, makeProject, sha, tree } from './helpers.ts';
 
@@ -190,4 +191,71 @@ test('expectedUpdated detects a concurrent change (conflict)', (t) => {
   const { task } = createTask(home, 'demo', { title: 'C' }, 'web', clock);
   updateTask(home, 'demo', task.id, { body: 'changed by Claude' }, { clock });
   assert.throws(() => updateTask(home, 'demo', task.id, { body: 'stale' }, { expectedUpdated: task.updated, clock }), isKey('store.conflict'));
+});
+
+test('reopen (web only): done goes back to todo with the reason in the history and the log, in one commit', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'Hecha' }, 'web', clock).task.id;
+  setStatus(home, 'demo', id, 'in-progress', 'mcp', { trivial: true, note: 'arreglo menor', clock });
+  setStatus(home, 'demo', id, 'done', 'mcp', { clock });
+  const file = join(home, readTask(home, 'demo', id).file);
+  const hash = sha(file);
+  assert.throws(() => setStatus(home, 'demo', id, 'todo', 'web', { clock }), isKey('store.noteRequired'));
+  assert.throws(() => setStatus(home, 'demo', id, 'todo', 'web', { note: 'x'.repeat(4001), clock }), isKey('store.logEntryTooLong'));
+  assert.throws(() => setStatus(home, 'demo', id, 'todo', 'web', { note: 'token ghp_' + 'a'.repeat(36), clock }), isKey('store.secretRejected'));
+  assert.throws(() => setStatus(home, 'demo', id, 'proposed', 'web', { note: 'motivo', clock }), isKey('store.invalidTransition'));
+  assert.equal(sha(file), hash, 'rejected reopenings write nothing');
+
+  const commits = commitCount(home);
+  const { task } = setStatus(home, 'demo', id, 'todo', 'web', { note: 'Vuelve a fallar en Windows.', clock });
+  assert.equal(task.status, 'todo');
+  assert.equal(commitCount(home), commits + 1);
+  assert.equal(gitOut(home, 'log', '-1', '--format=%s'), `wf: set-status ${id} done->todo`);
+  assert.match(parseEntries(task.history).at(-1)!.text, /^status: done -> todo\n\nVuelve a fallar en Windows\.$/);
+  const [logName] = readdirSync(join(home, 'projects/demo/log'));
+  assert.match(readFileSync(join(home, 'projects/demo/log', logName), 'utf8'), /status: done -> todo\nVuelve a fallar en Windows\./);
+});
+
+test('reopen never approves: a proposal nobody approved goes back to proposed; yours or approved ones to todo', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const idea = createTask(home, 'demo', { title: 'Idea de Claude' }, 'mcp', clock).task.id;
+  setStatus(home, 'demo', idea, 'discarded', 'mcp', { note: 'no ahora', clock });
+  assert.equal(reopenTarget(readTask(home, 'demo', idea)), 'proposed');
+  assert.throws(() => setStatus(home, 'demo', idea, 'todo', 'web', { note: 'la quiero', clock }), isKey('store.invalidTransition'));
+  const back = setStatus(home, 'demo', idea, 'proposed', 'web', { note: 'Quiero revisarla otra vez.', clock }).task;
+  assert.equal(back.status, 'proposed');
+  assert.equal(back.approvedVia, undefined);
+
+  const mine = createTask(home, 'demo', { title: 'Mía' }, 'web', clock).task.id;
+  setStatus(home, 'demo', mine, 'discarded', 'web', { clock });
+  assert.equal(reopenTarget(readTask(home, 'demo', mine)), 'todo');
+  assert.equal(setStatus(home, 'demo', mine, 'todo', 'web', { note: 'Al final sí.', clock }).task.status, 'todo');
+
+  const approved = createTask(home, 'demo', { title: 'Aprobada y descartada' }, 'mcp', clock).task.id;
+  setStatus(home, 'demo', approved, 'todo', 'web', { clock });
+  setStatus(home, 'demo', approved, 'discarded', 'web', { clock });
+  assert.equal(reopenTarget(readTask(home, 'demo', approved)), 'todo');
+  assert.equal(reopenTarget(readTask(home, 'demo', mine)), null, 'only done or discarded tasks reopen');
+});
+
+test('Claude cannot reopen: MCP and chat transitions out of done and discarded are rejected', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const done = createTask(home, 'demo', { title: 'Hecha' }, 'web', clock).task.id;
+  setStatus(home, 'demo', done, 'in-progress', 'mcp', { trivial: true, note: 'menor', clock });
+  setStatus(home, 'demo', done, 'done', 'mcp', { clock });
+  const gone = createTask(home, 'demo', { title: 'Descartada' }, 'mcp', clock).task.id;
+  setStatus(home, 'demo', gone, 'discarded', 'mcp', { note: 'no', clock });
+  const before = tree(home);
+  for (const id of [done, gone]) {
+    for (const to of ['proposed', 'todo', 'in-progress', 'done', 'discarded'] as const) {
+      assert.throws(() => setStatus(home, 'demo', id, to, 'mcp', { note: 'reabre', planExists: () => true, clock }), isKey('store.invalidTransition'), `${id} -> ${to}`);
+    }
+  }
+  assert.deepEqual(tree(home), before);
 });

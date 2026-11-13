@@ -217,4 +217,47 @@ test.describe('web writes', () => {
     // The English fixture is a separate data folder: nothing written there either.
     expect(readdirSync(join(e2eHome('en'), 'projects', 'escritura', 'tasks'))).toHaveLength(4);
   });
+
+  // WAY-12, on its own project ("reapertura") so the other specs keep their counts.
+  test('reopen asks for a reason, says where the task goes and keeps the reason in the history', async ({ page }) => {
+    await openWithKey(page);
+    const base = `http://127.0.0.1:${E2E_PORTS.es}`;
+    await page.goto(`${base}/#/reapertura/task/REA-1`);
+    const detail = page.getByRole('dialog', { name: 'Tarea terminada' });
+    const reopen = detail.getByRole('button', { name: 'Reabrir «Tarea terminada»' });
+    await reopen.click();
+    const dialog = page.getByRole('dialog', { name: '¿Reabrir «Tarea terminada»?' });
+    await expect(dialog).toContainText('REA-1 volverá a «Por hacer».');
+    const note = dialog.getByRole('textbox', { name: 'Motivo (obligatorio)' });
+    await expect(note).toBeFocused();
+    await dialog.getByRole('button', { name: 'Reabrir' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Escribe por qué la reabres.')).toBeVisible();
+    await expect(note).toHaveAttribute('aria-invalid', 'true');
+    await expect(note).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(reopen).toBeFocused();
+
+    const before = commits();
+    await reopen.click();
+    await note.fill('Vuelve a fallar en Windows.');
+    await dialog.getByRole('button', { name: 'Reabrir' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#flash')).toHaveText('REA-1 reabierta: vuelve a «Por hacer».');
+    await expect(detail.locator('.detail-head .pill').first()).toHaveText('Por hacer');
+    await expect(detail.getByRole('region', { name: 'Historial' })).toContainText('Vuelve a fallar en Windows.');
+    expect(commits()).toBe(before + 1);
+    expect(lastSubject()).toBe('wf: set-status REA-1 done->todo');
+
+    // A proposal nobody approved goes back to proposals, never to "Por hacer".
+    await page.goto(`${base}/#/reapertura/task/REA-2`);
+    await page.getByRole('button', { name: 'Reabrir «Idea descartada»' }).click();
+    const again = page.getByRole('dialog', { name: '¿Reabrir «Idea descartada»?' });
+    await expect(again).toContainText('volverá a «Propuestas»');
+    await again.getByRole('textbox', { name: 'Motivo (obligatorio)' }).fill('Quiero revisarla otra vez.');
+    await again.getByRole('button', { name: 'Reabrir' }).click();
+    await expect(page.locator('#flash')).toHaveText('REA-2 reabierta: vuelve a «Sin aprobar».');
+    expect(lastSubject()).toBe('wf: set-status REA-2 discarded->proposed');
+  });
 });

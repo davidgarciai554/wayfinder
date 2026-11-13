@@ -31,6 +31,44 @@ test.describe('error records (read only)', () => {
     await expect(page.locator('.board-area')).toHaveCount(0);
   });
 
+  test('each state is split into sections by kind, with counts and unclassified last', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/errores/errors');
+    const open = page.getByRole('region', { name: /Abiertos/ });
+    await expect(open.getByRole('heading', { level: 3 })).toHaveText([/^Compilación\s*1$/]);
+    await expect(open.getByRole('region', { name: /Compilación/ }).getByRole('listitem')).toContainText('ERR-1');
+    const resolved = page.getByRole('region', { name: /Resueltos/ });
+    await expect(resolved.getByRole('heading', { level: 3 })).toHaveText([/^Pruebas\s*1$/, /^Entorno\s*1$/, /^Sin clasificar\s*8$/]);
+    await expect(resolved.getByRole('region', { name: /Pruebas/ }).getByRole('listitem')).toContainText('ERR-13');
+    await expect(resolved.getByRole('region', { name: /Entorno/ }).getByRole('listitem')).toContainText('ERR-12');
+    await resolved.getByRole('button', { name: 'Ver los 12 resueltos' }).click();
+    await expect(resolved.getByRole('heading', { level: 3, name: /Sin clasificar/ })).toHaveText(/^Sin clasificar\s*10$/);
+
+    await page.goto('/#/errores/errors/ERR-1');
+    await expect(page.locator('dl.meta')).toContainText('TipoCompilación');
+    await page.goto('/#/errores/errors/ERR-2');
+    await expect(page.locator('dl.meta')).toContainText('TipoSin clasificar');
+    await page.goto('/#/errores/task/FAL-1');
+    await expect(page.getByRole('dialog').getByRole('region', { name: /Errores/ }).getByRole('listitem').first()).toContainText('Compilación');
+  });
+
+  test('discarded errors have their own group, a struck-through pill in text and the reason in the notes', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/errores/errors');
+    const discarded = page.getByRole('region', { name: /^Descartados/ });
+    await expect(discarded.getByRole('heading', { level: 2 })).toHaveText(/^Descartados\s*1$/);
+    await expect(discarded.getByRole('heading', { level: 3 })).toHaveText([/^Entorno\s*1$/]);
+    const pill = discarded.getByRole('listitem').locator('.pill');
+    await expect(pill).toHaveText('Descartado');
+    await expect(pill).toHaveCSS('text-decoration-line', 'line-through');
+    await expect(page.getByRole('region', { name: /Abiertos/ })).not.toContainText('ERR-14');
+    await expect(page.getByRole('region', { name: /Resueltos/ })).not.toContainText('ERR-14');
+
+    await discarded.getByRole('link', { name: 'El puerto 4555 estaba ocupado' }).click();
+    await expect(page.locator('.detail-head .pill')).toHaveText('Descartado');
+    await expect(page.getByRole('region', { name: 'Notas y recurrencias' })).toContainText('Falsa alarma: otra prueba seguía abierta.');
+  });
+
   test('the error page shows every field, hostile text as data and the notes', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/#/errores/errors');
@@ -123,12 +161,14 @@ test.describe('error records (read only)', () => {
     await expect(page.getByRole('region', { name: /Abiertos/ })).toMatchAriaSnapshot(`
       - region "Abiertos 1":
         - heading "Abiertos 1" [level=2]
-        - list:
-          - listitem:
-            - text: ERR-1
-            - time
-            - link "El bundle falla con require dinámico <img src=x onerror=window.__xss=6>"
-            - text: Abierto Tarea FAL-1
+        - region "Compilación 1":
+          - heading "Compilación 1" [level=3]
+          - list:
+            - listitem:
+              - text: ERR-1
+              - time
+              - link "El bundle falla con require dinámico <img src=x onerror=window.__xss=6>"
+              - text: Abierto Tarea FAL-1
     `);
   });
 
@@ -138,5 +178,9 @@ test.describe('error records (read only)', () => {
     await expect(page.getByRole('link', { name: '← Back to Errors' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Errors', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Open', { exact: true })).toBeVisible();
+    await expect(page.locator('dl.meta')).toContainText('KindBuild');
+    await page.goto(`http://127.0.0.1:${E2E_PORTS.en}/#/errores/errors`);
+    await expect(page.getByRole('region', { name: /Resolved/ }).getByRole('heading', { level: 3 })).toHaveText([/^Tests\s*1$/, /^Environment\s*1$/, /^Unclassified\s*8$/]);
+    await expect(page.getByRole('region', { name: /^Discarded/ }).locator('.pill')).toHaveText('Discarded');
   });
 });

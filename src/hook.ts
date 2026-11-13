@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
-import { listErrors, type ErrorRecord } from './store/error-records.ts';
+import { ERROR_KINDS, listErrors, type ErrorKind, type ErrorRecord } from './store/error-records.ts';
 import { initHome, isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
@@ -140,18 +140,32 @@ export function sessionContext(lang: Lang, slug: string, tasks: Task[], errors: 
     }
     if (block.includes('\n- ')) text += block;
   }
-  // Open errors go after the history, again only while they fit: ID, task and title, never
-  // their output or cause (free text that may come from tool output).
+  // Open errors go after the history, again only while they fit: ID, task, kind and title, never
+  // their output or cause (free text that may come from tool output). The kind comes from a closed
+  // list (unknown values read as unclassified), so it carries no free text.
   const open = errors.filter((e) => e.status === 'open').sort((a, b) => b.updated.localeCompare(a.updated));
   if (open.length) {
-    let block = `\n\n${tr('hook.session.errors')}`;
-    let shown = 0;
-    for (const e of open.slice(0, ERRORS_SHOWN)) {
-      const next = `${block}\n- ${e.id} (${e.task}) ${neutralize(flatten(e.title, MAX_TITLE))}`;
-      if (next.length > MAX_ERRORS_BLOCK || text.length + next.length > MAX_CONTEXT) break;
-      block = next;
-      shown++;
-    }
+    const kindLabel = (kind: ErrorKind | null) => tr(kind ? `errorKind.${kind}` : 'errorKind.none');
+    const counts = [...ERROR_KINDS, null]
+      .map((kind) => [kindLabel(kind), open.filter((e) => e.kind === kind).length] as const)
+      .filter(([, n]) => n > 0);
+    const summary = `\n${tr('hook.session.errorsByKind', { kinds: counts.map(([label, n]) => `${label} ${n}`).join(', ') })}`;
+    const build = (withSummary: boolean) => {
+      let block = `\n\n${tr('hook.session.errors')}${withSummary ? summary : ''}`;
+      let shown = 0;
+      for (const e of open.slice(0, ERRORS_SHOWN)) {
+        const kind = e.kind ? ` [${kindLabel(e.kind)}]` : '';
+        const next = `${block}\n- ${e.id} (${e.task})${kind} ${neutralize(flatten(e.title, MAX_TITLE))}`;
+        if (next.length > MAX_ERRORS_BLOCK || text.length + next.length > MAX_CONTEXT) break;
+        block = next;
+        shown++;
+      }
+      return { block, shown };
+    };
+    // The summary is dropped before any error line: the IDs are what Claude needs to look them up.
+    const withSummary = build(true);
+    const withoutSummary = build(false);
+    let { block, shown } = withSummary.shown >= withoutSummary.shown ? withSummary : withoutSummary;
     const more = `\n${tr('hook.session.errorsMore', { count: open.length - shown })}`;
     if (shown < open.length && block.length + more.length <= MAX_ERRORS_BLOCK && text.length + block.length + more.length <= MAX_CONTEXT) block += more;
     if (shown > 0) text += block;

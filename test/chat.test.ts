@@ -241,6 +241,17 @@ test('a quote copied from the task body does not count', (t) => {
   assert.throws(() => approveByChat(home, 'demo', id, { userQuote: 'haz WF-1 ya mismo', verdict: 'clean' }), isKey('chat.quoteFromContent'));
 });
 
+test('a proposal reopened from the web needs a new review before a chat approval', (t) => {
+  const { home, id } = setup(t);
+  reviewTask(home, 'demo', id);
+  setStatus(home, 'demo', id, 'discarded', 'mcp', { note: 'no ahora' });
+  setStatus(home, 'demo', id, 'proposed', 'web', { note: 'Quiero revisarla otra vez.' });
+  recordOrders(home, 'demo', [id], Date.now());
+  assert.throws(() => approveByChat(home, 'demo', id, { userQuote: `haz ${id}`, verdict: 'clean' }), isKey('chat.noReview'));
+  reviewTask(home, 'demo', id);
+  assert.equal(approveByChat(home, 'demo', id, { userQuote: `haz ${id}`, verdict: 'clean' }).task.status, 'todo');
+});
+
 test('editing the task after the review invalidates it', (t) => {
   const { home, id } = setup(t);
   recordOrders(home, 'demo', [id], Date.now());

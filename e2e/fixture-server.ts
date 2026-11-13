@@ -9,7 +9,7 @@ import { createProject } from '../src/store/project.ts';
 import { appendLog } from '../src/store/log.ts';
 import { createTask, logProgress, setStatus, updateTask } from '../src/store/tasks.ts';
 import { startServer } from '../src/server.ts';
-import { createError, noteError, resolveError } from '../src/store/error-records.ts';
+import { createError, discardError, noteError, resolveError } from '../src/store/error-records.ts';
 import { e2eGitOffFlag, e2eHome, e2eKeyFile, E2E_PORTS } from './paths.ts';
 
 const lang = process.env.WAYFINDER_LANG === 'en' ? 'en' : 'es';
@@ -61,6 +61,14 @@ for (const title of ['Propuesta para aprobar', 'Propuesta para descartar', 'Prop
   createTask(E2E_HOME, 'escritura', { title, body: 'Idea de Claude.' }, 'mcp', clock);
 }
 
+// Reopening (WAY-12): one task of the person that is done and one proposal discarded before anyone approved it.
+createProject(E2E_HOME, { slug: 'reapertura', name: 'reapertura', idPrefix: 'REA', localPath: 'D:/reapertura' });
+const finished = createTask(E2E_HOME, 'reapertura', { title: 'Tarea terminada' }, 'web', clock).task.id;
+setStatus(E2E_HOME, 'reapertura', finished, 'in-progress', 'mcp', { trivial: true, note: 'Prueba e2e.', clock });
+setStatus(E2E_HOME, 'reapertura', finished, 'done', 'mcp', { clock });
+const dropped = createTask(E2E_HOME, 'reapertura', { title: 'Idea descartada', body: 'Idea de Claude.' }, 'mcp', clock).task.id;
+setStatus(E2E_HOME, 'reapertura', dropped, 'discarded', 'mcp', { note: 'Ahora no.', clock });
+
 // History plan: a task with progress entries on two days and a task written before histories existed.
 createProject(E2E_HOME, { slug: 'historial', name: 'historial', idPrefix: 'HIS', localPath: 'D:/historial' });
 const memory = createTask(E2E_HOME, 'historial', { title: 'Filtro con memoria', body: 'Descripción de la tarea.' }, 'web', () => new Date('2026-10-19T08:00:00')).task.id;
@@ -82,12 +90,19 @@ createError(E2E_HOME, 'errores', {
   context: 'npm run build en Windows.\n\n<script>window.__xss=7</script>',
   output: 'Error: Dynamic require of "process" is not supported\n    at node_modules/yaml/dist/compose/composer.js:12:5 una línea muy larga que obliga a desplazar el bloque en horizontal',
   files: ['scripts/build.mjs'],
+  kind: 'build',
 }, at(0));
 noteError(E2E_HOME, 'errores', 'ERR-1', 'Recurrencia: también en Node 24.', at(1));
 for (let i = 2; i <= 13; i++) {
-  createError(E2E_HOME, 'errores', { title: `Error resuelto número ${i}`, task: build, context: 'Contexto.' }, at(i));
+  // Kinds (WAY-8): the two newest resolved ones are classified, the rest stay unclassified.
+  const kind = i === 13 ? 'test' : i === 12 ? 'environment' : undefined;
+  createError(E2E_HOME, 'errores', { title: `Error resuelto número ${i}`, task: build, context: 'Contexto.', kind }, at(i));
   resolveError(E2E_HOME, 'errores', `ERR-${i}`, { solution: 'Corregido.', validation: 'npm test' }, { clock: at(i) });
 }
+// A discarded error (WAY-9) on its own task, so the counts of FAL-1 and FAL-2 do not change.
+const port = createTask(E2E_HOME, 'errores', { title: 'Revisar el puerto de pruebas' }, 'web', clock).task.id;
+createError(E2E_HOME, 'errores', { title: 'El puerto 4555 estaba ocupado', task: port, context: 'npm run test:e2e.', kind: 'environment' }, at(20));
+discardError(E2E_HOME, 'errores', 'ERR-14', 'Falsa alarma: otra prueba seguía abierta.', at(21));
 
 // Real git, unless a spec switches it "off" with the flag file (git missing → 200 with a warning).
 rmSync(e2eGitOffFlag(lang), { force: true });

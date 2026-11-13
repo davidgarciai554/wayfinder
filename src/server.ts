@@ -13,7 +13,8 @@ import { ERROR_FIELDS, errorsForTask, listErrors, readError, unescapeField, type
 import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
 import { findSecrets } from './store/secrets.ts';
-import { createTask, listTasks, readTask, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import type { Status } from './store/transitions.ts';
+import { createTask, listTasks, readTask, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
 
 export interface ServeOptions {
   home: string;
@@ -85,7 +86,7 @@ const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition']);
 const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound', 'store.errorNotFound']);
 
 function errorMeta(error: ErrorRecord) {
-  return { id: error.id, title: error.title, status: error.status, task: error.task, created: error.created, updated: error.updated };
+  return { id: error.id, title: error.title, status: error.status, kind: error.kind, task: error.task, created: error.created, updated: error.updated };
 }
 
 function taskMeta(home: string, task: Task) {
@@ -101,6 +102,8 @@ function taskMeta(home: string, task: Task) {
     approvedVia: task.approvedVia ?? null,
     riskAcknowledged: task.riskAcknowledged ?? false,
     modifiedOutside: modifiedOutside(home, task.file),
+    /** Where «Reabrir» would send a done or discarded task (todo or proposed); null otherwise. */
+    reopensTo: reopenTarget(task),
   };
 }
 
@@ -205,7 +208,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       return json(res, 200, { local: localWriteUrl, remote: remoteUrl });
     }
     if (parts[0] === 'i18n' && parts.length === 1) {
-      const messages = Object.fromEntries(Object.entries(dictionaries[lang]).filter(([k]) => k.startsWith('web.') || k.startsWith('status.')));
+      const messages = Object.fromEntries(Object.entries(dictionaries[lang]).filter(([k]) => k.startsWith('web.') || k.startsWith('status.') || k.startsWith('errorKind.')));
       return json(res, 200, { lang, messages });
     }
     if (parts[0] !== 'projects') return notFound(res);
@@ -238,7 +241,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       const history = parseEntries(task.history).map((e) =>
         isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) },
       );
-      const errors = errorsForTask(home, slug, task.id).map((e) => ({ id: e.id, title: e.title, status: e.status }));
+      const errors = errorsForTask(home, slug, task.id).map((e) => ({ id: e.id, title: e.title, status: e.status, kind: e.kind }));
       return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history, errors });
     }
     if (parts[2] === 'errors' && parts.length === 3) {
@@ -398,14 +401,24 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
         } else {
           const expectedUpdated = str('expectedUpdated');
           if (!expectedUpdated) return json(res, 400, { error: t(lang, 'web.badJson') });
-          result = setStatus(home, route.slug, route.id, route.action === 'approve' ? 'todo' : 'discarded', 'web', { expectedUpdated });
+          // Reopen: the store decides the target (todo, or proposed if nobody approved it) and
+          // setStatus checks it again under the lock, with expectedUpdated against races.
+          // A task that is not done or discarded has no target: never fall back to a status
+          // (todo would approve a proposal).
+          let to: Status | null = route.action === 'approve' ? 'todo' : 'discarded';
+          if (route.action === 'reopen') {
+            const current = readTask(home, route.slug, route.id);
+            to = reopenTarget(current);
+            if (!to) throw new WayfinderError('store.invalidTransition', { from: current.status, to: 'reopen', valid: '—' });
+          }
+          result = setStatus(home, route.slug, route.id, to, 'web', { expectedUpdated, note: route.action === 'reopen' ? str('note') : undefined });
         }
         json(res, route.action === 'create' ? 201 : 200, {
           task: taskMeta(home, result.task),
           warnings: result.warnings.map((w) => t(lang, w.key, w.vars)),
         });
       } catch (error) {
-        fail(res, error, route.action === 'create' ? formField(error, str('title') ?? '') : undefined);
+        fail(res, error, route.action === 'create' ? formField(error, str('title') ?? '') : route.action === 'reopen' ? noteField(error) : undefined);
       }
     });
   }
@@ -417,11 +430,17 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     return ({ 'store.invalidTitle': 'title', 'store.bodyTooLong': 'body', 'store.invalidPriority': 'priority' } as Record<string, string>)[error.key];
   }
 
-  function writeRoute(parts: string[]): { action: 'create' | 'approve' | 'discard'; slug: string; id: string } | null {
-    // /api/projects/:slug/tasks and /api/projects/:slug/tasks/:id/(approve|discard)
+  /** Reopen: errors about the reason point at the note field of the dialog. */
+  function noteField(error: unknown): string | undefined {
+    if (!(error instanceof WayfinderError)) return undefined;
+    return ['store.noteRequired', 'store.secretRejected', 'store.logEntryTooLong'].includes(error.key) ? 'note' : undefined;
+  }
+
+  function writeRoute(parts: string[]): { action: 'create' | 'approve' | 'discard' | 'reopen'; slug: string; id: string } | null {
+    // /api/projects/:slug/tasks and /api/projects/:slug/tasks/:id/(approve|discard|reopen)
     if (parts[0] !== 'api' || parts[1] !== 'projects' || parts[3] !== 'tasks' || !SLUG_RE.test(parts[2] ?? '')) return null;
     if (parts.length === 4) return { action: 'create', slug: parts[2], id: '' };
-    if (parts.length === 6 && (parts[5] === 'approve' || parts[5] === 'discard')) return { action: parts[5], slug: parts[2], id: parts[4] };
+    if (parts.length === 6 && (parts[5] === 'approve' || parts[5] === 'discard' || parts[5] === 'reopen')) return { action: parts[5], slug: parts[2], id: parts[4] };
     return null;
   }
 

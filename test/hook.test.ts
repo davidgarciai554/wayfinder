@@ -13,7 +13,7 @@ import { rootKey } from '../src/store/resolve.ts';
 import { getHome } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
 import { createTask, logProgress, setStatus } from '../src/store/tasks.ts';
-import { createError, resolveError } from '../src/store/error-records.ts';
+import { createError, discardError, resolveError } from '../src/store/error-records.ts';
 import { makeHome } from './helpers.ts';
 
 const bundle = fileURLToPath(new URL('../plugin/dist/wayfinder.mjs', import.meta.url));
@@ -336,6 +336,45 @@ test('session-start lists up to 5 open errors after everything else, only while 
   assert.match(block, /\n- … and 2 more \(wf_search\)$/);
   assert.doesNotMatch(ctx, /OUTPUT-SHOULD-NOT-APPEAR|CAUSE-SHOULD-NOT-APPEAR|>>>|<<<|ERR-1 /);
   assert.ok(block.length <= 600 + 2);
+});
+
+test('session-start summarises open errors by kind and labels each line, in the session language', (t) => {
+  const { home, repo } = setup(t);
+  const task = createTask(home, 'consumer', { title: 'Build' }, 'web').task.id;
+  const at = (m: number) => () => new Date(2026, 10, 13, 9, m);
+  createError(home, 'consumer', { title: 'Falla un test e2e', task, context: 'c', kind: 'test' }, at(1));
+  createError(home, 'consumer', { title: 'Puerto 4747 ocupado', task, context: 'c', kind: 'environment' }, at(2));
+  createError(home, 'consumer', { title: 'Otro test inestable', task, context: 'c', kind: 'test' }, at(3));
+  createError(home, 'consumer', { title: 'Sin tipo todavía', task, context: 'c' }, at(4));
+  createError(home, 'consumer', { title: 'Ya corregido', task, context: 'c', kind: 'build' }, at(5));
+  resolveError(home, 'consumer', 'ERR-5', { solution: 's', validation: 'v' }, { clock: at(6) });
+  createError(home, 'consumer', { title: 'Falsa alarma', task, context: 'c', kind: 'test' }, at(7));
+  discardError(home, 'consumer', 'ERR-6', 'No era un fallo.', at(8));
+  const context = (lang: string): string =>
+    hook('session-start', { cwd: repo }, { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: lang }).json.hookSpecificOutput.additionalContext;
+  const es = context('es');
+  assert.match(es, /\nPor tipo: Pruebas 2, Entorno 1, Sin clasificar 1\n/);
+  assert.match(es, /^- ERR-3 \(CO-1\) \[Pruebas\] Otro test inestable$/m);
+  assert.match(es, /^- ERR-2 \(CO-1\) \[Entorno\] Puerto 4747 ocupado$/m);
+  assert.match(es, /^- ERR-4 \(CO-1\) Sin tipo todavía$/m, 'unclassified lines carry no label');
+  assert.doesNotMatch(es, /Compilación|ERR-5|ERR-6|Falsa alarma/, 'resolved and discarded errors are not counted');
+  assert.match(context('en'), /\nBy kind: Tests 2, Environment 1, Unclassified 1\n/);
+});
+
+test('session-start never trades an error line for the kind summary', (t) => {
+  const { home, repo } = setup(t);
+  const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: 'en' };
+  const task = createTask(home, 'consumer', { title: 'Build' }, 'web').task.id;
+  const kinds = ['build', 'test', 'analysis', 'runtime', 'behavior', 'environment'];
+  for (let i = 0; i < 6; i++) {
+    const title = `A long failure title that uses most of the eighty characters allowed ${i}`;
+    createError(home, 'consumer', { title, task, context: 'c', kind: kinds[i] }, () => new Date(2026, 10, 13, 9, i));
+  }
+  const ctx: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+  const block = ctx.slice(ctx.indexOf('\n\nOpen errors'));
+  // Without the summary only 4 of these lines fit in 600 characters; the summary must not cost one.
+  assert.equal([...block.matchAll(/^- ERR-\d+ /gm)].length, 4);
+  assert.ok(block.length <= 600 + 2, `block is ${block.length}`);
 });
 
 test('session-start never lets open errors push the task list out', (t) => {

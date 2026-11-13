@@ -173,3 +173,25 @@
 - **Solución:** cuando la web se abre en red en un puerto distinto de 4747, `wf_web` añade junto al enlace para otros dispositivos un aviso con los dos puertos. El aviso dice que la regla del cortafuegos del README solo abre el 4747, y cómo liberarlo: cerrar la otra web y volver a escribir «abre Wayfinder», o permitir también ese puerto. `status` repite el aviso. El README explica el caso. Se descartó una regla del cortafuegos sin puerto fijo porque abre más de lo necesario. Para salir del paso en esta ocasión se cerró la sesión que ocupaba el 4747.
 - **Archivos modificados:** `src/mcp.ts`, `src/i18n/es.json`, `src/i18n/en.json`, `test/mcp.integration.test.ts`, `README.md`, `plugin/dist/wayfinder.mjs`.
 - **Validación:** solución temporal comprobada. El 4747 lo tenía la sesión interactiva de prueba abierta con `wf-interactive.ps1`, y su proceso no se podía cerrar desde otra sesión («Acceso denegado»). Con esa sesión cerrada por la persona, la web se reabrió en el 4747 y el móvil carga el tablero. Corrección: nuevo test de integración con el 4747 ocupado (aviso en `start` y `status`, con el puerto real); `npm run typecheck` correcto, `npm test` 138/138 y `check:dist` correcto. Sin comprobar todavía en una sesión real con el plugin instalado, que sigue en la versión del commit `00ce54e`.
+
+## 2026-11-13 · La aprobación por chat no reconoce varios IDs tras un solo verbo
+
+- **Contexto:** aprobación por chat de tres propuestas en un único mensaje, con el plugin instalado. Windows 11, Claude Code 2.1.322. ERR-5 en Wayfinder, ligado a WAY-8.
+- **Reproducción:** escribir «apruebo las tres tareas WAY-8, WAY-9 y WAY-12», llamar a `wf_review` de cada ID y después a `wf_set_status` con `status: "todo"` y `user_requested: true`. También falla el tercer ID de «aprueba WAY-8, WAY-9 y WAY-12».
+- **Salida observada:** «No hay una orden explícita reciente para WAY-8 en el último mensaje» (igual para WAY-9 y WAY-12).
+- **Causa confirmada:** `extractOrders` (`src/store/mentions.ts`) solo acepta un ID si un verbo de aprobación aparece como mucho `WINDOW = 3` palabras antes. «las tres tareas» deja el verbo a 4 palabras de WAY-8, y cada ID anterior de la lista («way» + número) consume palabras de la ventana del siguiente.
+- **Solución:** pendiente de decisión. Es el filtro que impide aprobaciones inducidas, así que ampliarlo (por ejemplo, aceptar una lista de IDs encadenada al verbo) necesita su propio cambio y pruebas de negación y preguntas. Mientras tanto, la orden funciona escribiendo un verbo junto a cada ID, por ejemplo «aprueba WAY-8, aprueba WAY-9 y aprueba WAY-12».
+- **Archivos modificados:** ninguno.
+- **Validación:** causa comprobada leyendo `extractOrders` y con las tres llamadas rechazadas.
+- **Resultado:** sin resolver.
+
+## 2026-11-13 · La ruta web de reapertura aprobaba una tarea que no estaba terminada ni descartada
+
+- **Contexto:** implementación de WAY-12 (plan `Planes/2026-11-13-tipos-y-descarte-de-errores-y-reapertura-de-tareas.md` v1, incremento 3), antes de publicar nada. ERR-6 en Wayfinder.
+- **Reproducción:** reabrir desde la web una propuesta descartada (pasa a `proposed`) y volver a llamar a `POST /api/projects/:slug/tasks/:id/reopen` sobre ella con su `expectedUpdated` y una nota.
+- **Salida observada:** 200 en lugar de 409; la tarea pasaba de `proposed` a `todo`, es decir, quedaba aprobada.
+- **Causa confirmada:** la ruta calculaba el destino con `reopenTarget(task) ?? 'todo'`. Para una tarea que no está `done` ni `discarded`, `reopenTarget` devuelve `null` y el valor por defecto convertía la reapertura en una aprobación web.
+- **Solución:** sin valor por defecto: si no hay destino, la ruta responde 409 (`store.invalidTransition`) sin escribir. `setStatus` comprueba además, bajo el bloqueo, que el destino de una reapertura es exactamente `reopenTarget(task)`.
+- **Archivos modificados:** `src/server.ts`, `src/store/tasks.ts`, `test/server.test.ts`.
+- **Validación:** `node --test test/server.test.ts` (caso «an open task cannot be reopened» → 409) y `test/store.test.ts`; `npm run typecheck`.
+- **Resultado:** resuelto antes de cerrar el incremento; nunca llegó al plugin instalado.

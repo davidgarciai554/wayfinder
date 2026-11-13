@@ -18,6 +18,8 @@ import {
 import { appendLogUnlocked, assertNoSecrets, MAX_LOG_ENTRY, taskLink } from './log.ts';
 import { assertId, ID_RE, projectDir, safeJoin, slugify } from './paths.ts';
 import { requireProject } from './project.ts';
+// review.ts imports readTask from here too: both only call each other at run time, never while loading.
+import { consumeReviewUnlocked } from './review.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
 import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.ts';
 import {
@@ -269,6 +271,17 @@ export interface StatusOptions {
   clock?: Clock;
 }
 
+/**
+ * Where a done or discarded task goes when the person reopens it: back to todo if it is theirs
+ * (origin user) or was approved (approvedVia), otherwise back to proposed, so reopening never
+ * approves a proposal nobody approved. null for any other status.
+ */
+export function reopenTarget(task: Pick<Task, 'status' | 'origin' | 'approvedVia'>): Status | null {
+  if (task.status === 'done') return 'todo';
+  if (task.status === 'discarded') return task.origin === 'user' || task.approvedVia ? 'todo' : 'proposed';
+  return null;
+}
+
 export function setStatus(
   home: string,
   slug: string,
@@ -286,6 +299,12 @@ export function setStatus(
     const from = task.status;
     const rule = checkTransition(actor, from, to);
     if (rule.needsNote && !note) throw new WayfinderError('store.noteRequired', { from, to });
+    const reopening = from === 'done' || from === 'discarded';
+    if (reopening) {
+      const target = reopenTarget(task);
+      if (to !== target) throw new WayfinderError('store.invalidTransition', { from, to, valid: target ?? '—' });
+      if (note && note.length > MAX_LOG_ENTRY) throw new WayfinderError('store.logEntryTooLong', { max: MAX_LOG_ENTRY });
+    }
     const markers: string[] = [];
     if (rule.planRule) {
       if (options.trivial) {
@@ -299,12 +318,17 @@ export function setStatus(
     }
     task.status = to;
     if (actor === 'web' && from === 'proposed' && to === 'todo') task.approvedVia = 'web';
-    task.updated = isoLocal(clock());
+    const date = clock();
+    task.updated = isoLocal(date);
+    // A reopened task keeps why in its own history, not only in the day's log.
+    if (reopening && note) task.history = appendEntry(task.history, formatEntry(localDay(date), localTime(date), `status: ${from} -> ${to}\n\n${note}`));
+    // Back to proposed: any earlier review is dropped, so a chat approval needs a new one.
+    if (reopening && to === 'proposed') consumeReviewUnlocked(home, slug, id);
     writeTaskUnlocked(home, task);
     const paths = [task.file];
     if (note || markers.length > 0) {
       const lines = [`status: ${from} -> ${to}`, ...markers, ...(note ? [note] : []), '', taskLink(slug, id, task.title)];
-      paths.push(appendLogUnlocked(home, slug, lines.join('\n'), id, clock));
+      paths.push(appendLogUnlocked(home, slug, lines.join('\n'), id, () => date));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);
     return { task, warnings };

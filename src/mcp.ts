@@ -10,7 +10,9 @@ import { resolveLang, t, type Lang, type MessageKey } from './i18n/index.ts';
 import { approveByChat } from './store/approve.ts';
 import {
   createError,
+  discardError,
   ERROR_FIELDS,
+  ERROR_KINDS,
   errorsForTask,
   MAX_FIELD,
   MAX_FILE_PATH,
@@ -155,7 +157,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
   const taskErrors = (task: Task): string[] => {
     const errors = errorsForTask(home, slugOf(task), task.id);
     if (errors.length === 0) return [];
-    const rows = errors.slice(-MAX_TASK_ERRORS).map((e) => `${e.id} (${e.status}) ${flatten(e.title, 80)}`);
+    const rows = errors.slice(-MAX_TASK_ERRORS).map((e) => `${e.id} (${e.status}${e.kind ? `, ${e.kind}` : ''}) ${flatten(e.title, 80)}`);
     const more = errors.length > MAX_TASK_ERRORS ? [tr('mcp.errors.more', { count: errors.length - MAX_TASK_ERRORS })] : [];
     return ['', UNTRUSTED_ERRORS, neutralize(rows.join('\n')), UNTRUSTED_CLOSE, ...more];
   };
@@ -165,6 +167,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
       `title: ${e.title}`,
       `status: ${e.status}`,
       `task: ${e.task}`,
+      `kind: ${e.kind ?? 'unclassified'}`,
       `cause_kind: ${e.causeKind}`,
       `files: ${e.files.length ? e.files.join(', ') : '—'}`,
       `created: ${e.created}`,
@@ -510,7 +513,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
         if (hits.length === 0) return ok(tr('mcp.search.noResults', { query: flatten(args.query, 100) }), truncated ? [{ key: 'mcp.search.truncated', vars: {} }] : []);
         const rows = hits.map((h) => {
           const where =
-            h.kind === 'error' ? `error ${h.id} [${h.status}]`
+            h.kind === 'error' ? `error ${h.id} [${h.status}${h.errorKind ? `, ${h.errorKind}` : ''}]`
             : h.kind === 'history' ? `history ${h.id} #${h.entry} ${h.when}`
             : h.kind === 'log' ? `log ${h.when}${h.id ? ` · ${h.id}` : ''}`
             : `task ${h.id}`;
@@ -526,12 +529,15 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
     {
       description:
         'Record an error (build, test, analysis, runtime or unexpected behaviour) linked to a task. Search with wf_search first: if the error already exists, add a note (recurrence) instead of creating another one. ' +
-        'create: title, task_id, context (plus reproduction, output, cause, cause_kind, solution, validation, result, files). ' +
-        'update: id + editable fields (cause, cause_kind, solution, validation, result, files); reopen: true with a note reopens a resolved error. ' +
-        'note: id + note. resolve: id; solution and validation must exist. Context, reproduction, output, title and task cannot change. ' +
+        'create: title, task_id, context (plus kind, reproduction, output, cause, cause_kind, solution, validation, result, files). ' +
+        'update: id + editable fields (kind, cause, cause_kind, solution, validation, result, files); reopen: true with a note reopens a resolved or discarded error. ' +
+        'kind classifies what failed: build, test, analysis (lint, types), runtime, behavior (unexpected behaviour) or environment (ports, permissions, configuration, dependencies); set it whenever it is clear. ' +
+        'note: id + note. resolve: id; solution and validation must exist. ' +
+        'discard: id + note with the reason; closes an error that will not be fixed (a false alarm, a one-off failure of the environment). Only then, and tell the person. ' +
+        'Context, reproduction, output, title and task cannot change. ' +
         'Never include secrets or personal data: summarise tool output instead of pasting it whole. files are paths relative to the repository.',
       inputSchema: z.object({
-        action: z.enum(['create', 'update', 'note', 'resolve']),
+        action: z.enum(['create', 'update', 'note', 'resolve', 'discard']),
         id: z.string().optional(),
         title: z.string().max(200).optional(),
         task_id: z.string().optional(),
@@ -540,6 +546,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
         output: fieldSchema(MAX_OUTPUT),
         cause: fieldSchema(MAX_FIELD),
         cause_kind: z.enum(['hypothesis', 'confirmed']).optional(),
+        kind: z.enum(ERROR_KINDS).optional(),
         solution: fieldSchema(MAX_FIELD),
         validation: fieldSchema(MAX_FIELD),
         result: fieldSchema(MAX_FIELD),
@@ -552,7 +559,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
     async (args) =>
       run(() => {
         const slug = resolved(args.project).project.slug;
-        const { action, id, title, task_id, cause_kind, files, note, reopen } = args;
+        const { action, id, title, task_id, cause_kind, kind, files, note, reopen } = args;
         const fields: ErrorFields = {};
         for (const [key] of ERROR_FIELDS) if (args[key] !== undefined) fields[key] = args[key];
         const notFor = (field: string) => new WayfinderError('mcp.error.invalidForAction', { field, action });
@@ -565,6 +572,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
             title: title ?? '',
             task: task_id ?? '',
             causeKind: cause_kind,
+            kind,
             files,
           });
           const text = [tr('mcp.error.created', { id: error.id, task: error.task })];
@@ -575,12 +583,16 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
           return ok(text.join('\n'), warnings);
         }
         if (!id) throw new WayfinderError('mcp.error.idRequired', { action });
-        if (action === 'note') {
-          if ([title, task_id, cause_kind, files, ...Object.values(fields)].some((v) => v !== undefined)) throw notFor('fields');
+        if (action === 'note' || action === 'discard') {
+          if ([title, task_id, cause_kind, kind, files, ...Object.values(fields)].some((v) => v !== undefined)) throw notFor('fields');
+          if (action === 'discard') {
+            const { error, warnings } = discardError(home, slug, id, note ?? '');
+            return ok(tr('mcp.error.statusIs', { id: error.id, status: error.status }), warnings);
+          }
           const { error, warnings } = noteError(home, slug, id, note ?? '');
           return ok(tr('mcp.error.noted', { id: error.id }), warnings);
         }
-        const patch = { ...fields, title, task: task_id, causeKind: cause_kind, files };
+        const patch = { ...fields, title, task: task_id, causeKind: cause_kind, kind, files };
         const { error, warnings } =
           action === 'resolve' ? resolveError(home, slug, id, patch, { note }) : updateError(home, slug, id, patch, { note, reopen });
         return ok(tr('mcp.error.statusIs', { id: error.id, status: error.status }), warnings);
