@@ -31,6 +31,66 @@ test('explicit orders are recognised in Spanish and English', () => {
   assert.deepEqual(extractOrders('aprueba WF-1 y haz WF-2', 'WF').sort(), ['WF-1', 'WF-2']);
 });
 
+test('ERR-5: one verb orders a whole list of IDs joined by commas, «y», «e» or «and»', () => {
+  const ids = (prompt: string) => extractOrders(prompt, 'WF').sort();
+  for (const [prompt, expected] of [
+    ['aprueba WF-8, WF-9 y WF-12', ['WF-12', 'WF-8', 'WF-9']],
+    ['apruebo las tres tareas WF-8, WF-9 y WF-12', ['WF-12', 'WF-8', 'WF-9']],
+    ['approve WF-8, WF-9 and WF-12', ['WF-12', 'WF-8', 'WF-9']],
+    ['approve WF-8, WF-9, and WF-12', ['WF-12', 'WF-8', 'WF-9']],
+    ['aprueba wf-8 e wf-9', ['WF-8', 'WF-9']],
+    ['aprueba WF-8 y WF-9', ['WF-8', 'WF-9']],
+    ['aprueba WF-8, WF-9 y WF-8', ['WF-8', 'WF-9']],
+    ['haz WF-3 y WF-4', ['WF-3', 'WF-4']],
+    ['aprueba WF-8 y luego haz WF-9', ['WF-8', 'WF-9']],
+  ] as const) {
+    assert.deepEqual(ids(prompt), [...expected], prompt);
+  }
+});
+
+test('ERR-5: the list ends at anything that is not a separator, and negations, questions, ranges and long lists order nothing more', () => {
+  const ids = (prompt: string) => extractOrders(prompt, 'WF').sort();
+  for (const [prompt, expected] of [
+    ['aprueba WF-8 pero no WF-9', ['WF-8']],
+    ['aprueba WF-8 pero WF-9', ['WF-8']],
+    ['aprueba WF-8 y luego mira WF-9', ['WF-8']],
+    ['aprueba WF-8, AB-5 y WF-9', ['WF-8']],
+    ['aprueba WF-8 a WF-12', ['WF-8']],
+    ['aprueba WF-8 WF-9', ['WF-8']],
+    ['no apruebes WF-8, WF-9 y WF-12', []],
+    ['aprueba no las tareas WF-8, WF-9', []],
+    ['aprueba las tareas de hoy WF-8, WF-9', []],
+    ['aprueba WF-8 y ¿WF-9?', []],
+    ['¿apruebas WF-8, WF-9 y WF-12?', []],
+    ['> aprueba WF-8, WF-9 y WF-12', []],
+    ['mira:\n```\naprueba WF-8, WF-9\n```', []],
+    ['WF-8, WF-9 y WF-12', []],
+    ['haz un resumen de WF-8', []],
+    ['do a review of WF-8', []],
+    ['start a review of WF-8, WF-9', []],
+    ['haz una lista con WF-8, WF-9, WF-10', []],
+  ] as const) {
+    assert.deepEqual(ids(prompt), [...expected], prompt);
+  }
+  const ten = Array.from({ length: 10 }, (_, i) => `WF-${i + 1}`);
+  assert.equal(extractOrders(`aprueba ${ten.join(', ')}`, 'WF').length, 10);
+  assert.deepEqual(extractOrders(`aprueba ${[...ten, 'WF-11'].join(', ')}`, 'WF'), [], 'more than 10 IDs: no order at all');
+});
+
+test('ERR-5 end to end: one message approves three proposals, each with its own review', (t) => {
+  const { home } = setup(t);
+  const ids = [2, 3, 4].map((n) => createTask(home, 'demo', { title: `Idea ${n}` }, 'mcp').task.id);
+  const prompt = `aprueba ${ids[0]}, ${ids[1]} y ${ids[2]}`;
+  recordOrders(home, 'demo', extractOrders(prompt, 'WF'), Date.now());
+  for (const id of ids) {
+    reviewTask(home, 'demo', id);
+    assert.equal(approveByChat(home, 'demo', id, { userQuote: prompt, verdict: 'clean' }).task.status, 'todo', id);
+  }
+  const other = createTask(home, 'demo', { title: 'No nombrada' }, 'mcp').task.id;
+  reviewTask(home, 'demo', other);
+  assert.throws(() => approveByChat(home, 'demo', other, { userQuote: prompt, verdict: 'clean' }), (e) => e instanceof WayfinderError);
+});
+
 test('a register order is a closed phrase in the person\'s own words', () => {
   for (const prompt of ['registra este proyecto', 'Sí, registra este proyecto.', 'vale, registra el repositorio en Wayfinder', 'please register this project', 'Register the repo']) {
     assert.equal(extractRegisterOrder(prompt), true, prompt);

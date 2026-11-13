@@ -7657,6 +7657,12 @@ var es_default = {
   "store.errorFilesTooMany": "Como m\xE1ximo {max} archivos por error.",
   "store.errorFileInvalid": "Ruta de archivo no v\xE1lida: \xAB{value}\xBB. Usa rutas relativas al repositorio, sin \xAB..\xBB, unidad ni ra\xEDz absoluta, de hasta {max} caracteres.",
   "store.invalidCauseKind": "Tipo de causa no v\xE1lido: \xAB{value}\xBB. Valores v\xE1lidos: {valid}.",
+  "store.dependencyTooMany": "Una tarea puede depender como mucho de {max} tareas.",
+  "store.dependencySelf": "{id} no puede depender de s\xED misma.",
+  "store.dependencyDuplicate": "{dep} aparece repetida en las dependencias.",
+  "store.dependencyNotFound": "{dep} no existe en este proyecto.",
+  "store.dependencyCycle": "Esas dependencias forman un ciclo: {path}.",
+  "store.dependenciesOpen": "Aviso: {id} depende de tareas que a\xFAn no est\xE1n hechas: {deps}.",
   "store.invalidKind": "Tipo de error no v\xE1lido: \xAB{value}\xBB. Valores v\xE1lidos: {valid}.",
   "store.errorFieldImmutable": "El campo {field} no se puede cambiar una vez registrado. A\xF1ade una nota con la correcci\xF3n.",
   "store.errorNothingToUpdate": "No hay cambios que guardar en {id}.",
@@ -7717,6 +7723,7 @@ var es_default = {
   "mcp.flag.approvedChat": "aprobada por chat",
   "mcp.flag.riskAcknowledged": "aprobada pese a aviso",
   "mcp.flag.modifiedOutside": "modificada fuera de Wayfinder",
+  "mcp.flag.blockedBy": "bloqueada por {deps}",
   "mcp.noTasks": "No hay tareas con esos estados.",
   "mcp.unreadable": "ilegible: {file} ({reason})",
   "mcp.review.signals": "Se\xF1ales de riesgo detectadas por Wayfinder: {signals}. Si la persona quiere aprobarla, tendr\xE1 que repetir la orden despu\xE9s de tu aviso.",
@@ -7871,6 +7878,8 @@ var es_default = {
   "web.flag.chat": "Aprobada por chat",
   "web.flag.risk": "Aprobada pese a aviso",
   "web.flag.outside": "Modificada fuera de Wayfinder",
+  "web.flag.blockedBy": "Bloqueada por {id}",
+  "web.flag.blockedByMore": "Bloqueada por {id} +{n}",
   "web.priority.low": "Baja",
   "web.priority.medium": "Media",
   "web.priority.high": "Alta",
@@ -7896,6 +7905,9 @@ var es_default = {
   "web.meta.priority": "Prioridad",
   "web.meta.origin": "Origen",
   "web.meta.plan": "Plan",
+  "web.meta.dependsOn": "Depende de",
+  "web.dependencyMissing": "(tarea no encontrada)",
+  "web.dependencyDiscarded": "descartada: revisa la dependencia",
   "web.meta.created": "Creada",
   "web.meta.updated": "Actualizada",
   "web.origin.user": "Persona",
@@ -8021,6 +8033,12 @@ var en_default = {
   "store.errorFilesTooMany": "At most {max} files per error.",
   "store.errorFileInvalid": 'Invalid file path: "{value}". Use paths relative to the repository, without "..", drive or absolute root, up to {max} characters.',
   "store.invalidCauseKind": 'Invalid cause kind: "{value}". Valid values: {valid}.',
+  "store.dependencyTooMany": "A task can depend on at most {max} tasks.",
+  "store.dependencySelf": "{id} cannot depend on itself.",
+  "store.dependencyDuplicate": "{dep} appears twice in the dependencies.",
+  "store.dependencyNotFound": "{dep} does not exist in this project.",
+  "store.dependencyCycle": "Those dependencies form a cycle: {path}.",
+  "store.dependenciesOpen": "Warning: {id} depends on tasks that are not done yet: {deps}.",
   "store.invalidKind": 'Invalid error kind: "{value}". Valid values: {valid}.',
   "store.errorFieldImmutable": "Field {field} cannot change once recorded. Add a note with the correction.",
   "store.errorNothingToUpdate": "Nothing to save in {id}.",
@@ -8082,6 +8100,7 @@ var en_default = {
   "mcp.flag.approvedChat": "approved via chat",
   "mcp.flag.riskAcknowledged": "approved despite a warning",
   "mcp.flag.modifiedOutside": "modified outside Wayfinder",
+  "mcp.flag.blockedBy": "blocked by {deps}",
   "mcp.noTasks": "There are no tasks with those statuses.",
   "mcp.unreadable": "unreadable: {file} ({reason})",
   "mcp.review.signals": "Risk signals detected by Wayfinder: {signals}. If the person wants to approve it, they must repeat the order after your warning.",
@@ -8231,6 +8250,8 @@ Give it to the person once as a clickable link (for example "[Open Wayfinder on 
   "web.flag.chat": "Approved via chat",
   "web.flag.risk": "Approved despite a warning",
   "web.flag.outside": "Modified outside Wayfinder",
+  "web.flag.blockedBy": "Blocked by {id}",
+  "web.flag.blockedByMore": "Blocked by {id} +{n}",
   "web.priority.low": "Low",
   "web.priority.medium": "Medium",
   "web.priority.high": "High",
@@ -8256,6 +8277,9 @@ Give it to the person once as a clickable link (for example "[Open Wayfinder on 
   "web.meta.priority": "Priority",
   "web.meta.origin": "Origin",
   "web.meta.plan": "Plan",
+  "web.meta.dependsOn": "Depends on",
+  "web.dependencyMissing": "(task not found)",
+  "web.dependencyDiscarded": "discarded: review the dependency",
   "web.meta.created": "Created",
   "web.meta.updated": "Updated",
   "web.origin.user": "Person",
@@ -8733,21 +8757,38 @@ var APPROVAL_VERBS = [
 ];
 var NEGATIONS = ["no", "nunca", "ni", "sin", "don't", "dont", "do not", "never", "not"];
 var WINDOW = 3;
+var STRONG_VERBS = ["aprueba", "apruebo", "apru\xE9bala", "apruebala", "aprobar", "approve"];
+var STRONG_WINDOW = 4;
+var MAX_ORDER_IDS = 10;
+var LIST_SEPARATOR = /^\s*(?:,\s*(?:(?:y|e|and)\s+)?|(?:y|e|and)\s+)$/i;
 function extractOrders(prompt, idPrefix) {
   const text2 = personText(prompt);
   const found = /* @__PURE__ */ new Set();
   const idRe = new RegExp(`\\b${idPrefix}-([1-9]\\d{0,8})\\b`, "gi");
   for (const sentence of text2.split(/(?<=[.!?¡¿\n])/)) {
     if (/[¿?]/.test(sentence)) continue;
+    let previousEnd = 0;
+    let previousOrdered = null;
     for (const match of sentence.matchAll(idRe)) {
-      const before = sentence.slice(0, match.index).toLowerCase();
-      const words = before.split(/[^\p{L}'’]+/u).filter(Boolean).slice(-WINDOW);
-      const joined = words.join(" ");
-      if (NEGATIONS.some((n) => n.includes(" ") ? joined.includes(n) : words.includes(n))) continue;
-      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(`${idPrefix}-${match[1]}`);
+      const between = sentence.slice(previousEnd, match.index);
+      let ordered;
+      if (previousOrdered !== null && LIST_SEPARATOR.test(between)) {
+        ordered = previousOrdered;
+      } else {
+        const words = between.toLowerCase().split(/[^\p{L}'’]+/u).filter(Boolean);
+        const orders = (window, verbs) => {
+          const joined = window.join(" ");
+          const negated = NEGATIONS.some((n) => n.includes(" ") ? joined.includes(n) : window.includes(n));
+          return !negated && window.some((w) => verbs.includes(w));
+        };
+        ordered = orders(words.slice(-WINDOW), APPROVAL_VERBS) || orders(words.slice(-STRONG_WINDOW), STRONG_VERBS);
+      }
+      if (ordered) found.add(`${idPrefix}-${match[1]}`);
+      previousEnd = (match.index ?? 0) + match[0].length;
+      previousOrdered = ordered;
     }
   }
-  return [...found];
+  return found.size > MAX_ORDER_IDS ? [] : [...found];
 }
 function personText(prompt) {
   return prompt.normalize("NFKC").replace(/[​-‏‪-‮⁠-⁤﻿]/g, "").replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ").split("\n").filter((line) => !line.trimStart().startsWith(">")).join("\n");
@@ -14308,6 +14349,7 @@ function toTask(rel, raw) {
     plan: str("plan") ?? "",
     approvedVia: d.approvedVia === "web" || d.approvedVia === "chat" ? d.approvedVia : void 0,
     riskAcknowledged: d.riskAcknowledged === true ? true : void 0,
+    dependsOn: Array.isArray(d.depends_on) ? [...new Set(d.depends_on.filter((x) => typeof x === "string" && ID_RE.test(x)))] : [],
     body: description,
     history,
     file: rel,
@@ -14406,6 +14448,7 @@ function createTask(home, slug, input2, actor, clock = systemClock) {
       status: actor === "web" ? "todo" : "proposed",
       priority,
       origin,
+      dependsOn: [],
       created: now,
       updated: now,
       plan: "",
@@ -14427,11 +14470,54 @@ function assertUnchanged(task, expectedUpdated) {
     throw new WayfinderError("store.conflict", { id: task.id });
   }
 }
+var MAX_DEPENDENCIES = 20;
+function dependencyStates(task, byId) {
+  return task.dependsOn.map((id) => {
+    const dep = byId.get(id);
+    return { id, status: dep?.status ?? null, title: dep?.title ?? null };
+  });
+}
+function isBlocking(dep) {
+  return dep.status !== null && dep.status !== "done";
+}
+function validateDependencyList(id, raw) {
+  if (raw.length > MAX_DEPENDENCIES) throw new WayfinderError("store.dependencyTooMany", { max: MAX_DEPENDENCIES });
+  const seen = /* @__PURE__ */ new Set();
+  for (const dep of raw) {
+    assertId(dep);
+    if (dep === id) throw new WayfinderError("store.dependencySelf", { id });
+    if (seen.has(dep)) throw new WayfinderError("store.dependencyDuplicate", { dep });
+    seen.add(dep);
+  }
+  return [...seen];
+}
+function assertDependencyGraph(home, slug, id, deps) {
+  const graph = new Map(listTasks(home, slug).tasks.map((t2) => [t2.id, t2.dependsOn]));
+  for (const dep of deps) if (!graph.has(dep)) throw new WayfinderError("store.dependencyNotFound", { dep });
+  graph.set(id, deps);
+  const path = [];
+  const done = /* @__PURE__ */ new Set();
+  const visit2 = (node2) => {
+    if (path.includes(node2)) return [...path.slice(path.indexOf(node2)), node2];
+    if (done.has(node2)) return null;
+    path.push(node2);
+    for (const next of graph.get(node2) ?? []) {
+      const cycle2 = visit2(next);
+      if (cycle2) return cycle2;
+    }
+    path.pop();
+    done.add(node2);
+    return null;
+  };
+  const cycle = visit2(id);
+  if (cycle) throw new WayfinderError("store.dependencyCycle", { path: cycle.join(" \u2192 ") });
+}
 function updateTask(home, slug, id, patch, options = {}) {
   const clock = options.clock ?? systemClock;
   const title = patch.title === void 0 ? void 0 : validateTitle(patch.title);
   const body = patch.body === void 0 ? void 0 : validateBody(patch.body);
   const priority = patch.priority === void 0 ? void 0 : validatePriority(patch.priority);
+  const dependsOn = patch.depends_on === void 0 ? void 0 : validateDependencyList(id, patch.depends_on.map((d) => d.trim()));
   if (patch.plan !== void 0 && patch.plan !== "") {
     if (!options.planExists) throw new WayfinderError("store.planUnverifiable", {});
     if (!options.planExists(patch.plan)) throw new WayfinderError("store.planNotFound", { plan: patch.plan });
@@ -14443,6 +14529,12 @@ function updateTask(home, slug, id, patch, options = {}) {
     if (body !== void 0) task.body = body;
     if (priority !== void 0) task.priority = priority;
     if (patch.plan !== void 0) task.plan = patch.plan;
+    if (dependsOn !== void 0) {
+      assertDependencyGraph(home, slug, id, dependsOn);
+      task.dependsOn = dependsOn;
+      if (dependsOn.length) task.data.depends_on = dependsOn;
+      else delete task.data.depends_on;
+    }
     task.updated = isoLocal(clock());
     writeTaskUnlocked(home, task);
     const warnings = commitPaths(home, [task.file], `wf: update ${id}`);
@@ -14496,6 +14588,11 @@ ${note}`));
       paths.push(appendLogUnlocked(home, slug, lines.join("\n"), id, () => date5));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);
+    if (to === "in-progress" && task.dependsOn.length) {
+      const byId = new Map(listTasks(home, slug).tasks.map((t2) => [t2.id, t2]));
+      const open2 = dependencyStates(task, byId).filter(isBlocking);
+      if (open2.length) warnings.push({ key: "store.dependenciesOpen", vars: { id, deps: open2.map((d) => `${d.id} [${d.status}]`).join(", ") } });
+    }
     return { task, warnings };
   });
 }
@@ -14973,7 +15070,8 @@ var NOT_FOUND_KEYS = /* @__PURE__ */ new Set(["store.projectNotFound", "store.ta
 function errorMeta(error62) {
   return { id: error62.id, title: error62.title, status: error62.status, kind: error62.kind, task: error62.task, created: error62.created, updated: error62.updated };
 }
-function taskMeta(home, task) {
+function taskMeta(home, task, byId) {
+  const tasks = byId ?? (task.dependsOn.length ? new Map(listTasks(home, task.file.split("/")[1]).tasks.map((t2) => [t2.id, t2])) : /* @__PURE__ */ new Map());
   return {
     id: task.id,
     title: task.title,
@@ -14987,7 +15085,9 @@ function taskMeta(home, task) {
     riskAcknowledged: task.riskAcknowledged ?? false,
     modifiedOutside: modifiedOutside(home, task.file),
     /** Where «Reabrir» would send a done or discarded task (todo or proposed); null otherwise. */
-    reopensTo: reopenTarget(task)
+    reopensTo: reopenTarget(task),
+    /** WAY-15: each dependency with its title and status; status null when the task does not exist. */
+    dependsOn: dependencyStates(task, tasks)
   };
 }
 function webDir() {
@@ -15092,8 +15192,9 @@ function startServer(options) {
     }
     if (parts[2] === "tasks" && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
+      const byId = new Map(tasks.map((t2) => [t2.id, t2]));
       return json2(res, 200, {
-        tasks: tasks.map((x) => taskMeta(home, x)),
+        tasks: tasks.map((x) => taskMeta(home, x, byId)),
         unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) }))
       });
     }
@@ -49886,8 +49987,12 @@ function createWayfinderServer(ctx) {
   const validWebHost = (value) => isIP(value) !== 0 && value !== "0.0.0.0" && value !== "::";
   const slugOf = (task) => task.file.split("/")[1];
   const statusLabel = (task) => tr(`status.${task.status}`);
-  const line = (task) => {
+  const tasksById = (slug) => new Map(listTasks(home, slug).tasks.map((t2) => [t2.id, t2]));
+  const line = (task, byId) => {
+    const open2 = task.status === "proposed" || task.status === "todo" || task.status === "in-progress";
+    const blockedBy = open2 ? dependencyStates(task, byId).filter(isBlocking).map((d) => d.id) : [];
     const flags = [
+      blockedBy.length ? tr("mcp.flag.blockedBy", { deps: blockedBy.join(", ") }) : "",
       task.status === "proposed" ? tr("mcp.flag.notApproved") : "",
       task.approvedVia === "chat" ? tr("mcp.flag.approvedChat") : "",
       task.riskAcknowledged ? tr("mcp.flag.riskAcknowledged") : "",
@@ -49895,6 +50000,7 @@ function createWayfinderServer(ctx) {
     ].filter(Boolean);
     return `${task.id} [${task.status}] (${task.priority}) ${task.title}${flags.length ? ` \u2014 ${flags.join("; ")}` : ""}`;
   };
+  const dependencies = (task) => dependencyStates(task, tasksById(slugOf(task))).map((d) => `${d.id} [${d.status ?? "not found"}]`).join(", ");
   const detail = (task) => [
     `id: ${task.id}`,
     `title: ${task.title}`,
@@ -49904,6 +50010,7 @@ function createWayfinderServer(ctx) {
     `created: ${task.created}`,
     `updated: ${task.updated}`,
     `plan: ${task.plan || "\u2014"}`,
+    ...task.dependsOn.length ? [`depends_on: ${dependencies(task)}`] : [],
     ...task.approvedVia ? [`approvedVia: ${task.approvedVia}`] : [],
     ...task.riskAcknowledged ? ["riskAcknowledged: true"] : [],
     ...modifiedOutside(home, task.file) ? [tr("mcp.flag.modifiedOutside")] : [],
@@ -50064,7 +50171,8 @@ ${tr(configured ? "mcp.web.invalidWebHost" : "mcp.web.noWebHost")}`;
       const wanted = new Set(args.status ?? ["in-progress", "todo", "proposed"]);
       const { tasks, unreadable } = listTasks(home, p.slug);
       const shown = tasks.filter((x) => wanted.has(x.status)).slice(0, 200);
-      const lines = shown.length ? shown.map(line) : [tr("mcp.noTasks")];
+      const byId = new Map(tasks.map((t2) => [t2.id, t2]));
+      const lines = shown.length ? shown.map((x) => line(x, byId)) : [tr("mcp.noTasks")];
       for (const u of unreadable) lines.push(tr("mcp.unreadable", { file: u.file, reason: u.reason }));
       return ok(lines.join("\n"));
     })
@@ -50146,13 +50254,14 @@ ${tr(configured ? "mcp.web.invalidWebHost" : "mcp.web.noWebHost")}`;
   server.registerTool(
     "wf_update",
     {
-      description: "Edit title, priority, plan (a path like Planes/2026-10-21-name.md that must exist) or body (the description). Never changes status, origin or the history: record progress with wf_log.",
+      description: "Edit title, priority, plan (a path like Planes/2026-10-21-name.md that must exist), body (the description) or depends_on (the IDs of the tasks of this project it waits for; replaces the list, [] clears it; no cycles). Never changes status, origin or the history: record progress with wf_log.",
       inputSchema: external_exports.object({
         id: external_exports.string(),
         title: external_exports.string().optional(),
         priority: external_exports.enum(PRIORITIES).optional(),
         plan: external_exports.string().optional(),
         body: external_exports.string().optional(),
+        depends_on: external_exports.array(external_exports.string().max(30)).max(50).optional(),
         project
       })
     },

@@ -7,7 +7,7 @@ import { initHome } from '../src/store/init.ts';
 import { appendLog } from '../src/store/log.ts';
 import { assertSlug, safeJoin } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
-import { createTask, listTasks, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
+import { createTask, dependencyStates, isBlocking, listTasks, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
 import { parseEntries } from '../src/store/history.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { commitCount, fixedClock, gitOut, makeHome, makeProject, sha, tree } from './helpers.ts';
@@ -258,4 +258,63 @@ test('Claude cannot reopen: MCP and chat transitions out of done and discarded a
     }
   }
   assert.deepEqual(tree(home), before);
+});
+
+test('depends_on: validated under the lock, written by wf_update only, [] removes the key', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const [a, b, c] = ['A', 'B', 'C'].map((title) => createTask(home, 'demo', { title }, 'web', clock).task.id);
+  const file = join(home, readTask(home, 'demo', a).file);
+  const before = tree(home);
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: [a] }, { clock }), isKey('store.dependencySelf'));
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: [b, b] }, { clock }), isKey('store.dependencyDuplicate'));
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: ['WF-99'] }, { clock }), isKey('store.dependencyNotFound'));
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: ['AB-1'] }, { clock }), isKey('store.dependencyNotFound'));
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: ['nope'] }, { clock }), isKey('store.invalidId'));
+  assert.throws(() => updateTask(home, 'demo', a, { depends_on: Array.from({ length: 21 }, (_, i) => `WF-${i + 1}`) }, { clock }), isKey('store.dependencyTooMany'));
+  assert.deepEqual(tree(home), before, 'rejected dependencies write nothing');
+
+  assert.deepEqual(updateTask(home, 'demo', a, { depends_on: [b] }, { clock }).task.dependsOn, [b]);
+  assert.match(readFileSync(file, 'utf8'), new RegExp(`^depends_on:\\n  - ${b}$`, 'm'));
+  updateTask(home, 'demo', b, { depends_on: [c] }, { clock });
+  const snapshot = tree(home);
+  assert.throws(() => updateTask(home, 'demo', c, { depends_on: [a] }, { clock }), (e) => e instanceof WayfinderError && e.key === 'store.dependencyCycle' && /WF-\d → WF-\d → WF-\d → WF-\d/.test(String(e.vars.path)));
+  assert.deepEqual(tree(home), snapshot);
+
+  updateTask(home, 'demo', a, { depends_on: [] }, { clock });
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /depends_on/);
+  assert.deepEqual(readTask(home, 'demo', a).dependsOn, []);
+});
+
+test('depends_on read tolerantly: a hand-written invalid value reads as none and the task stays readable', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const id = createTask(home, 'demo', { title: 'Vieja' }, 'web').task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('plan: ""', 'plan: ""\ndepends_on: WF-2'));
+  assert.match(readFileSync(file, 'utf8'), /^depends_on: WF-2$/m);
+  assert.deepEqual(readTask(home, 'demo', id).dependsOn, []);
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^depends_on: WF-2$/m, 'depends_on:\n  - WF-2\n  - 7\n  - "<b>"'));
+  assert.deepEqual(readTask(home, 'demo', id).dependsOn, ['WF-2']);
+  assert.equal(listTasks(home, 'demo').unreadable.length, 0);
+});
+
+test('starting a task with open dependencies only warns; done frees, a missing task does not block', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const blocker = createTask(home, 'demo', { title: 'Libera' }, 'web', clock).task.id;
+  const waiting = createTask(home, 'demo', { title: 'Espera' }, 'web', clock).task.id;
+  updateTask(home, 'demo', waiting, { depends_on: [blocker] }, { clock });
+  const started = setStatus(home, 'demo', waiting, 'in-progress', 'mcp', { trivial: true, note: 'prueba', clock });
+  assert.equal(started.task.status, 'in-progress');
+  assert.deepEqual(started.warnings.map((w) => [w.key, w.vars.deps]), [['store.dependenciesOpen', `${blocker} [todo]`]]);
+  setStatus(home, 'demo', waiting, 'todo', 'mcp', { note: 'pausa', clock });
+  setStatus(home, 'demo', blocker, 'in-progress', 'mcp', { trivial: true, note: 'prueba', clock });
+  setStatus(home, 'demo', blocker, 'done', 'mcp', { clock });
+  const again = setStatus(home, 'demo', waiting, 'in-progress', 'mcp', { trivial: true, note: 'prueba', clock });
+  assert.deepEqual(again.warnings.filter((w) => w.key === 'store.dependenciesOpen'), []);
+  const byId = new Map(listTasks(home, 'demo').tasks.map((x) => [x.id, x]));
+  assert.deepEqual(dependencyStates({ dependsOn: [blocker, 'WF-99'] }, byId).map((d) => [d.id, d.status, isBlocking(d)]), [[blocker, 'done', false], ['WF-99', null, false]]);
 });

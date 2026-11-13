@@ -198,7 +198,8 @@ function failure(error, retry) {
 }
 
 // ---------- board ----------
-function tagsFor(task) {
+/** status: the real status, when task.status was blanked to hide its own tag (detail header). */
+function tagsFor(task, status = task.status) {
   const tags = [];
   if (task.status === 'proposed') tags.push(el('span', { class: 'tag s-proposed', text: t('web.flag.unapproved') }));
   if (task.approvedVia === 'chat') tags.push(el('span', { class: 'tag f-chat', text: t('web.flag.chat') }));
@@ -206,6 +207,16 @@ function tagsFor(task) {
     tags.push(el('span', { class: 'tag f-risk' }, warningIcon(), t('web.flag.risk')));
   }
   if (task.modifiedOutside) tags.push(el('span', { class: 'tag f-outside', text: t('web.flag.outside') }));
+  // WAY-15: only done frees a dependency; a missing task does not block. Text and icon, never colour alone.
+  // A done or discarded task is no longer waiting for anything.
+  const waiting = ['proposed', 'todo', 'in-progress'].includes(status);
+  const blocking = waiting ? (task.dependsOn ?? []).filter((d) => d.status && d.status !== 'done') : [];
+  if (blocking.length) {
+    const text = blocking.length > 1
+      ? t('web.flag.blockedByMore', { id: blocking[0].id, n: blocking.length - 1 })
+      : t('web.flag.blockedBy', { id: blocking[0].id });
+    tags.push(el('span', { class: 'tag f-outside' }, lockIcon(), text));
+  }
   return tags;
 }
 
@@ -224,6 +235,17 @@ function icon(size, paths) {
 }
 const warningIcon = () => icon(14, ['M12 3 2 21h20L12 3z', 'M12 10v5', 'M12 18h.01']);
 const closeIcon = () => icon(18, ['M6 6l12 12', 'M18 6 6 18']);
+const lockIcon = () => icon(14, ['M7 11V7a5 5 0 0 1 10 0v4', 'M5 11h14v10H5z']);
+
+/** The tasks this one depends on: a link with its status in text; a missing one is marked, without link. */
+function dependencyList(task) {
+  return el('ul', { class: 'dep-list' }, task.dependsOn.map((d) => d.status === null
+    ? el('li', {}, el('span', { class: 'mono', text: d.id }), ` ${t('web.dependencyMissing')}`)
+    : el('li', {},
+        el('a', { href: href(view.slug, 'task', d.id), 'data-focus': `task:${d.id}` }, el('span', { class: 'mono', text: d.id }), ` · ${d.title}`),
+        ' ', el('span', { class: `pill s-${d.status}`, text: statusLabel(d.status) }),
+        d.status === 'discarded' ? el('span', { class: 'muted', text: ` ${t('web.dependencyDiscarded')}` }) : null)));
+}
 
 function card(task, selectedId) {
   const tags = tagsFor(task);
@@ -570,7 +592,7 @@ async function taskDetail() {
     el('header', { class: 'detail-head' },
       el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
       el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
-      el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' })),
+      el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' }, task.status)),
       actions(task, 'detail-actions'),
     ),
     el('div', { class: 'detail-grid' },
@@ -579,6 +601,7 @@ async function taskDetail() {
           row(t('web.meta.priority'), t(`web.priority.${task.priority}`)),
           row(t('web.meta.origin'), t(`web.origin.${task.origin}`)),
           row(t('web.meta.plan'), task.plan ? el('span', { class: 'mono', text: task.plan }) : '—'),
+          ...(task.dependsOn?.length ? row(t('web.meta.dependsOn'), dependencyList(task)) : []),
           row(t('web.meta.created'), el('span', { class: 'mono', text: exact(task.created) })),
           row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(task.updated) })),
         ),

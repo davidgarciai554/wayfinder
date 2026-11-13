@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
-import { createTask, logProgress, setStatus } from '../src/store/tasks.ts';
+import { createTask, logProgress, readTask, setStatus, updateTask } from '../src/store/tasks.ts';
 import { createError, noteError } from '../src/store/error-records.ts';
 import { setGitRunner } from '../src/store/git.ts';
 import { WayfinderError } from '../src/store/errors.ts';
@@ -516,4 +516,18 @@ test('errors: list and detail are read-only, rendered safely, and the task lists
   assert.equal((await post(port, '/api/projects/demo/errors', { title: 'x' }, headers)).status, 405);
   assert.equal((await post(port, '/api/projects/demo/errors/ERR-1/resolve', {}, headers)).status, 405);
   assert.deepEqual(tree(home), files);
+});
+
+test('WAY-15: tasks carry their dependencies with title and status; a missing one has status null', async (t) => {
+  const { home, port } = await writer(t);
+  const base = createTask(home, 'demo', { title: 'Base' }, 'web').task.id;
+  const user = createTask(home, 'demo', { title: 'Usa la base' }, 'web').task.id;
+  updateTask(home, 'demo', user, { depends_on: [base] });
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body).tasks;
+  assert.deepEqual(list.find((x: { id: string }) => x.id === user).dependsOn, [{ id: base, status: 'todo', title: 'Base' }]);
+  assert.deepEqual(list.find((x: { id: string }) => x.id === base).dependsOn, []);
+  const file = join(home, readTask(home, 'demo', user).file);
+  writeFileSync(file, readFileSync(file, 'utf8').replace(`  - ${base}`, `  - ${base}\n  - WF-99`));
+  const detail = JSON.parse((await get(port, `/api/projects/demo/tasks/${user}`)).body);
+  assert.deepEqual(detail.dependsOn, [{ id: base, status: 'todo', title: 'Base' }, { id: 'WF-99', status: null, title: null }]);
 });

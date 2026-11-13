@@ -82,6 +82,24 @@ Cuando algo falla (compilación, pruebas, análisis, ejecución o un comportamie
 - **Secretos:** un campo que parece contener un secreto se rechaza y no se guarda nada. El detector es heurístico y no reconoce datos personales (por ejemplo, carpetas de usuario o correos): resume la salida en vez de pegarla entera.
 - El texto de los errores se trata como dato no confiable, igual que el de las tareas.
 
+### Dependencias entre tareas
+
+Una tarea puede depender de otras del mismo proyecto («WAY-7 depende de WAY-2»). Las escribe Claude con `wf_update` y `depends_on`; la lista se sustituye entera y `[]` la vacía.
+
+- Se rechaza sin guardar nada una tarea que no existe en el proyecto, la propia tarea, un ID repetido, más de 20 dependencias o un ciclo.
+- Solo una tarea hecha libera a las que dependen de ella. Una dependencia descartada sigue bloqueando hasta que alguien la quite; una que no existe no bloquea.
+- Es información para planificar: nunca impide un cambio de estado. Al empezar una tarea con dependencias sin hacer, Claude recibe un aviso.
+- Se ven en `wf_get`, en `wf_list` («bloqueada por WAY-n») y en la web: la etiqueta «Bloqueada por WAY-n» en la tarjeta y la fila «Depende de» en el detalle. Desde la web no se editan.
+
+### Pedir varias tareas a la vez
+
+Si pides una sola tarea, Claude la hace en el mismo chat. Si pides varias por su ID («haz WAY-3, WAY-5 y WAY-7»):
+
+- Claude reúne las tareas que nombras y las dependencias abiertas que las bloquean, nada más. Si una de esas dependencias es una propuesta, se detiene y te pide aprobarla.
+- Antes de empezar te dice el reparto. Las tareas independientes van cada una a su propia sesión, en su propio worktree si tocan código. Las que dependen unas de otras van en una sola sesión, primero la que libera.
+- En Claude Code Desktop abre esas sesiones. En la terminal no puede, así que te lo dice y las hace todas en el mismo chat, en ese orden.
+- El bucle no aprueba nada. Cada tarea no trivial sigue necesitando su plan aprobado. Si falta el plan o algo falla, se para y te dice qué necesita.
+
 ### Reabrir una tarea
 
 Una tarea hecha o descartada se reabre solo desde la web, con el botón «Reabrir» y un motivo obligatorio, que queda en el historial de la tarea y en la bitácora.
@@ -91,7 +109,12 @@ Una tarea hecha o descartada se reabre solo desde la web, con el botón «Reabri
 
 ### Aprobar ideas desde el chat
 
-Escribe la orden con el ID, por ejemplo «aprueba WAY-4».
+Escribe la orden con el ID, por ejemplo «aprueba WAY-4». Para varias a la vez, un verbo y la lista: «aprueba WAY-4, WAY-5 y WAY-6» o «apruebo las tres tareas WAY-4, WAY-5 y WAY-6».
+
+- Entre «aprueba», «apruebo» o «approve» y el primer ID caben hasta 3 palabras. Con «haz», «empieza», «do» o «start», hasta 2, para que una petición de trabajo como «haz un resumen de WAY-4» no cuente como orden. Los IDs se separan con comas, «y», «e» o «and».
+- La lista termina en cualquier otra cosa: «aprueba WAY-4 pero no WAY-5» solo aprueba WAY-4. No se admiten rangos («WAY-4 a WAY-6») ni IDs separados solo por espacios.
+- Con más de 10 IDs en un mensaje no cuenta ninguno.
+- Una negación antes de la lista, una pregunta, una cita (`>`) o un bloque de código anulan la orden. Cada propuesta pasa por su propia revisión.
 
 1. Claude revisa la propuesta antes de aprobarla.
 2. Si ve algo sospechoso (instrucciones ocultas, peticiones de secretos, comandos de red…), te explica el motivo y no la aprueba hasta que repitas la orden, por ejemplo «aprueba WAY-4 igualmente».

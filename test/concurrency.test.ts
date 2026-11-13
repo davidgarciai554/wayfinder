@@ -76,3 +76,16 @@ test('20 concurrent progress entries and description edits lose nothing', { time
   assert.equal(commitCount(home), before + 20);
   assert.equal(gitOut(home, 'status', '--porcelain'), '');
 });
+
+test('two concurrent updates that would close a cycle: one is saved, the other is rejected under the lock', { timeout: 120_000 }, async (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const a = createTask(home, 'demo', { title: 'A' }, 'web').task.id;
+  const b = createTask(home, 'demo', { title: 'B' }, 'web').task.id;
+  const results = await Promise.all([run(['depend', home, 'demo', a, b]), run(['depend', home, 'demo', b, a])]);
+  for (const r of results) assert.equal(r.code, 0, r.err);
+  assert.deepEqual(results.map((r) => r.out).sort(), ['ok', 'store.dependencyCycle']);
+  const deps = [readTask(home, 'demo', a).dependsOn, readTask(home, 'demo', b).dependsOn];
+  assert.equal(deps.filter((d) => d.length === 1).length, 1, 'only one edge was written');
+  assert.equal(gitOut(home, 'status', '--porcelain'), '');
+});

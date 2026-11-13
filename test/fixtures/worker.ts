@@ -19,4 +19,11 @@ if (mode === 'create') {
 } else if (mode === 'update') {
   updateTask(home, slug, arg, { body: `Descripción ${extra}` });
   process.stdout.write(extra);
+} else if (mode === 'depend') {
+  try {
+    updateTask(home, slug, arg, { depends_on: [extra] });
+    process.stdout.write('ok');
+  } catch (error) {
+    process.stdout.write((error as { key?: string }).key ?? 'error');
+  }
 }

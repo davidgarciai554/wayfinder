@@ -44,6 +44,11 @@ export interface Task {
   plan: string;
   approvedVia?: 'web' | 'chat';
   riskAcknowledged?: boolean;
+  /**
+   * IDs of the tasks of the same project this one waits for (frontmatter depends_on). Planning
+   * data only: it never blocks a transition nor authorises anything. Invalid values read as none.
+   */
+  dependsOn: string[];
   /** The description: the stored body above the history section. */
   body: string;
   /** Raw history section (see history.ts); null for tasks created before it existed. */
@@ -91,6 +96,7 @@ function toTask(rel: string, raw: string): Task | Unreadable {
     plan: str('plan') ?? '',
     approvedVia: d.approvedVia === 'web' || d.approvedVia === 'chat' ? d.approvedVia : undefined,
     riskAcknowledged: d.riskAcknowledged === true ? true : undefined,
+    dependsOn: Array.isArray(d.depends_on) ? [...new Set(d.depends_on.filter((x): x is string => typeof x === 'string' && ID_RE.test(x)))] : [],
     body: description,
     history,
     file: rel,
@@ -210,6 +216,7 @@ export function createTask(
       status: actor === 'web' ? 'todo' : 'proposed',
       priority,
       origin,
+      dependsOn: [],
       created: now,
       updated: now,
       plan: '',
@@ -233,17 +240,74 @@ function assertUnchanged(task: Task, expectedUpdated: string | undefined): void 
   }
 }
 
+export const MAX_DEPENDENCIES = 20;
+
+/** Only done frees a dependency; a missing task is shown but does not block (see WAY-15). */
+export interface DependencyState {
+  id: string;
+  status: Status | null;
+  title: string | null;
+}
+
+export function dependencyStates(task: Pick<Task, 'dependsOn'>, byId: ReadonlyMap<string, Task>): DependencyState[] {
+  return task.dependsOn.map((id) => {
+    const dep = byId.get(id);
+    return { id, status: dep?.status ?? null, title: dep?.title ?? null };
+  });
+}
+
+export function isBlocking(dep: DependencyState): boolean {
+  return dep.status !== null && dep.status !== 'done';
+}
+
+function validateDependencyList(id: string, raw: string[]): string[] {
+  if (raw.length > MAX_DEPENDENCIES) throw new WayfinderError('store.dependencyTooMany', { max: MAX_DEPENDENCIES });
+  const seen = new Set<string>();
+  for (const dep of raw) {
+    assertId(dep);
+    if (dep === id) throw new WayfinderError('store.dependencySelf', { id });
+    if (seen.has(dep)) throw new WayfinderError('store.dependencyDuplicate', { dep });
+    seen.add(dep);
+  }
+  return [...seen];
+}
+
+/** Every dependency exists in this project and none leads back to the task. Must run inside the lock. */
+function assertDependencyGraph(home: string, slug: string, id: string, deps: string[]): void {
+  const graph = new Map(listTasks(home, slug).tasks.map((t) => [t.id, t.dependsOn]));
+  for (const dep of deps) if (!graph.has(dep)) throw new WayfinderError('store.dependencyNotFound', { dep });
+  graph.set(id, deps);
+  // Depth-first search from the task: reaching it again means the new edges close a cycle.
+  const path: string[] = [];
+  const done = new Set<string>();
+  const visit = (node: string): string[] | null => {
+    if (path.includes(node)) return [...path.slice(path.indexOf(node)), node];
+    if (done.has(node)) return null;
+    path.push(node);
+    for (const next of graph.get(node) ?? []) {
+      const cycle = visit(next);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    done.add(node);
+    return null;
+  };
+  const cycle = visit(id);
+  if (cycle) throw new WayfinderError('store.dependencyCycle', { path: cycle.join(' → ') });
+}
+
 export function updateTask(
   home: string,
   slug: string,
   id: string,
-  patch: { title?: string; priority?: string; plan?: string; body?: string },
+  patch: { title?: string; priority?: string; plan?: string; body?: string; depends_on?: string[] },
   options: { expectedUpdated?: string; clock?: Clock; planExists?: (plan: string) => boolean } = {},
 ): WriteResult {
   const clock = options.clock ?? systemClock;
   const title = patch.title === undefined ? undefined : validateTitle(patch.title);
   const body = patch.body === undefined ? undefined : validateBody(patch.body);
   const priority = patch.priority === undefined ? undefined : validatePriority(patch.priority);
+  const dependsOn = patch.depends_on === undefined ? undefined : validateDependencyList(id, patch.depends_on.map((d) => d.trim()));
   if (patch.plan !== undefined && patch.plan !== '') {
     if (!options.planExists) throw new WayfinderError('store.planUnverifiable', {});
     if (!options.planExists(patch.plan)) throw new WayfinderError('store.planNotFound', { plan: patch.plan });
@@ -255,6 +319,13 @@ export function updateTask(
     if (body !== undefined) task.body = body;
     if (priority !== undefined) task.priority = priority;
     if (patch.plan !== undefined) task.plan = patch.plan;
+    if (dependsOn !== undefined) {
+      assertDependencyGraph(home, slug, id, dependsOn);
+      task.dependsOn = dependsOn;
+      // An empty list removes the key, so the file looks as before dependencies existed.
+      if (dependsOn.length) task.data.depends_on = dependsOn;
+      else delete task.data.depends_on;
+    }
     task.updated = isoLocal(clock());
     writeTaskUnlocked(home, task);
     const warnings = commitPaths(home, [task.file], `wf: update ${id}`);
@@ -331,6 +402,12 @@ export function setStatus(
       paths.push(appendLogUnlocked(home, slug, lines.join('\n'), id, () => date));
     }
     const warnings = commitPaths(home, paths, `wf: set-status ${id} ${from}->${to}`);
+    // Starting a task whose dependencies are not done only warns: they are planning data.
+    if (to === 'in-progress' && task.dependsOn.length) {
+      const byId = new Map(listTasks(home, slug).tasks.map((t) => [t.id, t]));
+      const open = dependencyStates(task, byId).filter(isBlocking);
+      if (open.length) warnings.push({ key: 'store.dependenciesOpen', vars: { id, deps: open.map((d) => `${d.id} [${d.status}]`).join(', ') } });
+    }
     return { task, warnings };
   });
 }

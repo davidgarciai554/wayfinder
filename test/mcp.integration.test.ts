@@ -552,3 +552,20 @@ test('wf_error records, notes and resolves errors; wf_get and wf_search show the
   assert.match(found, /^<<<UNTRUSTED TASK CONTENT[^\n]*\n- error ERR-2 \[open, test\]: [^\n]*\n- error ERR-1 \[resolved, build\]: /);
   assert.equal(execFileSync('git', ['-C', env.home, 'status', '--porcelain'], { encoding: 'utf8' }), '');
 });
+
+test('WAY-15: wf_update sets and clears depends_on with validation; wf_get and wf_list show it', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await registerWithOrder(env, call);
+  await call('wf_create', { title: 'Blocker' });
+  await call('wf_create', { title: 'Waiting' });
+  assert.match((await call('wf_update', { id: 'MYA-2', depends_on: ['MYA-2'] })).text, /cannot depend on itself/);
+  assert.match((await call('wf_update', { id: 'MYA-2', depends_on: ['MYA-9'] })).text, /MYA-9 does not exist/);
+  assert.equal((await call('wf_update', { id: 'MYA-2', depends_on: ['MYA-1'] })).isError, false);
+  assert.match((await call('wf_update', { id: 'MYA-1', depends_on: ['MYA-2'] })).text, /form a cycle: MYA-1 → MYA-2 → MYA-1/);
+  assert.match((await call('wf_get', { id: 'MYA-2' })).text, /^depends_on: MYA-1 \[proposed\]$/m);
+  assert.match((await call('wf_list', {})).text, /^MYA-2 \[proposed\] \(medium\) Waiting — blocked by MYA-1; /m);
+  assert.doesNotMatch((await call('wf_get', { id: 'MYA-1' })).text, /depends_on/);
+  assert.match((await call('wf_update', { id: 'MYA-2', depends_on: [] })).text, /MYA-2 updated/);
+  assert.doesNotMatch((await call('wf_list', {})).text, /blocked by/);
+});

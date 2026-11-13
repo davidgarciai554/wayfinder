@@ -180,10 +180,10 @@
 - **Reproducción:** escribir «apruebo las tres tareas WAY-8, WAY-9 y WAY-12», llamar a `wf_review` de cada ID y después a `wf_set_status` con `status: "todo"` y `user_requested: true`. También falla el tercer ID de «aprueba WAY-8, WAY-9 y WAY-12».
 - **Salida observada:** «No hay una orden explícita reciente para WAY-8 en el último mensaje» (igual para WAY-9 y WAY-12).
 - **Causa confirmada:** `extractOrders` (`src/store/mentions.ts`) solo acepta un ID si un verbo de aprobación aparece como mucho `WINDOW = 3` palabras antes. «las tres tareas» deja el verbo a 4 palabras de WAY-8, y cada ID anterior de la lista («way» + número) consume palabras de la ventana del siguiente.
-- **Solución:** pendiente de decisión. Es el filtro que impide aprobaciones inducidas, así que ampliarlo (por ejemplo, aceptar una lista de IDs encadenada al verbo) necesita su propio cambio y pruebas de negación y preguntas. Mientras tanto, la orden funciona escribiendo un verbo junto a cada ID, por ejemplo «aprueba WAY-8, aprueba WAY-9 y aprueba WAY-12».
-- **Archivos modificados:** ninguno.
-- **Validación:** causa comprobada leyendo `extractOrders` y con las tres llamadas rechazadas.
-- **Resultado:** sin resolver.
+- **Solución:** (WAY-18, plan `Planes/2026-11-13-varios-ids-dependencias-y-varias-tareas.md` v1) `extractOrders` acepta una lista. El primer ID necesita un verbo de aprobación como mucho 3 palabras antes, contadas desde el ID anterior para que los IDs previos no llenen la ventana, y sin negación. Los IDs unidos solo por una coma, «y», «e» o «and» heredan su veredicto, y cualquier otra cosa corta la lista («pero», «luego», otro prefijo, un rango, un espacio). Con más de 10 IDs en un mensaje no se registra ninguna orden.
+- **Archivos modificados:** `src/store/mentions.ts`, `test/chat.test.ts`, `README.md`, `plugin/skills/wayfinder/SKILL.md`, `plugin/dist/wayfinder.mjs`.
+- **Validación:** `node --test test/chat.test.ts` 21/21, con las frases de ERR-5, los casos de no-orden de la lista, el tope y tres aprobaciones extremo a extremo; `npm test` 153/153; `npm run check:dist` correcto.
+- **Resultado:** resuelto. El hook `prompt` usa el bundle nuevo desde el siguiente mensaje.
 
 ## 2026-11-13 · La ruta web de reapertura aprobaba una tarea que no estaba terminada ni descartada
 

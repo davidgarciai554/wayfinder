@@ -13,11 +13,25 @@ const APPROVAL_VERBS = [
 ];
 const NEGATIONS = ['no', 'nunca', 'ni', 'sin', "don't", 'dont', 'do not', 'never', 'not'];
 const WINDOW = 3;
+/**
+ * Only the explicit approval verbs reach 3 filler words before the first ID ("apruebo las tres
+ * tareas WAY-8"). The generic ones (haz, do, start…) keep the old window of 2, so a work request
+ * like "haz un resumen de WAY-8" is never an order.
+ */
+const STRONG_VERBS = ['aprueba', 'apruebo', 'apruébala', 'apruebala', 'aprobar', 'approve'];
+const STRONG_WINDOW = 4;
+/** More IDs than this in one message (a pasted list?) records no order at all: never a truncated part. */
+const MAX_ORDER_IDS = 10;
+/** What may join two IDs of one list: a comma, «y», «e», «and», or a comma and one of them. */
+const LIST_SEPARATOR = /^\s*(?:,\s*(?:(?:y|e|and)\s+)?|(?:y|e|and)\s+)$/i;
 
 /**
- * Extracts the IDs the person explicitly orders to approve: an approval verb at most WINDOW
- * words before the ID, no negation in that window, and the sentence is not a question.
- * Code blocks, inline code and quoted lines are ignored. Ambiguity means no order (fail closed).
+ * Extracts the IDs the person explicitly orders to approve. The first ID of a list needs an
+ * approval verb at most 3 words before it (counted from the previous ID, so earlier IDs never
+ * fill the window) and no negation there; the sentence must not be a question. The IDs joined
+ * to it only by LIST_SEPARATOR share its verdict ("aprueba WAY-8, WAY-9 y WAY-12"). Anything
+ * else ends the list ("pero", "luego", another prefix, a range "a", a bare space), and the next
+ * ID needs its own verb. Code, inline code and quoted lines are ignored. Ambiguity means no order.
  */
 export function extractOrders(prompt: string, idPrefix: string): string[] {
   const text = personText(prompt);
@@ -26,15 +40,29 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
   const idRe = new RegExp(`\\b${idPrefix}-([1-9]\\d{0,8})\\b`, 'gi');
   for (const sentence of text.split(/(?<=[.!?¡¿\n])/)) {
     if (/[¿?]/.test(sentence)) continue;
+    let previousEnd = 0;
+    let previousOrdered: boolean | null = null;
     for (const match of sentence.matchAll(idRe)) {
-      const before = sentence.slice(0, match.index).toLowerCase();
-      const words = before.split(/[^\p{L}'’]+/u).filter(Boolean).slice(-WINDOW);
-      const joined = words.join(' ');
-      if (NEGATIONS.some((n) => (n.includes(' ') ? joined.includes(n) : words.includes(n)))) continue;
-      if (words.some((w) => APPROVAL_VERBS.includes(w))) found.add(`${idPrefix}-${match[1]}`);
+      const between = sentence.slice(previousEnd, match.index);
+      let ordered: boolean;
+      if (previousOrdered !== null && LIST_SEPARATOR.test(between)) {
+        ordered = previousOrdered;
+      } else {
+        const words = between.toLowerCase().split(/[^\p{L}'’]+/u).filter(Boolean);
+        // Each window is judged on its own: a verb inside it and no negation inside it.
+        const orders = (window: string[], verbs: readonly string[]) => {
+          const joined = window.join(' ');
+          const negated = NEGATIONS.some((n) => (n.includes(' ') ? joined.includes(n) : window.includes(n)));
+          return !negated && window.some((w) => verbs.includes(w));
+        };
+        ordered = orders(words.slice(-WINDOW), APPROVAL_VERBS) || orders(words.slice(-STRONG_WINDOW), STRONG_VERBS);
+      }
+      if (ordered) found.add(`${idPrefix}-${match[1]}`);
+      previousEnd = (match.index ?? 0) + match[0].length;
+      previousOrdered = ordered;
     }
   }
-  return [...found];
+  return found.size > MAX_ORDER_IDS ? [] : [...found];
 }
 
 /** What the person wrote, without code blocks, inline code, quoted lines or invisible characters. */

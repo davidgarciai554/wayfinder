@@ -34,7 +34,7 @@ import { ERROR_ID_RE, getHome } from './store/paths.ts';
 import { declineRegistration, registerByOrder } from './store/register.ts';
 import { findRepoRoot, makePlanExists, resolveProject, rootKey, suggestRegistration } from './store/resolve.ts';
 import { reviewTask } from './store/review.ts';
-import { createTask, listTasks, logProgress, MAX_HISTORY_FIELD, readTask, setStatus, updateTask, type Task } from './store/tasks.ts';
+import { createTask, dependencyStates, isBlocking, listTasks, logProgress, MAX_HISTORY_FIELD, readTask, setStatus, updateTask, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { historyEntry, historyIndex, MAX_DAYS, MAX_RESULTS, search, timeline } from './store/memory.ts';
 import { PRIORITIES, STATUSES } from './store/transitions.ts';
@@ -114,8 +114,13 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
   /** Task files live at projects/<slug>/tasks/<file>. */
   const slugOf = (task: Task) => task.file.split('/')[1];
   const statusLabel = (task: Task) => tr(`status.${task.status}` as MessageKey);
-  const line = (task: Task) => {
+  const tasksById = (slug: string) => new Map(listTasks(home, slug).tasks.map((t) => [t.id, t]));
+  const line = (task: Task, byId: ReadonlyMap<string, Task>) => {
+    // A done or discarded task is no longer waiting for anything.
+    const open = task.status === 'proposed' || task.status === 'todo' || task.status === 'in-progress';
+    const blockedBy = open ? dependencyStates(task, byId).filter(isBlocking).map((d) => d.id) : [];
     const flags = [
+      blockedBy.length ? tr('mcp.flag.blockedBy', { deps: blockedBy.join(', ') }) : '',
       task.status === 'proposed' ? tr('mcp.flag.notApproved') : '',
       task.approvedVia === 'chat' ? tr('mcp.flag.approvedChat') : '',
       task.riskAcknowledged ? tr('mcp.flag.riskAcknowledged') : '',
@@ -123,6 +128,11 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
     ].filter(Boolean);
     return `${task.id} [${task.status}] (${task.priority}) ${task.title}${flags.length ? ` — ${flags.join('; ')}` : ''}`;
   };
+  /** Each dependency with its status: done frees it; a missing task is marked and does not block. */
+  const dependencies = (task: Task) =>
+    dependencyStates(task, tasksById(slugOf(task)))
+      .map((d) => `${d.id} [${d.status ?? 'not found'}]`)
+      .join(', ');
   const detail = (task: Task) =>
     [
       `id: ${task.id}`,
@@ -133,6 +143,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
       `created: ${task.created}`,
       `updated: ${task.updated}`,
       `plan: ${task.plan || '—'}`,
+      ...(task.dependsOn.length ? [`depends_on: ${dependencies(task)}`] : []),
       ...(task.approvedVia ? [`approvedVia: ${task.approvedVia}`] : []),
       ...(task.riskAcknowledged ? ['riskAcknowledged: true'] : []),
       ...(modifiedOutside(home, task.file) ? [tr('mcp.flag.modifiedOutside')] : []),
@@ -309,7 +320,8 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
         const wanted = new Set(args.status ?? ['in-progress', 'todo', 'proposed']);
         const { tasks, unreadable } = listTasks(home, p.slug);
         const shown = tasks.filter((x) => wanted.has(x.status)).slice(0, 200);
-        const lines = shown.length ? shown.map(line) : [tr('mcp.noTasks')];
+        const byId = new Map(tasks.map((t) => [t.id, t]));
+        const lines = shown.length ? shown.map((x) => line(x, byId)) : [tr('mcp.noTasks')];
         for (const u of unreadable) lines.push(tr('mcp.unreadable', { file: u.file, reason: u.reason }));
         return ok(lines.join('\n'));
       }),
@@ -404,13 +416,14 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
     'wf_update',
     {
       description:
-        'Edit title, priority, plan (a path like Planes/2026-10-21-name.md that must exist) or body (the description). Never changes status, origin or the history: record progress with wf_log.',
+        'Edit title, priority, plan (a path like Planes/2026-10-21-name.md that must exist), body (the description) or depends_on (the IDs of the tasks of this project it waits for; replaces the list, [] clears it; no cycles). Never changes status, origin or the history: record progress with wf_log.',
       inputSchema: z.object({
         id: z.string(),
         title: z.string().optional(),
         priority: z.enum(PRIORITIES).optional(),
         plan: z.string().optional(),
         body: z.string().optional(),
+        depends_on: z.array(z.string().max(30)).max(50).optional(),
         project,
       }),
     },

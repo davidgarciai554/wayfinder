@@ -14,7 +14,7 @@ import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/pa
 import { listProjects, requireProject } from './store/project.ts';
 import { findSecrets } from './store/secrets.ts';
 import type { Status } from './store/transitions.ts';
-import { createTask, listTasks, readTask, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import { createTask, dependencyStates, listTasks, readTask, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
 
 export interface ServeOptions {
   home: string;
@@ -89,7 +89,9 @@ function errorMeta(error: ErrorRecord) {
   return { id: error.id, title: error.title, status: error.status, kind: error.kind, task: error.task, created: error.created, updated: error.updated };
 }
 
-function taskMeta(home: string, task: Task) {
+/** byId: the tasks of the project, to give each dependency its title and status (read again when omitted). */
+function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
+  const tasks = byId ?? (task.dependsOn.length ? new Map(listTasks(home, task.file.split('/')[1]).tasks.map((t) => [t.id, t])) : new Map<string, Task>());
   return {
     id: task.id,
     title: task.title,
@@ -104,6 +106,8 @@ function taskMeta(home: string, task: Task) {
     modifiedOutside: modifiedOutside(home, task.file),
     /** Where «Reabrir» would send a done or discarded task (todo or proposed); null otherwise. */
     reopensTo: reopenTarget(task),
+    /** WAY-15: each dependency with its title and status; status null when the task does not exist. */
+    dependsOn: dependencyStates(task, tasks),
   };
 }
 
@@ -231,8 +235,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[2] === 'tasks' && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
+      const byId = new Map(tasks.map((t) => [t.id, t]));
       return json(res, 200, {
-        tasks: tasks.map((x) => taskMeta(home, x)),
+        tasks: tasks.map((x) => taskMeta(home, x, byId)),
         unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) })),
       });
     }

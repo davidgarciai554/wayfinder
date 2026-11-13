@@ -69,6 +69,17 @@ setStatus(E2E_HOME, 'reapertura', finished, 'done', 'mcp', { clock });
 const dropped = createTask(E2E_HOME, 'reapertura', { title: 'Idea descartada', body: 'Idea de Claude.' }, 'mcp', clock).task.id;
 setStatus(E2E_HOME, 'reapertura', dropped, 'discarded', 'mcp', { note: 'Ahora no.', clock });
 
+// Dependencies (WAY-15): one task blocked by an open one, and one whose dependency is done (free).
+createProject(E2E_HOME, { slug: 'dependencias', name: 'dependencias', idPrefix: 'DEP', localPath: 'D:/dependencias' });
+const base = createTask(E2E_HOME, 'dependencias', { title: 'Preparar la base' }, 'web', clock).task.id;
+const blocked = createTask(E2E_HOME, 'dependencias', { title: 'Usar la base' }, 'web', clock).task.id;
+updateTask(E2E_HOME, 'dependencias', blocked, { depends_on: [base] }, { clock });
+const earlier = createTask(E2E_HOME, 'dependencias', { title: 'Hecha antes' }, 'web', clock).task.id;
+setStatus(E2E_HOME, 'dependencias', earlier, 'in-progress', 'mcp', { trivial: true, note: 'Prueba e2e.', clock });
+setStatus(E2E_HOME, 'dependencias', earlier, 'done', 'mcp', { clock });
+const free = createTask(E2E_HOME, 'dependencias', { title: 'Ya libre' }, 'web', clock).task.id;
+updateTask(E2E_HOME, 'dependencias', free, { depends_on: [earlier] }, { clock });
+
 // History plan: a task with progress entries on two days and a task written before histories existed.
 createProject(E2E_HOME, { slug: 'historial', name: 'historial', idPrefix: 'HIS', localPath: 'D:/historial' });
 const memory = createTask(E2E_HOME, 'historial', { title: 'Filtro con memoria', body: 'Descripción de la tarea.' }, 'web', () => new Date('2026-10-19T08:00:00')).task.id;

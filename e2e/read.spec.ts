@@ -186,4 +186,33 @@ test.describe('web board (read-only)', () => {
     expect(text).not.toMatch(/\b(web|status|reason)\.[a-z]/);
     expect(text).not.toMatch(/Propuestas|Por hacer|Tablero|Bitácora|Mostrar descartadas|Sin aprobar/);
   });
+
+  test('WAY-15: a blocked task says so in text on its card, and the detail links each dependency with its status', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/dependencias/board');
+    const blockedCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Usar la base' }) });
+    await expect(blockedCard).toContainText('Bloqueada por DEP-1');
+    const freeCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Ya libre' }) });
+    await expect(freeCard).not.toContainText('Bloqueada');
+
+    await page.getByRole('link', { name: 'Usar la base' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Usar la base' });
+    const deps = dialog.locator('dd .dep-list');
+    await expect(deps.getByRole('listitem')).toHaveCount(1);
+    await expect(deps).toContainText('DEP-1 · Preparar la base');
+    await expect(deps.locator('.pill')).toHaveText('Por hacer');
+    await deps.getByRole('link', { name: /DEP-1 · Preparar la base/ }).click();
+    await expect(page).toHaveURL(/#\/dependencias\/task\/DEP-1$/);
+    await expect(page.getByRole('dialog', { name: 'Preparar la base' })).toBeVisible();
+    await expect(page.getByRole('dialog').locator('.dep-list')).toHaveCount(0);
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/#/dependencias/task/DEP-2');
+    await expect(page.getByRole('dialog').locator('.dep-list')).toBeVisible();
+    const { scroll, client } = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(scroll).toBeLessThanOrEqual(client);
+
+    await page.goto(`http://127.0.0.1:${E2E_PORTS.en}/#/dependencias/board`);
+    await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Usar la base' }) })).toContainText('Blocked by DEP-1');
+  });
 });
