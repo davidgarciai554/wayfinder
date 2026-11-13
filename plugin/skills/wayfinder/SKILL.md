@@ -79,7 +79,7 @@ Always work on a task. Every time you advance on one, record it with `wf_log` an
 - `next`: the next step.
 - `blockers`: blockers or open questions.
 
-Wayfinder appends the entry to the task's history (inside the task file) and adds a line to today's log that links to it, in one commit. The task must exist. Use `wf_log` without `task_id` only for minor work outside any task, such as a general review of the repository: it is a free log entry.
+Wayfinder appends the entry to the task's history (inside the task file) and adds a line to today's log that links to it, in one commit. The task must exist. Use `wf_log` without `task_id` only for minor work outside any task, such as a general review of the repository: it is a free log entry and takes `entry` only (`decisions`, `files`, `next` and `blockers` need a `task_id`).
 
 `wf_update` changes the description only; it never edits the history. Never include secrets, tokens, credentials or personal data.
 

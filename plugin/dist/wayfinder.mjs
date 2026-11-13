@@ -50275,7 +50275,7 @@ ${tr(configured ? "mcp.web.invalidWebHost" : "mcp.web.noWebHost")}`;
   server.registerTool(
     "wf_log",
     {
-      description: `Record progress. With task_id (the usual case): appends an entry to that task's history and a linked line to today's log. The first line of entry is the log summary ("We advanced on \u2026", in the person's language); the rest, plus decisions, files, next and blockers, is the detail. Without task_id: a free log entry, only for minor work outside any task. Never include secrets or personal data.`,
+      description: `Record progress. With task_id (the usual case): appends an entry to that task's history and a linked line to today's log. The first line of entry is the log summary ("We advanced on \u2026", in the person's language); the rest, plus decisions, files, next and blockers, is the detail. Without task_id: a free log entry, only for minor work outside any task; it takes entry only (decisions, files, next and blockers need task_id). Never include secrets or personal data.`,
       inputSchema: external_exports.object({
         entry: external_exports.string(),
         task_id: external_exports.string().optional(),
