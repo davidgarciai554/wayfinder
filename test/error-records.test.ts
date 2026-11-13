@@ -151,7 +151,8 @@ test('a note records a recurrence in the same error and never creates another fi
 test('update changes only editable fields and records which ones', (t) => {
   const { home, clock, task } = setup(t);
   const { error } = createError(home, 'demo', base(task), clock);
-  for (const field of ['title', 'task', 'context', 'reproduction', 'output'] as const) {
+  // The task can change since WAY-11 (with a note): see the reassignment test.
+  for (const field of ['title', 'context', 'reproduction', 'output'] as const) {
     assert.throws(() => updateError(home, 'demo', error.id, { [field]: 'x' }, { clock }), isKey('store.errorFieldImmutable'), field);
   }
   assert.throws(() => updateError(home, 'demo', error.id, {}, { clock }), isKey('store.errorNothingToUpdate'));
@@ -314,4 +315,49 @@ test('an unknown status (a newer version) is listed as it is and cannot be chang
   assert.equal(sha(path), before);
   writeFileSync(path, readFileSync(path, 'utf8').replace(/^status: snoozed$/m, 'status: "<b>x</b>"'));
   assert.equal(listErrors(home, 'demo').unreadable.length, 1, 'anything that is not a plain word stays unreadable');
+});
+
+test('WAY-11: an error moves to another task with a note, in one commit, keeping its history', (t) => {
+  const { home, clock, task } = setup(t);
+  const other = createTask(home, 'demo', { title: 'La tarea correcta' }, 'mcp', clock).task.id;
+  const { error } = createError(home, 'demo', base(task), clock);
+  const before = tree(home);
+  assert.throws(() => updateError(home, 'demo', error.id, { task: other }, { clock }), isKey('store.errorTaskNeedsNote'));
+  assert.throws(() => updateError(home, 'demo', error.id, { task: 'WF-99' }, { note: 'mal ligado', clock }), isKey('store.taskNotFound'));
+  assert.throws(() => updateError(home, 'demo', error.id, { task: 'nope' }, { note: 'mal ligado', clock }), isKey('store.invalidId'));
+  assert.throws(() => updateError(home, 'demo', error.id, { task: 'AB-1' }, { note: 'mal ligado', clock }), isKey('store.taskNotFound'));
+  assert.throws(() => updateError(home, 'demo', error.id, { task }, { note: 'misma', clock }), isKey('store.errorNothingToUpdate'));
+  assert.throws(() => resolveError(home, 'demo', error.id, { task: other, solution: 's', validation: 'v' }, { note: 'x', clock }), isKey('store.errorTaskOnlyInUpdate'));
+  assert.deepEqual(tree(home), before, 'rejected moves write nothing');
+
+  const commits = commitCount(home);
+  const { error: moved } = updateError(home, 'demo', error.id, { task: other, kind: 'build' }, { note: 'Se registró en la tarea equivocada.', clock });
+  assert.equal(moved.task, other);
+  assert.equal(commitCount(home), commits + 1);
+  assert.equal(gitOut(home, 'log', '-1', '--format=%s'), `wf: error update ${error.id}`);
+  const entries = parseEntries(readError(home, 'demo', error.id).history);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].text, `Created (task: ${task}).`);
+  assert.equal(entries[1].text, `Updated. Task: ${task} -> ${other}. Fields: kind.\n\nSe registró en la tarea equivocada.`);
+  assert.equal(readError(home, 'demo', error.id).fields.context, 'npm run build en Windows');
+  assert.deepEqual(errorsForTask(home, 'demo', task), []);
+  assert.deepEqual(errorsForTask(home, 'demo', other).map((e) => e.id), [error.id]);
+});
+
+test('WAY-11: resolved and discarded errors can move and keep their status; an unknown status cannot', (t) => {
+  const { home, clock, task } = setup(t);
+  const other = createTask(home, 'demo', { title: 'Otra' }, 'mcp', clock).task.id;
+  const resolved = createError(home, 'demo', { ...base(task), solution: 'banner', validation: 'npm test' }, clock).error;
+  resolveError(home, 'demo', resolved.id, {}, { clock });
+  const discarded = createError(home, 'demo', { ...base(task), title: 'Falsa alarma del puerto' }, clock).error;
+  discardError(home, 'demo', discarded.id, 'Puerto ocupado por otra app.', clock);
+  assert.equal(updateError(home, 'demo', resolved.id, { task: other }, { note: 'mover', clock }).error.status, 'resolved');
+  assert.equal(updateError(home, 'demo', discarded.id, { task: other }, { note: 'mover', clock }).error.status, 'discarded');
+
+  const odd = createError(home, 'demo', { ...base(task), title: 'Estado de una versión nueva' }, clock).error;
+  const path = join(home, odd.file);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/^status: open$/m, 'status: snoozed'));
+  const before = sha(path);
+  assert.throws(() => updateError(home, 'demo', odd.id, { task: other }, { note: 'mover', clock }), isKey('store.errorUnknownStatus'));
+  assert.equal(sha(path), before);
 });

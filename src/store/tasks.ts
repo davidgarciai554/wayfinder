@@ -21,6 +21,7 @@ import { requireProject } from './project.ts';
 // review.ts imports readTask from here too: both only call each other at run time, never while loading.
 import { consumeReviewUnlocked } from './review.ts';
 import { withLock, writeFileAtomic } from './sync.ts';
+import { flatten } from './text.ts';
 import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.ts';
 import {
   checkTransition,
@@ -49,6 +50,11 @@ export interface Task {
    * data only: it never blocks a transition nor authorises anything. Invalid values read as none.
    */
   dependsOn: string[];
+  /**
+   * WAY-14: free labels (frontmatter tags) such as web or docs. Read leniently: values outside
+   * TAG_RE are ignored, so a hand-edited file never hides the task.
+   */
+  tags: string[];
   /** The description: the stored body above the history section. */
   body: string;
   /** Raw history section (see history.ts); null for tasks created before it existed. */
@@ -65,6 +71,9 @@ export interface Unreadable {
 }
 
 export const MAX_TITLE = 200;
+/** Lowercase letters, digits and hyphens: no spaces, Unicode or delimiters can reach the outputs. */
+export const TAG_RE = /^[a-z0-9][a-z0-9-]{0,29}$/;
+export const MAX_TAGS = 10;
 export const MAX_BODY = 20_000;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 
@@ -97,6 +106,7 @@ function toTask(rel: string, raw: string): Task | Unreadable {
     approvedVia: d.approvedVia === 'web' || d.approvedVia === 'chat' ? d.approvedVia : undefined,
     riskAcknowledged: d.riskAcknowledged === true ? true : undefined,
     dependsOn: Array.isArray(d.depends_on) ? [...new Set(d.depends_on.filter((x): x is string => typeof x === 'string' && ID_RE.test(x)))] : [],
+    tags: Array.isArray(d.tags) ? [...new Set(d.tags.filter((x): x is string => typeof x === 'string' && TAG_RE.test(x)))].slice(0, MAX_TAGS) : [],
     body: description,
     history,
     file: rel,
@@ -149,6 +159,26 @@ function validateBody(body: string): string {
   return clean;
 }
 
+/** Rejects instead of normalising: what is written is exactly what was asked for. */
+export function validateTags(raw: string[]): string[] {
+  if (raw.length > MAX_TAGS) throw new WayfinderError('store.tagTooMany', { max: MAX_TAGS });
+  const seen = new Set<string>();
+  for (const tag of raw) {
+    if (typeof tag !== 'string' || !TAG_RE.test(tag)) throw new WayfinderError('store.invalidTag', { value: flatten(String(tag), 40) });
+    if (seen.has(tag)) throw new WayfinderError('store.tagDuplicate', { tag });
+    seen.add(tag);
+  }
+  assertNoSecrets([...seen].join('\n'));
+  return [...seen];
+}
+
+/** An empty list removes the key, so the file looks as before tags existed. */
+function setTags(task: Task, tags: string[]): void {
+  task.tags = tags;
+  if (tags.length) task.data.tags = tags;
+  else delete task.data.tags;
+}
+
 function validatePriority(priority: string | undefined): Priority {
   if (priority === undefined) return 'medium';
   if (!(PRIORITIES as readonly string[]).includes(priority)) {
@@ -197,7 +227,7 @@ export interface WriteResult {
 export function createTask(
   home: string,
   slug: string,
-  input: { title: string; body?: string; priority?: string },
+  input: { title: string; body?: string; priority?: string; tags?: string[] },
   actor: 'mcp' | 'web',
   clock: Clock = systemClock,
 ): WriteResult {
@@ -205,6 +235,7 @@ export function createTask(
   const title = validateTitle(input.title);
   const body = validateBody(input.body ?? '');
   const priority = validatePriority(input.priority);
+  const tags = validateTags(input.tags ?? []);
   return withLock(home, () => {
     const id = nextIdUnlocked(home, slug, project.idPrefix);
     const date = clock();
@@ -217,6 +248,7 @@ export function createTask(
       priority,
       origin,
       dependsOn: [],
+      tags: [],
       created: now,
       updated: now,
       plan: '',
@@ -227,6 +259,7 @@ export function createTask(
       file: `projects/${slug}/tasks/${id}-${slugify(title)}.md`,
       data: {},
     };
+    setTags(task, tags);
     safeJoin(home, task.file);
     writeTaskUnlocked(home, task);
     const warnings = commitPaths(home, [task.file], `wf: create ${id}`);
@@ -300,7 +333,7 @@ export function updateTask(
   home: string,
   slug: string,
   id: string,
-  patch: { title?: string; priority?: string; plan?: string; body?: string; depends_on?: string[] },
+  patch: { title?: string; priority?: string; plan?: string; body?: string; depends_on?: string[]; tags?: string[] },
   options: { expectedUpdated?: string; clock?: Clock; planExists?: (plan: string) => boolean } = {},
 ): WriteResult {
   const clock = options.clock ?? systemClock;
@@ -308,6 +341,8 @@ export function updateTask(
   const body = patch.body === undefined ? undefined : validateBody(patch.body);
   const priority = patch.priority === undefined ? undefined : validatePriority(patch.priority);
   const dependsOn = patch.depends_on === undefined ? undefined : validateDependencyList(id, patch.depends_on.map((d) => d.trim()));
+  // Without tags the key in the file is left as it is, even values this version cannot read.
+  const tags = patch.tags === undefined ? undefined : validateTags(patch.tags);
   if (patch.plan !== undefined && patch.plan !== '') {
     if (!options.planExists) throw new WayfinderError('store.planUnverifiable', {});
     if (!options.planExists(patch.plan)) throw new WayfinderError('store.planNotFound', { plan: patch.plan });
@@ -326,6 +361,7 @@ export function updateTask(
       if (dependsOn.length) task.data.depends_on = dependsOn;
       else delete task.data.depends_on;
     }
+    if (tags !== undefined) setTags(task, tags);
     task.updated = isoLocal(clock());
     writeTaskUnlocked(home, task);
     const warnings = commitPaths(home, [task.file], `wf: update ${id}`);

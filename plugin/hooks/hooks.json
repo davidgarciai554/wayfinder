@@ -22,6 +22,14 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/wayfinder.mjs", "hook", "post-tool-failure"] }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

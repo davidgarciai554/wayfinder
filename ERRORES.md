@@ -152,6 +152,7 @@
 - **Archivos modificados:** `test/docker/image.docker.ts`.
 - **Validación:** `npm run test:docker` → 5/5. También se adaptó la prueba al cambio de WAY-6: dentro del contenedor la web escucha en `0.0.0.0` y exige la clave también para leer, y la clave tiene el formato `<gen>.<secreto>`.
 - **Resultado:** resuelto. Registrado en Wayfinder como error de WAY-6.
+- **Recurrencia 2026-11-13 (WAY-1):** al revalidar la imagen con Docker 29.9.3, `test:docker` da 4/5: espera 13 herramientas y hay 14, porque `wf_errors` (WAY-10) se añadió solo a `test/mcp.integration.test.ts`. Causa de fondo: la lista estaba copiada en dos pruebas y `test:docker` no corre con `npm test`. Solución: una única lista `MCP_TOOLS` en `test/helpers.ts`, usada por las dos pruebas. Archivos: `test/helpers.ts`, `test/mcp.integration.test.ts`, `test/docker/image.docker.ts`. Validación: `npm run typecheck`, `npm run test:docker` 5/5 y `node --test test/mcp.integration.test.ts` 18/18.
 
 ## 2026-11-11 · El enlace para otros dispositivos pide la clave si se abre desde otra web (cookie `SameSite=Strict`)
 

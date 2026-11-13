@@ -215,4 +215,67 @@ test.describe('web board (read-only)', () => {
     await page.goto(`http://127.0.0.1:${E2E_PORTS.en}/#/dependencias/board`);
     await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Usar la base' }) })).toContainText('Blocked by DEP-1');
   });
+
+  test('WAY-14: tags show as a named list on the card and the detail; the tag filter works by keyboard and says it is on', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/etiquetas/board');
+    const card = (title: string) => page.locator('.card').filter({ has: page.getByRole('link', { name: title }) });
+    await expect(card('Aviso del hook').getByRole('list', { name: 'Etiquetas' }).getByRole('listitem')).toHaveText(['hooks', 'mcp']);
+    await expect(card('Sin etiquetas').getByRole('list', { name: 'Etiquetas' })).toHaveCount(0);
+
+    // A native select with its label: options sorted, «Todas» first.
+    const filter = page.getByLabel('Etiqueta', { exact: true });
+    await expect(filter.locator('option')).toHaveText(['Todas', 'hooks', 'mcp', 'web']);
+    await filter.focus();
+    await filter.selectOption('mcp');
+    const note = page.locator('.board-area').getByRole('status');
+    await expect(note.locator('span')).toHaveText('Filtro activo: etiqueta «mcp». Tareas visibles: 1.');
+    await expect(note.getByRole('button', { name: 'Quitar filtro' })).toBeVisible();
+    await expect(page.locator('.card')).toHaveCount(1);
+    await expect(page.locator('#col-proposed .count')).toHaveText('0');
+    await expect(page.locator('#col-todo .count')).toHaveText('1');
+    await expect(filter).toBeFocused();
+    // The discarded «mcp» task counts only once its column is shown.
+    await page.getByLabel('Mostrar descartadas').check();
+    await expect(note.locator('span')).toHaveText('Filtro activo: etiqueta «mcp». Tareas visibles: 2.');
+    await expect(page.locator('.card')).toHaveCount(2);
+    await page.getByLabel('Mostrar descartadas').uncheck();
+    await expect(note.locator('span')).toHaveText('Filtro activo: etiqueta «mcp». Tareas visibles: 1.');
+
+    // The choice survives a reload; a stored value that is not a tag falls back to all.
+    await page.reload();
+    await expect(page.getByLabel('Etiqueta', { exact: true })).toHaveValue('mcp');
+    await page.getByRole('button', { name: 'Quitar filtro' }).click();
+    await expect(page.locator('.board-area').getByRole('status')).toHaveCount(0);
+    await expect(page.locator('.card')).toHaveCount(3);
+    await expect(page.getByLabel('Etiqueta', { exact: true })).toBeFocused();
+    await page.evaluate(() => localStorage.setItem('wayfinder.tagFilter.etiquetas', '<img src=x>'));
+    await page.reload();
+    await expect(page.getByLabel('Etiqueta', { exact: true })).toHaveValue('');
+    await expect(page.locator('.card')).toHaveCount(3);
+
+    await page.getByRole('link', { name: 'Filtro del tablero' }).click();
+    await expect(page.getByRole('dialog', { name: 'Filtro del tablero' }).getByRole('list', { name: 'Etiquetas' })).toHaveText('web');
+
+    // A project without tags shows no filter.
+    await page.goto('/#/dependencias/board');
+    await expect(page.getByLabel('Etiqueta', { exact: true })).toHaveCount(0);
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/#/etiquetas/board');
+    await page.getByLabel('Etiqueta', { exact: true }).selectOption('hooks');
+    const { scroll, client } = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(scroll).toBeLessThanOrEqual(client);
+    const box = await page.getByLabel('Etiqueta', { exact: true }).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    // The clear button sizes to its text, it does not stretch across the notice.
+    const clear = await page.getByRole('button', { name: 'Quitar filtro' }).boundingBox();
+    expect(clear?.width ?? 999).toBeLessThan(200);
+    expect(clear?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await page.goto(`http://127.0.0.1:${E2E_PORTS.en}/#/etiquetas/board`);
+    await page.getByLabel('Tag', { exact: true }).selectOption('web');
+    await expect(page.locator('.board-area').getByRole('status')).toContainText('Filter on: tag "web". Tasks shown: 1.');
+    await expect(page.locator('.card').filter({ has: page.getByRole('link', { name: 'Filtro del tablero' }) }).getByRole('list', { name: 'Tags' })).toHaveText('web');
+  });
 });

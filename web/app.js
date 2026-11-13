@@ -53,6 +53,15 @@ function readPref(key, fallback) {
     return fallback;
   }
 }
+/** A text preference; null when missing or when storage is unavailable. */
+function readTextPref(key) {
+  try {
+    return localStorage.getItem(`wayfinder.${key}`);
+  } catch {
+    return null;
+  }
+}
+
 function writePref(key, value) {
   try {
     localStorage.setItem(`wayfinder.${key}`, String(value));
@@ -247,6 +256,12 @@ function dependencyList(task) {
         d.status === 'discarded' ? el('span', { class: 'muted', text: ` ${t('web.dependencyDiscarded')}` }) : null)));
 }
 
+/** WAY-14: the task's labels as a named list of text chips (they match [a-z0-9-], set by Claude). */
+function labelList(task) {
+  if (!task.tags?.length) return null;
+  return el('ul', { class: 'labels', 'aria-label': t('web.tags') }, task.tags.map((tag) => el('li', { class: 'tag t-label', text: tag })));
+}
+
 function card(task, selectedId) {
   const tags = tagsFor(task);
   return el('li', { class: 'card', 'data-status': task.status, 'aria-current': task.id === selectedId ? 'true' : null },
@@ -255,6 +270,7 @@ function card(task, selectedId) {
       timeEl(task.updated),
     ),
     el('a', { class: 'card-title', href: href(view.slug, 'task', task.id), 'data-focus': `task:${task.id}`, text: task.title }),
+    labelList(task),
     tags.length ? el('div', { class: 'tags' }, tags) : null,
     task.status === 'proposed' || task.reopensTo ? actions(task, 'card-actions') : null,
   );
@@ -495,7 +511,15 @@ async function renderBoard() {
   if (!project) return renderNotFound();
   const showDiscarded = readPref('showDiscarded', false);
   const data = await api(`/api/projects/${encodeURIComponent(view.slug)}/tasks`);
-  const byStatus = (s) => data.tasks.filter((x) => x.status === s);
+  // WAY-14: filter by one label. The choice is kept per project; a label no task has any more
+  // (or a stored value that is not one of them) falls back to all.
+  const labels = [...new Set(data.tasks.flatMap((x) => x.tags ?? []))].sort();
+  const filterKey = `tagFilter.${view.slug}`;
+  const stored = readTextPref(filterKey);
+  const tagFilter = stored && labels.includes(stored) ? stored : '';
+  const setTagFilter = (value, focus) => { writePref(filterKey, value); render({ keepFocus: true, focus }); };
+  const visible = tagFilter ? data.tasks.filter((x) => (x.tags ?? []).includes(tagFilter)) : data.tasks;
+  const byStatus = (s) => visible.filter((x) => x.status === s);
   // Most recent first; equal timestamps fall back to the higher ID (created later).
   const idNumber = (id) => Number(id.split('-')[1]) || 0;
   const recentFirst = (a, b) => (b.updated || '').localeCompare(a.updated || '') || idNumber(b.id) - idNumber(a.id);
@@ -538,6 +562,23 @@ async function renderBoard() {
     t('web.showDiscarded'),
   );
 
+  // Native <select>: keyboard, focus and an accessible name without custom code.
+  const filter = labels.length
+    ? el('span', { class: 'field-inline' },
+        // for/id rather than a wrapping label: the name stays «Etiqueta», without the selected option.
+        el('label', { for: 'tag-filter', text: t('web.tagFilter.label') }),
+        el('select', { id: 'tag-filter', 'data-focus': 'tag-filter', onchange: (e) => setTagFilter(e.target.value, 'tag-filter') },
+          el('option', { value: '', text: t('web.tagFilter.all') }),
+          labels.map((tag) => el('option', { value: tag, selected: tag === tagFilter, text: tag }))))
+    : null;
+  // The active filter is said in text, not only by the select: the columns show fewer tasks.
+  const filtering = tagFilter
+    ? el('p', { class: 'info filter-note', role: 'status' },
+        // Hidden discarded tasks are not counted: the number matches what the columns can show.
+        el('span', { text: t('web.tagFilter.active', { tag: tagFilter, n: visible.filter((x) => showDiscarded || x.status !== 'discarded').length }) }),
+        el('button', { type: 'button', class: 'button', 'data-focus': 'tag-filter-clear', text: t('web.tagFilter.clear'), onclick: () => setTagFilter('', 'tag-filter') }))
+    : null;
+
   const boardArea = el('div', { class: 'board-area' },
     el('div', { class: 'page-head' },
       el('div', {},
@@ -545,6 +586,7 @@ async function renderBoard() {
         el('p', { class: 'mono muted', text: `${t('web.prefix')} ${project.idPrefix}` }),
       ),
       el('div', { class: 'toolbar' },
+        filter,
         toggle,
         canWrite ? el('button', { type: 'button', class: 'button button-primary', 'data-focus': 'new-task', text: t('web.newTask'), onclick: (e) => openCreate(e.currentTarget) }) : null,
       ),
@@ -555,6 +597,7 @@ async function renderBoard() {
       share?.local ? [' ', el('a', { href: share.local, 'data-focus': 'enable-write', text: t('web.enableWrite') })] : null,
     ),
     unreadable,
+    filtering,
     data.tasks.length === 0 ? el('p', { class: 'empty', text: t('web.emptyBoard') }) : null,
     jump,
     el('div', { class: 'columns' }, columns),
@@ -593,6 +636,7 @@ async function taskDetail() {
       el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
       el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
       el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' }, task.status)),
+      labelList(task),
       actions(task, 'detail-actions'),
     ),
     el('div', { class: 'detail-grid' },

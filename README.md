@@ -74,14 +74,29 @@ Cuando algo falla (compilación, pruebas, análisis, ejecución o un comportamie
 
 - **Un archivo por error:** `projects/<slug>/errors/ERR-n-<título>.md`, con contexto, reproducción, salida observada, causa (hipótesis o confirmada), solución, validación, resultado y archivos. Estado abierto, resuelto o descartado.
 - **Tipo (opcional):** compilación (`build`), pruebas (`test`), análisis (`analysis`: lint, tipos), ejecución (`runtime`), comportamiento inesperado (`behavior`) o entorno (`environment`: puertos, permisos, configuración, dependencias). Se puede poner al crear el error o después con `update`. Los errores sin tipo, incluidos los anteriores a esta versión, aparecen como «Sin clasificar». El prefijo `ERR` está reservado: ningún proyecto nuevo puede usarlo.
-- **Acciones:** `create` (necesita la tarea, que debe existir, y el contexto), `update` (tipo, causa, solución, validación, resultado y archivos; también reabrir con una nota), `note` (una recurrencia o una corrección), `resolve` (exige solución y validación) y `discard` (cierra sin solución una falsa alarma o un fallo que no se va a corregir; exige una nota con el motivo, y Claude te lo dice). Un error resuelto o descartado se reabre con `update`, `reopen` y una nota. El contexto, la reproducción y la salida no se cambian: se corrigen con una nota.
+- **Acciones:** `create` (necesita la tarea, que debe existir, y el contexto), `update` (tipo, causa, solución, validación, resultado y archivos; también reabrir con una nota), `note` (una recurrencia o una corrección), `resolve` (exige solución y validación) y `discard` (cierra sin solución una falsa alarma o un fallo que no se va a corregir; exige una nota con el motivo, y Claude te lo dice). Un error resuelto o descartado se reabre con `update`, `reopen` y una nota. El contexto, la reproducción, la salida y el título no se cambian: se corrigen con una nota.
+- **Cambiar la tarea:** un error registrado en la tarea equivocada se pasa a otra tarea del proyecto con `update`, `task_id` y una nota obligatoria con el motivo, en cualquier estado. El historial del error conserva dónde se registró y añade «Task: WAY-3 -> WAY-5.» con la nota. Cada error sigue ligado a una sola tarea.
 - **Antes de investigar:** `wf_search` muestra primero hasta 5 errores, y al crear uno Claude ve los posibles duplicados abiertos. Si es el mismo fallo, añade una nota en lugar de crear otro.
+- **Aviso automático:** cuando un comando de compilación, pruebas o análisis termina con error (por ejemplo `npm test`, `npm run build`, `tsc`, `pytest`, `cargo test` o `dotnet build`, también dentro de `cd x && …`), un hook del plugin (`PostToolUseFailure`) recuerda a Claude buscar el fallo con `wf_search` y registrarlo con `wf_error` si es nuevo e inesperado. Solo avisa: no crea nada, no bloquea, no repite el comando ni su salida y solo actúa en proyectos registrados. Avisa en cada fallo, también en los esperados (una prueba escrita antes del código), y el texto le dice a Claude que entonces lo ignore.
 - **Para Claude:** `wf_get ERR-n` da el error completo y `wf_get` de una tarea lista sus errores. Al empezar la sesión recibe hasta 5 errores abiertos (solo ID, tarea, tipo y título) y un recuento por tipo, si caben.
 - **Listar errores:** `wf_errors` (solo lectura) lista los errores del proyecto, los actualizados más recientemente primero y como mucho 50, con ID, estado, tipo, tarea y título. Por defecto solo los abiertos. Filtra por estado (`status`: `open`, `resolved`, `discarded`), tipo (`kind`: los seis tipos o `unclassified`) y tarea (`task_id`, que debe existir); los filtros se combinan. Un error con un estado que esta versión no conoce no sale al filtrar: se ve con `wf_get`, `wf_search` y la web.
 - **En la web:** pestaña «Errores» con abiertos, resueltos y descartados (con el motivo en sus notas), cada grupo dividido en secciones por tipo con su recuento; una página por error y la sección «Errores (n)» en cada tarea. Solo lectura.
 - **Versiones anteriores:** un plugin anterior a la versión con errores descartados, si usa la misma carpeta de datos, muestra esos errores como «ilegibles» (sin borrarlos ni cambiarlos) hasta que lo actualices. Desde esta versión, un estado que Wayfinder no conozca se muestra tal cual y no se puede cambiar.
 - **Secretos:** un campo que parece contener un secreto se rechaza y no se guarda nada. El detector es heurístico y no reconoce datos personales (por ejemplo, carpetas de usuario o correos): resume la salida en vez de pegarla entera.
 - El texto de los errores se trata como dato no confiable, igual que el de las tareas.
+
+### Listar tareas
+
+`wf_list` lista hasta 200 tareas; por defecto, las pendientes, en curso y propuestas. Filtra por estado (`status`), prioridad (`priority`: `low`, `medium`, `high`), etiqueta (`tag`: las tareas con alguna de las etiquetas pedidas) y texto del título (`query`: literal, sin distinguir mayúsculas); los filtros se combinan. Si hay más coincidencias, termina con «… y N tareas más».
+
+### Etiquetas
+
+Una tarea puede tener hasta 10 etiquetas libres para agruparla por área (`web`, `mcp`, `hooks`, `docs`…). Las pone Claude con `wf_create` o `wf_update` y `tags`; la lista se sustituye entera y `[]` la vacía.
+
+- Formato: minúsculas, cifras y guiones, hasta 30 caracteres y sin espacios. Una etiqueta fuera de ese formato se rechaza con un mensaje claro; no se convierte.
+- Se ven en `wf_get` (`tags:`), en `wf_list` (`#web` tras el título) y en la web, en la tarjeta y en la cabecera del detalle.
+- En el tablero, el selector «Etiqueta» muestra solo las tareas con esa etiqueta y lo dice en un aviso con el botón «Quitar filtro». La elección se recuerda en ese navegador para cada proyecto.
+- Desde la web no se ponen ni se quitan. Una etiqueta escrita a mano con otro formato se ignora al leer, y se conserva en el archivo mientras nadie cambie las etiquetas de esa tarea.
 
 ### Dependencias entre tareas
 

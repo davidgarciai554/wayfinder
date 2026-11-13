@@ -204,6 +204,9 @@ main:focus { outline: none; }
 .page-head p { margin: var(--wf-space-1) 0 0; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--wf-space-3); }
 .checkbox { display: inline-flex; align-items: center; gap: var(--wf-space-2); min-height: 40px; }
+.field-inline { display: inline-flex; align-items: center; gap: var(--wf-space-2); font-size: 13px; color: var(--wf-muted); }
+.field-inline select { max-width: 100%; }
+.filter-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--wf-space-2) var(--wf-space-3); }
 .checkbox input { width: 18px; height: 18px; accent-color: var(--wf-accent); }
 .status-text { padding: var(--wf-space-4) 0; color: var(--wf-muted); }
 .empty { padding: var(--wf-space-6); border: 1px dashed var(--wf-border-strong); border-radius: var(--wf-radius-lg); color: var(--wf-muted); }
@@ -252,6 +255,9 @@ main:focus { outline: none; }
 .f-chat { color: var(--wf-flag-chat-fg); background: var(--wf-flag-chat-bg); border-color: var(--wf-flag-chat-border); }
 .f-risk { color: var(--wf-flag-risk-fg); background: var(--wf-flag-risk-bg); border-color: var(--wf-flag-risk-border); font-weight: 600; }
 .f-outside { color: var(--wf-flag-outside-fg); background: var(--wf-flag-outside-bg); border-color: var(--wf-flag-outside-border); }
+/* WAY-14: task labels, neutral (the label text carries the meaning, not a colour). */
+.labels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.t-label { color: var(--wf-muted); background: var(--wf-column); border-color: var(--wf-border); font-family: var(--wf-font-mono); overflow-wrap: anywhere; }
 
 /* Detail */
 /* Task detail: a modal over the board (two columns when wide, full screen when compact). */

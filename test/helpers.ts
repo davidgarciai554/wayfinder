@@ -24,6 +24,12 @@ export function fixedClock(iso = '2026-10-21T13:05:00'): () => Date {
   return () => new Date((ms += 1000));
 }
 
+/**
+ * The MCP tools, sorted. One list for the host and the Docker tests: test:docker is not part of
+ * npm test, so a copy of its own went stale twice when a tool was added (ERR-2).
+ */
+export const MCP_TOOLS = ['wf_attach', 'wf_create', 'wf_error', 'wf_errors', 'wf_get', 'wf_history', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_search', 'wf_set_status', 'wf_update', 'wf_web'];
+
 export const sha = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
 
 /** Map of every file under `dir` (except .git) to its hash. */

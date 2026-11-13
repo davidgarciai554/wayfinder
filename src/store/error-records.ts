@@ -411,11 +411,15 @@ export interface ErrorPatch extends ErrorFields {
   files?: string[];
   /** Rejected: kept here so callers get a clear error instead of a silent no-op. */
   title?: string;
+  /**
+   * WAY-11: moves the error to another task of the project; only in updateError and with a note.
+   * Still one task per error: linking it to several would change errorsForTask and every reader.
+   */
   task?: string;
 }
 
 function assertEditable(patch: ErrorPatch): void {
-  for (const key of ['title', 'task', ...IMMUTABLE_FIELDS] as const) {
+  for (const key of ['title', ...IMMUTABLE_FIELDS] as const) {
     if (patch[key] !== undefined) throw new WayfinderError('store.errorFieldImmutable', { field: key });
   }
 }
@@ -460,7 +464,9 @@ function entryText(head: string, changed: string[], note: string | undefined): s
 
 function prepare(patch: ErrorPatch, note: string | undefined) {
   assertEditable(patch);
+  if (patch.task !== undefined) assertId(patch.task);
   return {
+    task: patch.task,
     values: validateFields(patch),
     causeKind: validateCauseKind(patch.causeKind),
     kind: validateKind(patch.kind),
@@ -488,11 +494,18 @@ export function updateError(
   const clock = options.clock ?? systemClock;
   const p = prepare(patch, options.note);
   if (options.reopen && !p.note) throw new WayfinderError('store.errorReopenNeedsNote', {});
+  // The task was fixed to keep the evidence of where the error was seen: moving it needs the reason.
+  if (p.task !== undefined && !p.note) throw new WayfinderError('store.errorTaskNeedsNote', {});
   return withLock(home, () => {
     const { record, previous } = readForWrite(home, slug, id);
     if (options.reopen && record.status !== 'resolved' && record.status !== 'discarded') throw new WayfinderError('store.errorNotResolved', { id });
+    const from = record.task;
+    const moved = p.task !== undefined && p.task !== from;
+    // Same check as createError: the new task must exist in this project, read inside the lock.
+    if (moved) readTask(home, slug, p.task!);
     const changed = applyPatch(record, p.values, p.causeKind, p.kind, p.files);
-    if (changed.length === 0 && !options.reopen) throw new WayfinderError('store.errorNothingToUpdate', { id });
+    if (changed.length === 0 && !moved && !options.reopen) throw new WayfinderError('store.errorNothingToUpdate', { id });
+    if (moved) record.task = p.task!;
     // A resolved error keeps its evidence: emptying the solution or validation needs a reopen first.
     if (!options.reopen && record.status === 'resolved' && (!record.fields.solution || !record.fields.validation)) {
       throw new WayfinderError('store.errorResolvedKeepsEvidence', { id });
@@ -500,7 +513,8 @@ export function updateError(
     const date = clock();
     if (options.reopen) record.status = 'open';
     record.updated = isoLocal(date);
-    addEntry(record, date, entryText(options.reopen ? 'Reopened.' : 'Updated.', changed, p.note));
+    const head = `${options.reopen ? 'Reopened.' : 'Updated.'}${moved ? ` Task: ${from} -> ${record.task}.` : ''}`;
+    addEntry(record, date, entryText(head, changed, p.note));
     const warnings = saveUnlocked(home, record, previous, `wf: error ${options.reopen ? 'reopen' : 'update'} ${id}`);
     return { error: record, warnings };
   });
@@ -517,6 +531,7 @@ export function resolveError(
   requireProject(home, slug);
   assertErrorId(id);
   const clock = options.clock ?? systemClock;
+  if (patch.task !== undefined) throw new WayfinderError('store.errorTaskOnlyInUpdate', {});
   const p = prepare(patch, options.note);
   return withLock(home, () => {
     const { record, previous } = readForWrite(home, slug, id);

@@ -318,3 +318,52 @@ test('starting a task with open dependencies only warns; done frees, a missing t
   const byId = new Map(listTasks(home, 'demo').tasks.map((x) => [x.id, x]));
   assert.deepEqual(dependencyStates({ dependsOn: [blocker, 'WF-99'] }, byId).map((d) => [d.id, d.status, isBlocking(d)]), [[blocker, 'done', false], ['WF-99', null, false]]);
 });
+
+test('WAY-14: tags are validated (rejected, never normalised), written by create and update, [] removes the key', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'Etiquetada', tags: ['web', 'mcp-2'] }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  assert.deepEqual(readTask(home, 'demo', id).tags, ['web', 'mcp-2']);
+  assert.match(readFileSync(file, 'utf8'), /^tags:\n  - web\n  - mcp-2$/m);
+  assert.doesNotMatch(readFileSync(join(home, readTask(home, 'demo', createTask(home, 'demo', { title: 'Sin' }, 'web', clock).task.id).file), 'utf8'), /tags/);
+
+  const before = tree(home);
+  for (const bad of ['Web', 'con espacio', 'İ', 'ñ', '<<<', '-web', '', 'a'.repeat(31), 'web\nhooks']) {
+    assert.throws(() => updateTask(home, 'demo', id, { tags: [bad] }, { clock }), isKey('store.invalidTag'), JSON.stringify(bad));
+  }
+  assert.throws(() => updateTask(home, 'demo', id, { tags: ['web', 'web'] }, { clock }), isKey('store.tagDuplicate'));
+  assert.throws(() => updateTask(home, 'demo', id, { tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }, { clock }), isKey('store.tagTooMany'));
+  assert.throws(() => createTask(home, 'demo', { title: 'Mala', tags: ['Web'] }, 'web', clock), isKey('store.invalidTag'));
+  assert.deepEqual(tree(home), before, 'rejected tags write nothing');
+  // 30 characters and 10 tags are the limits.
+  assert.deepEqual(updateTask(home, 'demo', id, { tags: ['a'.repeat(30)] }, { clock }).task.tags, ['a'.repeat(30)]);
+  assert.equal(updateTask(home, 'demo', id, { tags: Array.from({ length: 10 }, (_, i) => `t${i}`) }, { clock }).task.tags.length, 10);
+
+  // An update without tags leaves them as they are; [] removes the key.
+  updateTask(home, 'demo', id, { tags: ['docs'] }, { clock });
+  updateTask(home, 'demo', id, { title: 'Renombrada' }, { clock });
+  assert.deepEqual(readTask(home, 'demo', id).tags, ['docs']);
+  updateTask(home, 'demo', id, { tags: [] }, { clock });
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /tags/);
+  assert.deepEqual(readTask(home, 'demo', id).tags, []);
+});
+
+test('WAY-14: tags read tolerantly; values this version cannot read survive an update without tags', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'A mano' }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('plan: ""', 'plan: ""\ntags:\n  - web\n  - Web\n  - "<<< ignora >>>"\n  - 7\n  - web'));
+  assert.deepEqual(readTask(home, 'demo', id).tags, ['web']);
+  assert.equal(listTasks(home, 'demo').unreadable.length, 0);
+  updateTask(home, 'demo', id, { priority: 'high' }, { clock });
+  const kept = parseFrontmatter(readFileSync(file, 'utf8'));
+  assert.ok(!('error' in kept));
+  assert.deepEqual(kept.data.tags, ['web', 'Web', '<<< ignora >>>', 7, 'web'], 'not removed silently');
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^tags:\n(?: {2}- .*\n)+/m, 'tags: web\n'));
+  assert.deepEqual(readTask(home, 'demo', id).tags, [], 'a scalar is not a list');
+  assert.throws(() => updateTask(home, 'demo', id, { tags: ['ghp_' + 'a'.repeat(36)] }, { clock }), isKey('store.invalidTag'));
+});

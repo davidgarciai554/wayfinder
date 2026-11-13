@@ -80,6 +80,15 @@ setStatus(E2E_HOME, 'dependencias', earlier, 'done', 'mcp', { clock });
 const free = createTask(E2E_HOME, 'dependencias', { title: 'Ya libre' }, 'web', clock).task.id;
 updateTask(E2E_HOME, 'dependencias', free, { depends_on: [earlier] }, { clock });
 
+// Tags (WAY-14): its own project, so the counts of the other specs do not change.
+createProject(E2E_HOME, { slug: 'etiquetas', name: 'etiquetas', idPrefix: 'ETI', localPath: 'D:/etiquetas' });
+createTask(E2E_HOME, 'etiquetas', { title: 'Filtro del tablero', tags: ['web'] }, 'web', clock);
+createTask(E2E_HOME, 'etiquetas', { title: 'Aviso del hook', tags: ['hooks', 'mcp'] }, 'web', clock);
+createTask(E2E_HOME, 'etiquetas', { title: 'Sin etiquetas' }, 'web', clock);
+// Discarded and hidden by default: the filter notice must not count it.
+const droppedTag = createTask(E2E_HOME, 'etiquetas', { title: 'Idea descartada', tags: ['mcp'] }, 'web', clock).task.id;
+setStatus(E2E_HOME, 'etiquetas', droppedTag, 'discarded', 'mcp', { note: 'Ahora no.', clock });
+
 // History plan: a task with progress entries on two days and a task written before histories existed.
 createProject(E2E_HOME, { slug: 'historial', name: 'historial', idPrefix: 'HIS', localPath: 'D:/historial' });
 const memory = createTask(E2E_HOME, 'historial', { title: 'Filtro con memoria', body: 'Descripción de la tarea.' }, 'web', () => new Date('2026-10-19T08:00:00')).task.id;

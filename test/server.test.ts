@@ -6,7 +6,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { createTask, logProgress, readTask, setStatus, updateTask } from '../src/store/tasks.ts';
-import { createError, noteError } from '../src/store/error-records.ts';
+import { createError, noteError, updateError } from '../src/store/error-records.ts';
 import { setGitRunner } from '../src/store/git.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { createServer as createNetServer } from 'node:net';
@@ -530,4 +530,27 @@ test('WAY-15: tasks carry their dependencies with title and status; a missing on
   writeFileSync(file, readFileSync(file, 'utf8').replace(`  - ${base}`, `  - ${base}\n  - WF-99`));
   const detail = JSON.parse((await get(port, `/api/projects/demo/tasks/${user}`)).body);
   assert.deepEqual(detail.dependsOn, [{ id: base, status: 'todo', title: 'Base' }, { id: 'WF-99', status: null, title: null }]);
+});
+
+test('WAY-14: tasks carry their tags in the list and the detail; the web create form takes none', async (t) => {
+  const { home, port } = await writer(t);
+  const tagged = createTask(home, 'demo', { title: 'Con etiquetas', tags: ['web', 'docs'] }, 'web').task.id;
+  const plain = createTask(home, 'demo', { title: 'Sin etiquetas' }, 'web').task.id;
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body).tasks;
+  assert.deepEqual(list.find((x: { id: string }) => x.id === tagged).tags, ['web', 'docs']);
+  assert.deepEqual(list.find((x: { id: string }) => x.id === plain).tags, []);
+  assert.deepEqual(JSON.parse((await get(port, `/api/projects/demo/tasks/${tagged}`)).body).tags, ['web', 'docs']);
+});
+
+test('WAY-11: an error moved to another task is listed in that task and its page links to it', async (t) => {
+  const { home, port } = await writer(t);
+  const wrong = createTask(home, 'demo', { title: 'Equivocada' }, 'web').task.id;
+  const right = createTask(home, 'demo', { title: 'Correcta' }, 'web').task.id;
+  const { error } = createError(home, 'demo', { title: 'Falla el build', task: wrong, context: 'npm run build' });
+  updateError(home, 'demo', error.id, { task: right }, { note: 'Mal ligado.' });
+  assert.deepEqual(JSON.parse((await get(port, `/api/projects/demo/tasks/${wrong}`)).body).errors, []);
+  assert.deepEqual(JSON.parse((await get(port, `/api/projects/demo/tasks/${right}`)).body).errors.map((e: { id: string }) => e.id), [error.id]);
+  const page = JSON.parse((await get(port, `/api/projects/demo/errors/${error.id}`)).body);
+  assert.equal(page.task, right);
+  assert.equal(page.taskTitle, 'Correcta');
 });

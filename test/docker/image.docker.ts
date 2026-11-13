@@ -12,7 +12,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { initHome } from '../../src/store/init.ts';
 import { createProject } from '../../src/store/project.ts';
 import { createTask, listTasks } from '../../src/store/tasks.ts';
-import { commitCount, gitOut } from '../helpers.ts';
+import { commitCount, gitOut, MCP_TOOLS } from '../helpers.ts';
 
 const IMAGE = process.env.WAYFINDER_IMAGE ?? 'wayfinder:dev';
 const DOCKER = process.env.DOCKER ?? 'docker';
@@ -153,8 +153,8 @@ test('MCP over stdio in a container: explicit project, captures, plan rule and c
   // Without the consumer repository mounted.
   const bare = await mcpClient(t, ['-v', `${home}:/data`, '-v', `${captures}:/captures:ro`], { ...common, WAYFINDER_CAPTURES_DIR: '/captures' });
   const tools = (await bare.client.listTools()).tools.map((x) => x.name).sort();
-  // Names, not a count: a count went stale silently when wf_error was added.
-  assert.deepEqual(tools, ['wf_attach', 'wf_create', 'wf_error', 'wf_get', 'wf_history', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_search', 'wf_set_status', 'wf_update', 'wf_web']);
+  // The same list as the host test (helpers.ts): the image must expose every tool of the bundle.
+  assert.deepEqual(tools, MCP_TOOLS);
   assert.match((await bare.call('wf_create', { title: 'Docker task' })).text, /DEM-1 .*proposed/);
   assert.match((await bare.call('wf_list')).text, /DEM-1 \[proposed\]/);
   const attached = await bare.call('wf_attach', { path: '/captures/shot.png', alt: 'Board', task_id: 'DEM-1' });

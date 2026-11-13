@@ -108,6 +108,8 @@ function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
     reopensTo: reopenTarget(task),
     /** WAY-15: each dependency with its title and status; status null when the task does not exist. */
     dependsOn: dependencyStates(task, tasks),
+    /** WAY-14: labels matching TAG_RE; the board shows them as text and filters by them. */
+    tags: task.tags,
   };
 }
 

@@ -14,7 +14,7 @@ import { networkInterfaces } from 'node:os';
 import { recordOrders, recordRegisterOrder, recordWebOrder } from '../src/store/mentions.ts';
 import { isDeclined } from '../src/store/register.ts';
 import { rootKey } from '../src/store/resolve.ts';
-import { commitCount, sha } from './helpers.ts';
+import { commitCount, MCP_TOOLS, sha } from './helpers.ts';
 
 const bundle = fileURLToPath(new URL('../plugin/dist/wayfinder.mjs', import.meta.url));
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
@@ -316,7 +316,7 @@ test('handshake, tool list and the not-registered path', { timeout: 60_000 }, as
   const env = makeEnv(t);
   const { client, call } = await connect(env);
   const tools = (await client.listTools()).tools.map((x) => x.name).sort();
-  assert.deepEqual(tools, ['wf_attach', 'wf_create', 'wf_error', 'wf_errors', 'wf_get', 'wf_history', 'wf_list', 'wf_log', 'wf_project', 'wf_review', 'wf_search', 'wf_set_status', 'wf_update', 'wf_web']);
+  assert.deepEqual(tools, MCP_TOOLS);
   const before = readdirTree(env.home);
   const r = await call('wf_list');
   assert.equal(r.isError, true);
@@ -661,4 +661,97 @@ test('WAY-15: wf_update sets and clears depends_on with validation; wf_get and w
   assert.doesNotMatch((await call('wf_get', { id: 'MYA-1' })).text, /depends_on/);
   assert.match((await call('wf_update', { id: 'MYA-2', depends_on: [] })).text, /MYA-2 updated/);
   assert.doesNotMatch((await call('wf_list', {})).text, /blocked by/);
+});
+
+test('WAY-16: wf_list filters by priority and title text, combined with status, and says how many were cut', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await registerWithOrder(env, call);
+  await call('wf_create', { title: 'Fix the Login page', priority: 'high' });
+  await call('wf_create', { title: 'login docs', priority: 'low' });
+  await call('wf_create', { title: 'Board (v2) .*', priority: 'medium' });
+  const before = (await call('wf_list')).text;
+  assert.match(before, /^MYA-1 .*\nMYA-2 .*\nMYA-3 .*$/);
+
+  const ids = async (args: Record<string, unknown>) => [...(await call('wf_list', args)).text.matchAll(/^(MYA-\d+) /gm)].map((m) => m[1]);
+  assert.deepEqual(await ids({ priority: ['high'] }), ['MYA-1']);
+  assert.deepEqual(await ids({ priority: ['high', 'low'] }), ['MYA-1', 'MYA-2']);
+  assert.deepEqual(await ids({ query: 'LOGIN' }), ['MYA-1', 'MYA-2']);
+  assert.deepEqual(await ids({ query: 'login', priority: ['low'] }), ['MYA-2']);
+  // Metacharacters are literal text, not a pattern.
+  assert.deepEqual(await ids({ query: '(v2) .*' }), ['MYA-3']);
+  assert.deepEqual(await ids({ query: '.*' }), ['MYA-3']);
+  // Combined with status: the proposals are filtered out.
+  assert.match((await call('wf_list', { status: ['todo'], query: 'login' })).text, /^There are no tasks matching those filters\.$/);
+  assert.equal((await call('wf_list', { query: '' })).isError, true);
+  assert.equal((await call('wf_list', { query: 'x'.repeat(101) })).isError, true);
+  // Without the new parameters the output is the same as before.
+  assert.equal((await call('wf_list')).text, before);
+
+  // 201 matching tasks: 200 lines and an exact notice.
+  const dir = join(env.home, 'projects', 'my-app', 'tasks');
+  for (let n = 4; n <= 204; n++) {
+    writeFileSync(join(dir, `MYA-${n}-bulk.md`), `---\nid: MYA-${n}\ntitle: Bulk ${n}\nstatus: todo\npriority: medium\norigin: user\n---\n`);
+  }
+  const all = (await call('wf_list', { status: ['todo'] })).text.split('\n');
+  assert.equal(all.filter((l) => /^MYA-\d+ /.test(l)).length, 200);
+  assert.equal(all.at(-1), '… and 1 more tasks; narrow them with the status, priority or query filters.');
+  assert.doesNotMatch((await call('wf_list', { status: ['todo'], query: 'Bulk 20' })).text, /more tasks/);
+});
+
+test('WAY-14: tags through wf_create and wf_update, shown in wf_get and wf_list, filter tag matches any', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await registerWithOrder(env, call);
+  await call('wf_create', { title: 'Board filter', tags: ['web'], priority: 'high' });
+  await call('wf_create', { title: 'Hook reminder', tags: ['hooks', 'mcp'] });
+  await call('wf_create', { title: 'Untagged' });
+  const invalid = await call('wf_create', { title: 'Bad', tags: ['Web UI'] });
+  assert.equal(invalid.isError, true);
+  assert.match(invalid.text, /Invalid tag: "Web UI"\. Use lowercase letters, digits and hyphens/);
+
+  assert.match((await call('wf_get', { id: 'MYA-2' })).text, /^tags: hooks, mcp$/m);
+  assert.doesNotMatch((await call('wf_get', { id: 'MYA-3' })).text, /^tags:/m);
+  const list = (await call('wf_list')).text;
+  assert.match(list, /^MYA-1 \[proposed\] \(high\) Board filter #web — /m);
+  assert.match(list, /^MYA-3 \[proposed\] \(medium\) Untagged — /m);
+
+  const ids = async (args: Record<string, unknown>) => [...(await call('wf_list', args)).text.matchAll(/^(MYA-\d+) /gm)].map((m) => m[1]);
+  assert.deepEqual(await ids({ tag: ['mcp'] }), ['MYA-2']);
+  assert.deepEqual(await ids({ tag: ['web', 'mcp'] }), ['MYA-1', 'MYA-2']);
+  assert.deepEqual(await ids({ tag: ['web', 'mcp'], priority: ['high'] }), ['MYA-1']);
+  assert.deepEqual(await ids({ tag: ['hooks'], query: 'board' }), []);
+  assert.deepEqual(await ids({ tag: ['nope'] }), []);
+
+  assert.match((await call('wf_update', { id: 'MYA-3', tags: ['docs'] })).text, /MYA-3 updated/);
+  assert.deepEqual(await ids({ tag: ['docs'] }), ['MYA-3']);
+  await call('wf_update', { id: 'MYA-3', title: 'Renamed' });
+  assert.match((await call('wf_get', { id: 'MYA-3' })).text, /^tags: docs$/m);
+  await call('wf_update', { id: 'MYA-3', tags: [] });
+  assert.doesNotMatch((await call('wf_get', { id: 'MYA-3' })).text, /^tags:/m);
+});
+
+test('WAY-11: wf_error update with task_id and a note moves an error; wf_get and wf_errors follow it', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await registerWithOrder(env, call);
+  await call('wf_create', { title: 'Wrong task' });
+  await call('wf_create', { title: 'Right task' });
+  assert.match((await call('wf_error', { action: 'create', title: 'Bundle fails', task_id: 'MYA-1', context: 'npm run build' })).text, /ERR-1/);
+
+  const noNote = await call('wf_error', { action: 'update', id: 'ERR-1', task_id: 'MYA-2' });
+  assert.equal(noNote.isError, true);
+  assert.match(noNote.text, /needs a note with the reason/);
+  assert.match((await call('wf_error', { action: 'update', id: 'ERR-1', task_id: 'MYA-9', note: 'x' })).text, /MYA-9 does not exist/);
+  assert.match((await call('wf_error', { action: 'resolve', id: 'ERR-1', task_id: 'MYA-2', solution: 's', validation: 'v' })).text, /changes only with the update action/);
+  assert.equal((await call('wf_error', { action: 'note', id: 'ERR-1', task_id: 'MYA-2', note: 'x' })).isError, true);
+
+  const moved = await call('wf_error', { action: 'update', id: 'ERR-1', task_id: 'MYA-2', note: 'Recorded on the wrong task.' });
+  assert.equal(moved.isError, false);
+  assert.match((await call('wf_get', { id: 'ERR-1' })).text, /^task: MYA-2$/m);
+  assert.match((await call('wf_get', { id: 'ERR-1' })).text, /Task: MYA-1 -> MYA-2\./);
+  assert.doesNotMatch((await call('wf_get', { id: 'MYA-1' })).text, /ERR-1/);
+  assert.match((await call('wf_get', { id: 'MYA-2' })).text, /^ERR-1 \(open\) Bundle fails$/m);
+  assert.match((await call('wf_errors', { task_id: 'MYA-2' })).text, /^ERR-1 \[open\] \(MYA-2\) Bundle fails$/m);
+  assert.match((await call('wf_errors', { task_id: 'MYA-1' })).text, /^No errors with these filters/);
 });

@@ -13,7 +13,7 @@ import { listTasks, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
 
-export const HOOK_EVENTS = ['session-start', 'prompt', 'pre-tool', 'stop'] as const;
+export const HOOK_EVENTS = ['session-start', 'prompt', 'pre-tool', 'post-tool-failure', 'stop'] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 export interface HookIo {
@@ -235,6 +235,53 @@ function asksForWebKey(input: Record<string, unknown>): boolean {
   return cmd.includes('/api/share') || cmd.includes('sec-fetch-');
 }
 
+const MAX_COMMAND = 2000;
+/**
+ * WAY-17: build, test and analysis commands, matched at the start of each segment of the command.
+ * A closed list on purpose (plan 2026-11-13, D3): widen it when a real case is missed. No nested
+ * quantifiers, and the command is cut to MAX_COMMAND first.
+ */
+const BUILD_COMMANDS: readonly RegExp[] = [
+  /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|build|typecheck|lint|check)(?:[:-][\w:.-]*)?(?=\s|$)/,
+  /^(?:npm|pnpm|yarn|bun)\s+t(?=\s|$)/,
+  /^npx\s+(?:tsc|vitest|jest|eslint|playwright\s+test)(?=\s|$)/,
+  /^(?:tsc|vitest|jest|pytest|make)(?=\s|$)/,
+  /^playwright\s+test(?=\s|$)/,
+  /^cargo\s+(?:build|test|check|clippy)(?=\s|$)/,
+  /^go\s+(?:build|test|vet)(?=\s|$)/,
+  /^dotnet\s+(?:build|test)(?=\s|$)/,
+];
+const ENV_PREFIX = /^[A-Za-z_]\w*=\S*\s+/;
+
+export function isBuildOrTestCommand(command: string): boolean {
+  return command
+    .slice(0, MAX_COMMAND)
+    .split(/&&|\|\||[;|\n]/)
+    .some((part) => {
+      let segment = part.trim();
+      // `CI=1 npm test`: leading variable assignments, removed one at a time.
+      while (ENV_PREFIX.test(segment)) segment = segment.replace(ENV_PREFIX, '');
+      if (/^node\s/.test(segment) && /\s--test(?=\s|$)/.test(segment)) return true;
+      return BUILD_COMMANDS.some((re) => re.test(segment));
+    });
+}
+
+/**
+ * A reminder only when a build or test command exited with a non-zero code (PostToolUseFailure
+ * puts "Exit code N" on the first line of `error`). The text is fixed: nothing from the command
+ * or its output reaches Claude's context.
+ */
+function failureReminder(input: Record<string, unknown>): boolean {
+  const tool = input.tool_name;
+  if (tool !== 'Bash' && tool !== 'PowerShell') return false;
+  if (input.is_interrupt === true) return false;
+  const error = typeof input.error === 'string' ? input.error : '';
+  const code = /^Exit code (\d+)/.exec(error.split('\n')[0] ?? '');
+  if (!code || Number(code[1]) === 0) return false;
+  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  return typeof toolInput.command === 'string' && isBuildOrTestCommand(toolInput.command);
+}
+
 /** Hooks never break the session: any failure exits 0 without output. */
 export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = process.env, now: () => number = Date.now): number {
   try {
@@ -277,6 +324,13 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
       return 0;
     }
 
+    if (event === 'post-tool-failure') {
+      // Only reminds: it creates nothing and never blocks (plan 2026-11-13, WAY-17).
+      if (failureReminder(input)) {
+        io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUseFailure', additionalContext: t(lang, 'hook.postToolFailure.reminder') } }));
+      }
+      return 0;
+    }
     if (event === 'session-start') {
       const { tasks } = listTasks(home, project.slug);
       let errors: ErrorRecord[] = [];
