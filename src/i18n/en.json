@@ -47,7 +47,7 @@
   "store.tagDuplicate": "The tag {tag} appears twice.",
   "store.dependencyNotFound": "{dep} does not exist in this project.",
   "store.dependencyCycle": "Those dependencies form a cycle: {path}.",
-  "store.dependenciesOpen": "Warning: {id} depends on tasks that are not done yet: {deps}.",
+  "store.dependenciesOpen": "{id} depends on tasks that are not done yet: {deps}.",
   "store.invalidKind": "Invalid error kind: \"{value}\". Valid values: {valid}.",
   "store.errorFieldImmutable": "Field {field} cannot change once recorded. Add a note with the correction.",
   "store.errorNothingToUpdate": "Nothing to save in {id}.",

@@ -659,6 +659,12 @@ test('WAY-15: wf_update sets and clears depends_on with validation; wf_get and w
   assert.match((await call('wf_get', { id: 'MYA-2' })).text, /^depends_on: MYA-1 \[proposed\]$/m);
   assert.match((await call('wf_list', {})).text, /^MYA-2 \[proposed\] \(medium\) Waiting — blocked by MYA-1; /m);
   assert.doesNotMatch((await call('wf_get', { id: 'MYA-1' })).text, /depends_on/);
+  // ERR-8: the MCP adds the "Warning:" prefix, so the message itself must not carry another one.
+  recordOrders(env.home, 'my-app', ['MYA-2'], Date.now());
+  await call('wf_review', { id: 'MYA-2' });
+  await call('wf_set_status', { id: 'MYA-2', status: 'todo', user_requested: true, user_quote: 'approve MYA-2', review_verdict: 'clean' });
+  const started = await call('wf_set_status', { id: 'MYA-2', status: 'in-progress', trivial: true, note: 'test' });
+  assert.equal(started.text, 'MYA-2 is now in-progress.\nWarning: MYA-2 depends on tasks that are not done yet: MYA-1 [proposed].');
   assert.match((await call('wf_update', { id: 'MYA-2', depends_on: [] })).text, /MYA-2 updated/);
   assert.doesNotMatch((await call('wf_list', {})).text, /blocked by/);
 });

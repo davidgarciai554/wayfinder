@@ -48,7 +48,7 @@
   "store.tagDuplicate": "La etiqueta {tag} aparece repetida.",
   "store.dependencyNotFound": "{dep} no existe en este proyecto.",
   "store.dependencyCycle": "Esas dependencias forman un ciclo: {path}.",
-  "store.dependenciesOpen": "Aviso: {id} depende de tareas que aún no están hechas: {deps}.",
+  "store.dependenciesOpen": "{id} depende de tareas que aún no están hechas: {deps}.",
   "store.invalidKind": "Tipo de error no válido: «{value}». Valores válidos: {valid}.",
   "store.errorFieldImmutable": "El campo {field} no se puede cambiar una vez registrado. Añade una nota con la corrección.",
   "store.errorNothingToUpdate": "No hay cambios que guardar en {id}.",

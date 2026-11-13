@@ -196,3 +196,14 @@
 - **Archivos modificados:** `src/server.ts`, `src/store/tasks.ts`, `test/server.test.ts`.
 - **Validación:** `node --test test/server.test.ts` (caso «an open task cannot be reopened» → 409) y `test/store.test.ts`; `npm run typecheck`.
 - **Resultado:** resuelto antes de cerrar el incremento; nunca llegó al plugin instalado.
+
+## 2026-11-13 · El aviso de dependencias abiertas sale con el prefijo «Aviso:» repetido
+
+- **Contexto:** prueba de aceptación de los últimos cambios (WAY-8 a WAY-19) sobre un proyecto de demostración con una carpeta de datos temporal, usando `plugin/dist/wayfinder.mjs` por MCP. Windows 11, Node 24.12.0. ERR-8 en Wayfinder, ligado a WAY-15.
+- **Reproducción:** `wf_update` de una tarea con `depends_on` apuntando a otra que está en `todo`, y después `wf_set_status` de la primera a `in-progress` (con plan, o con `trivial` y nota).
+- **Salida observada:** `TIE-2 ahora está en in-progress.` seguido de `Aviso: Aviso: TIE-2 depende de tareas que aún no están hechas: TIE-1 [todo].` En inglés, `Warning: Warning: …`.
+- **Causa confirmada:** el texto `store.dependenciesOpen` (`src/i18n/es.json` y `en.json`) ya empieza por «Aviso:» / «Warning:», y el MCP envuelve todos los avisos con `cli.warning` («Aviso: {message}») en `ok()` de `src/mcp.ts`. Los demás avisos no llevan prefijo propio. `test/store.test.ts` solo comprueba la clave del aviso, no el texto final.
+- **Solución:** el texto `store.dependenciesOpen` ya no lleva prefijo propio en ninguno de los dos idiomas; el prefijo lo pone quien muestra el aviso (`cli.warning` en el MCP), como en el resto de avisos. Era un defecto de texto: el estado cambiaba bien y los datos no se veían afectados.
+- **Archivos modificados:** `src/i18n/es.json`, `src/i18n/en.json`, `test/mcp.integration.test.ts`, `plugin/dist/wayfinder.mjs`.
+- **Validación:** la prueba «WAY-15: wf_update sets and clears depends_on…» comprueba ahora el texto completo que devuelve `wf_set_status`; fallaba con el bundle anterior (`Warning: Warning: …`) y pasa con el nuevo. `npm run typecheck`, `npm test` (173/173) y `npm run check:dist` en verde. Repetida la demo en español contra el bundle reconstruido: `Aviso: TIE-2 depende de tareas que aún no están hechas: TIE-1 [todo].`, con 370 comprobaciones correctas y ninguna fallida. `npm run test:e2e` y `npm run test:docker` no se repitieron tras el cambio: la web no recibe este texto.
+- **Resultado:** resuelto. El servidor MCP de una sesión ya abierta sigue con el texto antiguo hasta que se reinicie.
