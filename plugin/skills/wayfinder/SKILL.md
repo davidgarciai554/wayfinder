@@ -87,7 +87,7 @@ Wayfinder appends the entry to the task's history (inside the task file) and add
 
 When a build, test, analysis or run fails, or something behaves unexpectedly:
 
-1. **Search first.** Call `wf_search` with the error message, code, component or command before investigating from scratch. Read a match with `wf_get ERR-n`.
+1. **Search first.** Call `wf_search` with the error message, code, component or command before investigating from scratch. Read a match with `wf_get ERR-n`. To see the errors by status, kind or task (for example all open `test` errors, or the discarded ones of a task), call `wf_errors` with `status`, `kind` and `task_id`; without filters it lists the open ones.
 2. **Same error again:** do not create another one. Add a note with `wf_error` (`action: "note"`) saying the recurrence, what differs and the new validation. If it was resolved, reopen it (`action: "update"`, `reopen: true` and a `note` with the reason).
 3. **New error:** `wf_error` with `action: "create"`, the `task_id` you are working on, `title`, `context`, its `kind` when it is clear (`build`, `test`, `analysis` for lint or types, `runtime`, `behavior` for unexpected behaviour, `environment` for ports, permissions, configuration or dependencies) and, when you have them, `reproduction`, `output`, `cause` (`cause_kind: "hypothesis"` until confirmed), `files` (paths relative to the repository). Record it even if it stays unresolved. Set or fix the kind later with `action: "update"`.
 4. **While investigating:** `action: "update"` for the cause, solution, validation, result and files. Context, reproduction and output cannot change: correct them with a note.
