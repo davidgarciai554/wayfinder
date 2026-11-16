@@ -8,7 +8,7 @@ import { dictionaries, t, translateReason, type Lang, type MessageKey } from './
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { isCreationEntry, parseEntries } from './store/history.ts';
-import { modifiedOutside } from './store/git.ts';
+import { modifiedOutside, modifiedOutsideAmong } from './store/git.ts';
 import { ERROR_FIELDS, errorsForTask, listErrors, readError, unescapeField, type ErrorRecord } from './store/error-records.ts';
 import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
@@ -89,8 +89,12 @@ function errorMeta(error: ErrorRecord) {
   return { id: error.id, title: error.title, status: error.status, kind: error.kind, task: error.task, created: error.created, updated: error.updated };
 }
 
-/** byId: the tasks of the project, to give each dependency its title and status (read again when omitted). */
-function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
+/**
+ * byId: the tasks of the project, to give each dependency its title and status (read again when omitted).
+ * outside: the files modified outside Wayfinder, worked out once for a whole list (WAY-23); a single
+ * task asks git for its own file.
+ */
+function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>, outside?: ReadonlySet<string>) {
   const tasks = byId ?? (task.dependsOn.length ? new Map(listTasks(home, task.file.split('/')[1]).tasks.map((t) => [t.id, t])) : new Map<string, Task>());
   return {
     id: task.id,
@@ -103,7 +107,7 @@ function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
     plan: task.plan,
     approvedVia: task.approvedVia ?? null,
     riskAcknowledged: task.riskAcknowledged ?? false,
-    modifiedOutside: modifiedOutside(home, task.file),
+    modifiedOutside: outside ? outside.has(task.file) : modifiedOutside(home, task.file),
     /** Where «Reabrir» would send a done or discarded task (todo or proposed); null otherwise. */
     reopensTo: reopenTarget(task),
     /** WAY-15: each dependency with its title and status; status null when the task does not exist. */
@@ -240,8 +244,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     if (parts[2] === 'tasks' && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
       const byId = new Map(tasks.map((t) => [t.id, t]));
+      const outside = modifiedOutsideAmong(home, `projects/${slug}/tasks`, tasks.map((t) => t.file));
       return json(res, 200, {
-        tasks: tasks.map((x) => taskMeta(home, x, byId)),
+        tasks: tasks.map((x) => taskMeta(home, x, byId, outside)),
         unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) })),
       });
     }

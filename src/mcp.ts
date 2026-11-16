@@ -29,7 +29,7 @@ import {
 } from './store/error-records.ts';
 import { attachCapture } from './store/attach.ts';
 import { WayfinderError, type Warning } from './store/errors.ts';
-import { modifiedOutside } from './store/git.ts';
+import { modifiedOutside, modifiedOutsideAmong } from './store/git.ts';
 import { parseEntries } from './store/history.ts';
 import { appendLog } from './store/log.ts';
 import { ERROR_ID_RE, getHome } from './store/paths.ts';
@@ -121,7 +121,8 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
   const slugOf = (task: Task) => task.file.split('/')[1];
   const statusLabel = (task: Task) => tr(`status.${task.status}` as MessageKey);
   const tasksById = (slug: string) => new Map(listTasks(home, slug).tasks.map((t) => [t.id, t]));
-  const line = (task: Task, byId: ReadonlyMap<string, Task>) => {
+  /** outside: the files of the listing modified outside Wayfinder, worked out once for all rows (WAY-23). */
+  const line = (task: Task, byId: ReadonlyMap<string, Task>, outside: ReadonlySet<string>) => {
     // A done or discarded task is no longer waiting for anything.
     const open = task.status === 'proposed' || task.status === 'todo' || task.status === 'in-progress';
     const blockedBy = open ? dependencyStates(task, byId).filter(isBlocking).map((d) => d.id) : [];
@@ -132,7 +133,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
       task.status === 'proposed' ? tr('mcp.flag.notApproved') : '',
       task.approvedVia === 'chat' ? tr('mcp.flag.approvedChat') : '',
       task.riskAcknowledged ? tr('mcp.flag.riskAcknowledged') : '',
-      modifiedOutside(home, task.file) ? tr('mcp.flag.modifiedOutside') : '',
+      outside.has(task.file) ? tr('mcp.flag.modifiedOutside') : '',
     ].filter(Boolean);
     // Tags match TAG_RE (lowercase, digits, hyphens), so they carry no delimiters or line breaks.
     const tags = task.tags.map((x) => ` #${x}`).join('');
@@ -360,7 +361,8 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
           .filter((x) => !needle || x.title.toLowerCase().includes(needle));
         const shown = matching.slice(0, MAX_TASK_LIST);
         const byId = new Map(tasks.map((t) => [t.id, t]));
-        const lines = shown.length ? shown.map((x) => line(x, byId)) : [tr('mcp.noTasks')];
+        const outside = modifiedOutsideAmong(home, `projects/${p.slug}/tasks`, shown.map((x) => x.file));
+        const lines = shown.length ? shown.map((x) => line(x, byId, outside)) : [tr('mcp.noTasks')];
         if (matching.length > shown.length) lines.push(tr('mcp.list.more', { count: matching.length - shown.length }));
         for (const u of unreadable) lines.push(tr('mcp.unreadable', { file: u.file, reason: u.reason }));
         return ok(lines.join('\n'));

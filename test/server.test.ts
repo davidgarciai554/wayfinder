@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
@@ -234,6 +235,40 @@ test('lists projects and tasks with flags, and renders task Markdown safely', as
   assert.doesNotMatch(html, /evil\.example\.com/);
   assert.match(html, /src="\/api\/projects\/demo\/assets\/pic\.png"/);
   assert.equal(task.title, '<img src=x onerror=alert(1)>', 'titles are data; the client renders them with textContent');
+});
+
+test('WAY-23: the task list flags the file edited outside Wayfinder with two git processes, whatever the number of tasks', async (t) => {
+  const { home, port } = await serve(t);
+  const make = (n: number) => {
+    for (let i = 0; i < n; i++) createTask(home, 'demo', { title: 'Tarea' }, 'web');
+  };
+  make(5);
+  const edited = readTask(home, 'demo', 'WF-2');
+  writeFileSync(join(home, edited.file), `${readFileSync(join(home, edited.file), 'utf8')}editado a mano\n`);
+  // Real git, counted.
+  const calls: string[][] = [];
+  const restore = setGitRunner((args) => {
+    calls.push(args);
+    try {
+      return { ok: true, missing: false, stdout: execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), stderr: '' };
+    } catch (error) {
+      return { ok: false, missing: false, stdout: '', stderr: String((error as Error).message) };
+    }
+  });
+  t.after(restore);
+  const flagged = async (): Promise<string[]> => {
+    calls.length = 0;
+    const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body);
+    return list.tasks.filter((x: { modifiedOutside: boolean }) => x.modifiedOutside).map((x: { id: string }) => x.id);
+  };
+  assert.deepEqual(await flagged(), ['WF-2']);
+  assert.equal(calls.length, 2, '5 tasks');
+  make(15);
+  assert.deepEqual(await flagged(), ['WF-2']);
+  assert.equal(calls.length, 2, '20 tasks');
+  // One task alone still asks git for its own file.
+  assert.equal(JSON.parse((await get(port, '/api/projects/demo/tasks/WF-2')).body).modifiedOutside, true);
+  assert.equal(JSON.parse((await get(port, '/api/projects/demo/tasks/WF-1')).body).modifiedOutside, false);
 });
 
 test('assets are served only from the project assets folder', async (t) => {

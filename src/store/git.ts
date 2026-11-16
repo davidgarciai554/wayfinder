@@ -27,6 +27,9 @@ const realRunner: GitRunner = (args) => {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      // Node's default is 1 MiB, and the log of a whole listing (modifiedOutsideAmong) passes it
+      // at around 12,000 commits. 64 MiB covers some 500,000.
+      maxBuffer: 64 * 1024 * 1024,
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
     return { ok: true, missing: false, stdout, stderr: '' };
@@ -117,4 +120,58 @@ export function modifiedOutside(home: string, rel: string): boolean {
   const log = git(home, 'log', ['-1', '--format=%an%x09%ae', '--', rel]);
   if (!log.ok || log.stdout.trim() === '') return false;
   return log.stdout.trim() !== `${IDENTITY.name}\t${IDENTITY.email}`;
+}
+
+/**
+ * WAY-23: modifiedOutside for the files of one folder with two git processes in all, instead of
+ * two per file. `dir` and `files` are relative to `home`; only `files` can be in the result.
+ *
+ * On the linear history Wayfinder writes, the answer is the per-file one. After a merge made by
+ * hand, the first-parent line decides (the merge is a change by whoever made it), which can flag
+ * more files than the per-file check, never fewer. If the batch cannot run, it asks file by file.
+ *
+ * Known limit: the log walks the whole history of `dir` on every call (about 0.3 s with 5,000
+ * commits and 1 s with 20,000). If a real listing goes over a second, list only the commits of
+ * other identities (`log -P --author` with a negation) or keep the result per HEAD.
+ */
+export function modifiedOutsideAmong(home: string, dir: string, files: readonly string[]): Set<string> {
+  const wanted = new Set(files);
+  const out = new Set<string>();
+  if (wanted.size === 0) return out;
+  // -z: paths are not quoted. --no-renames: one path per record. --untracked-files=all: a folder
+  // git has never seen is listed file by file, not as `?? folder/`.
+  const status = git(home, 'status', ['--porcelain', '-z', '--no-renames', '--untracked-files=all', '--', dir]);
+  if (!status.ok) {
+    // Without git nothing is flagged, as in modifiedOutside; any other failure asks file by file.
+    if (!status.missing) for (const file of files) if (modifiedOutside(home, file)) out.add(file);
+    return out;
+  }
+  // Each record is `XY path`.
+  for (const record of status.stdout.split('\0')) {
+    const file = record.slice(3);
+    if (wanted.has(file)) out.add(file);
+  }
+  const log = git(home, 'log', ['--first-parent', '-m', '--format=%x01%an%x09%ae', '--name-only', '-z', '--', dir]);
+  if (!log.ok) {
+    // A failed log may carry partial output (maxBuffer): it is never read.
+    for (const file of files) if (!out.has(file) && modifiedOutside(home, file)) out.add(file);
+    return out;
+  }
+  // Newest commit first. Split by NUL: a piece that starts with 0x01 is the author of a commit and
+  // the pieces after it are its paths (no path under `dir` can start with 0x01). The first commit
+  // that names a file is the last one that changed it.
+  const own = `${IDENTITY.name}\t${IDENTITY.email}`;
+  const seen = new Set<string>();
+  let foreign = false;
+  for (const piece of log.stdout.split('\0')) {
+    if (piece.startsWith('\x01')) {
+      foreign = piece.slice(1).replace(/\n+$/, '') !== own;
+      continue;
+    }
+    const file = piece.replace(/^\n+/, '');
+    if (!wanted.has(file) || seen.has(file)) continue;
+    seen.add(file);
+    if (foreign) out.add(file);
+  }
+  return out;
 }

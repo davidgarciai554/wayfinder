@@ -752,6 +752,25 @@ test('WAY-16: wf_list filters by priority and title text, combined with status, 
   assert.doesNotMatch((await call('wf_list', { status: ['todo'], query: 'Bulk 20' })).text, /more tasks/);
 });
 
+test('WAY-23: wf_list marks only the task whose file was edited outside Wayfinder', { timeout: 60_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  await registerWithOrder(env, call);
+  await call('wf_create', { title: 'Untouched' });
+  await call('wf_create', { title: 'Edited by hand' });
+  assert.doesNotMatch((await call('wf_list')).text, /modified outside Wayfinder/);
+
+  const dir = join(env.home, 'projects', 'my-app', 'tasks');
+  const file = join(dir, readdirSync(dir).find((n) => n.startsWith('MYA-2-')) as string);
+  writeFileSync(file, `${readFileSync(file, 'utf8')}edited by hand\n`);
+  const lines = (await call('wf_list')).text.split('\n');
+  assert.doesNotMatch(lines.find((l) => l.startsWith('MYA-1 ')) as string, /modified outside Wayfinder/);
+  assert.match(lines.find((l) => l.startsWith('MYA-2 ')) as string, /modified outside Wayfinder$/);
+  // Reading one task still asks git for its own file.
+  assert.match((await call('wf_get', { id: 'MYA-2' })).text, /^modified outside Wayfinder$/m);
+  assert.doesNotMatch((await call('wf_get', { id: 'MYA-1' })).text, /^modified outside Wayfinder$/m);
+});
+
 test('WAY-14: tags through wf_create and wf_update, shown in wf_get and wf_list, filter tag matches any', { timeout: 60_000 }, async (t) => {
   const env = makeEnv(t);
   const { call } = await connect(env);
