@@ -218,3 +218,14 @@
 - **Archivos modificados:** ninguno. Queda fuera del plan de WAY-13.
 - **Validación:** ninguna: sin corregir.
 - **Resultado:** abierto. Salida usada, por orden de la persona: copiar el plan al checkout principal como archivo sin seguimiento. Deja dos copias que pueden divergir, y hay que quitar la del checkout principal antes de integrar una rama que confirme ese mismo archivo.
+
+## 2026-11-16 · `check:dist` falla tras integrar un bundle construido en un worktree
+
+- **Contexto:** implementación de WAY-23 en un worktree de Claude Code Desktop (`.claude/worktrees/…`) sin `node_modules` propio: las dependencias se resuelven en el `node_modules` del checkout principal, tres carpetas más arriba. `npm test` y `npm run check:dist` pasaron en el worktree. Windows 11, Node 24.12. ERR-11 en Wayfinder, ligado a WAY-23.
+- **Reproducción:** en un worktree sin `node_modules` propio, ejecutar `npm run build` y confirmar `plugin/dist/wayfinder.mjs`; llevar ese commit al checkout principal y ejecutar allí `npm run check:dist`.
+- **Salida observada:** `plugin/dist/wayfinder.mjs: content differs from a fresh build`. El commit `dea4e73` cambiaba 580 líneas del bundle; 382 eran comentarios de ruta, de `// node_modules/yaml/…` a `// ../../../node_modules/yaml/…`.
+- **Causa confirmada:** esbuild escribe en el bundle la ruta de cada módulo relativa a la carpeta desde la que se construye. Desde el worktree esa ruta sube tres niveles, así que el bundle sale distinto del que se obtiene en el checkout principal. `check:dist` compara con un build hecho en el mismo sitio: por eso pasa en el worktree y falla fuera.
+- **Solución:** reconstruir con `npm run build` desde el checkout principal y confirmar ese `plugin/dist/wayfinder.mjs`. No se ha tocado `scripts/build.mjs`: un bundle que no dependa de la carpeta de construcción queda como mejora aparte.
+- **Archivos modificados:** `plugin/dist/wayfinder.mjs`.
+- **Validación:** en el checkout principal, `npm run check:dist` coincide con un build limpio y `npm test` pasa 191/191 con el bundle reconstruido. Frente a `2a8dbdf`, el bundle cambia 52 líneas y ningún comentario de ruta.
+- **Resultado:** corregido. Mientras el build dependa de la carpeta, el bundle que se confirma hay que construirlo desde un checkout con su propio `node_modules`; desde un worktree, `check:dist` no detecta la diferencia.
