@@ -80,6 +80,22 @@ setStatus(E2E_HOME, 'dependencias', earlier, 'done', 'mcp', { clock });
 const free = createTask(E2E_HOME, 'dependencias', { title: 'Ya libre' }, 'web', clock).task.id;
 updateTask(E2E_HOME, 'dependencias', free, { depends_on: [earlier] }, { clock });
 
+// Blocks (WAY-13): a blocked task with a long reason, one blocked and also waiting for a
+// dependency, a free one, hostile text as a reason and a value written by hand that is not text.
+createProject(E2E_HOME, { slug: 'bloqueos', name: 'bloqueos', idPrefix: 'BLO', localPath: 'D:/bloqueos' });
+const blockTask = (title: string, reason?: string) => {
+  const task = createTask(E2E_HOME, 'bloqueos', { title }, 'web', clock).task;
+  if (reason) logProgress(E2E_HOME, 'bloqueos', task.id, 'Avanzamos: la tarea queda bloqueada.', { blockers: reason }, clock, true);
+  return task;
+};
+blockTask('Publicar la versión', `Falta la clave de firma del paquete: la tiene el equipo de plataforma y hay que pedirla en https://intranet.example/solicitudes/${'firmadepaquetes/'.repeat(3)} antes del viernes.`);
+const domain = blockTask('Comprar el dominio').id;
+const dns = blockTask('Configurar el dominio', 'Espera la decisión sobre el proveedor de DNS.').id;
+updateTask(E2E_HOME, 'bloqueos', dns, { depends_on: [domain] }, { clock });
+blockTask('Texto hostil', '<img src=x onerror=window.__xss=8>');
+const handWritten = join(E2E_HOME, blockTask('Valor escrito a mano').file);
+writeFileSync(handWritten, readFileSync(handWritten, 'utf8').replace('plan: ""', 'plan: ""\nblocked: 7'));
+
 // Tags (WAY-14): its own project, so the counts of the other specs do not change.
 createProject(E2E_HOME, { slug: 'etiquetas', name: 'etiquetas', idPrefix: 'ETI', localPath: 'D:/etiquetas' });
 createTask(E2E_HOME, 'etiquetas', { title: 'Filtro del tablero', tags: ['web'] }, 'web', clock);

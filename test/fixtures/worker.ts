@@ -13,6 +13,9 @@ if (mode === 'create') {
 } else if (mode === 'progress') {
   logProgress(home, slug, arg, `Avance ${extra}`);
   process.stdout.write(extra);
+} else if (mode === 'block') {
+  logProgress(home, slug, arg, `Bloqueo ${extra}`, { blockers: `Motivo ${extra}` }, undefined, true);
+  process.stdout.write(extra);
 } else if (mode === 'error') {
   const { error } = createError(home, slug, { title: `Error concurrente ${extra}`, task: arg, context: `Contexto ${extra}` });
   process.stdout.write(error.id);

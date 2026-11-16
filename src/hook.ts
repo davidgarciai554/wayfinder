@@ -118,7 +118,9 @@ function consumerRoot(input: Record<string, unknown>, env: NodeJS.ProcessEnv): s
 /** Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection). */
 export function sessionContext(lang: Lang, slug: string, tasks: Task[], errors: ErrorRecord[] = []): string {
   const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, key, vars);
-  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE)}`;
+  // WAY-13: a blocked task carries a fixed mark before its title. The reason is free text written
+  // by Claude, so it stays out of this context: Claude reads it with wf_list or wf_get.
+  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${x.blocked ? `${tr('hook.session.blocked')} ` : ''}${flatten(x.title, MAX_TITLE)}`;
   const active = tasks.filter((x) => x.status === 'in-progress' || x.status === 'todo');
   const proposed = tasks.filter((x) => x.status === 'proposed');
   const lines = [tr('hook.session.header', { slug }), `language: ${lang}`, tr('hook.session.skill')];

@@ -255,6 +255,8 @@ main:focus { outline: none; }
 .f-chat { color: var(--wf-flag-chat-fg); background: var(--wf-flag-chat-bg); border-color: var(--wf-flag-chat-border); }
 .f-risk { color: var(--wf-flag-risk-fg); background: var(--wf-flag-risk-bg); border-color: var(--wf-flag-risk-border); font-weight: 600; }
 .f-outside { color: var(--wf-flag-outside-fg); background: var(--wf-flag-outside-bg); border-color: var(--wf-flag-outside-border); }
+/* WAY-13: the block reason on the card, cut to two lines (a local value; the detail shows it whole). */
+.card-reason { margin: 0; font-size: 13px; color: var(--wf-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 /* WAY-14: task labels, neutral (the label text carries the meaning, not a colour). */
 .labels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .t-label { color: var(--wf-muted); background: var(--wf-column); border-color: var(--wf-border); font-family: var(--wf-font-mono); overflow-wrap: anywhere; }

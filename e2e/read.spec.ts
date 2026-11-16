@@ -278,4 +278,61 @@ test.describe('web board (read-only)', () => {
     await expect(page.locator('.board-area').getByRole('status')).toContainText('Filter on: tag "web". Tasks shown: 1.');
     await expect(page.locator('.card').filter({ has: page.getByRole('link', { name: 'Filtro del tablero' }) }).getByRole('list', { name: 'Tags' })).toHaveText('web');
   });
+
+  test('WAY-13: a blocked task says «Bloqueada» with its reason on the card and the detail, as text and read-only', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/#/bloqueos/board');
+    const card = (title: string) => page.locator('.card').filter({ has: page.getByRole('link', { name: title }) });
+
+    // Text and icon, never colour alone; the reason sits under the flags, cut to two lines.
+    const stuck = card('Publicar la versión');
+    await expect(stuck.locator('.tag.f-risk')).toHaveText('Bloqueada');
+    await expect(stuck.locator('.tag.f-risk svg')).toHaveAttribute('aria-hidden', 'true');
+    const reason = stuck.locator('.card-reason');
+    await expect(reason).toContainText('Falta la clave de firma del paquete');
+    const clamp = await reason.evaluate((node) => ({ shown: node.clientHeight, full: node.scrollHeight, line: parseFloat(getComputedStyle(node).lineHeight) }));
+    expect(clamp.shown).toBeLessThanOrEqual(Math.ceil(clamp.line * 2) + 1);
+    expect(clamp.full).toBeGreaterThan(clamp.shown);
+
+    // A manual block and a dependency are two different flags, the manual one first.
+    await expect(card('Configurar el dominio').locator('.tags .tag')).toHaveText(['Bloqueada', 'Bloqueada por BLO-2']);
+    for (const title of ['Comprar el dominio', 'Valor escrito a mano']) {
+      await expect(card(title)).not.toContainText('Bloqueada');
+      await expect(card(title).locator('.card-reason')).toHaveCount(0);
+    }
+    // A hostile reason is shown as the text it is.
+    await expect(card('Texto hostil').locator('.card-reason')).toHaveText('<img src=x onerror=window.__xss=8>');
+    expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+    // The web only reads the block.
+    await expect(page.getByRole('button', { name: /bloque/i })).toHaveCount(0);
+
+    // Detail: the flag in the header and the whole reason in the data, before the dependencies.
+    await page.getByRole('link', { name: 'Configurar el dominio' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Configurar el dominio' });
+    await expect(dialog.locator('.detail-head .tag.f-risk')).toHaveText('Bloqueada');
+    const terms = await dialog.locator('dl.meta dt').allTextContents();
+    expect(terms.indexOf('Motivo del bloqueo')).toBeGreaterThan(-1);
+    expect(terms.indexOf('Motivo del bloqueo')).toBeLessThan(terms.indexOf('Depende de'));
+    await expect(dialog.locator('dl.meta dt', { hasText: 'Motivo del bloqueo' }).locator('+ dd')).toHaveText('Espera la decisión sobre el proveedor de DNS.');
+    await expect(dialog.getByRole('button', { name: /bloque/i })).toHaveCount(0);
+    await page.goto('/#/bloqueos/task/BLO-1');
+    await expect(page.getByRole('dialog').locator('dl.meta')).toContainText('antes del viernes.');
+    await page.goto('/#/bloqueos/task/BLO-2');
+    await expect(page.getByRole('dialog').locator('dl.meta')).not.toContainText('Motivo del bloqueo');
+
+    // A long reason with an unbreakable address never widens the page.
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/#/bloqueos/board');
+    await expect(card('Publicar la versión').locator('.card-reason')).toBeVisible();
+    await noHorizontalScroll(page);
+    await page.goto('/#/bloqueos/task/BLO-1');
+    await expect(page.getByRole('dialog').locator('dl.meta')).toContainText('antes del viernes.');
+    await noHorizontalScroll(page);
+
+    await page.goto(`http://127.0.0.1:${E2E_PORTS.en}/#/bloqueos/board`);
+    await expect(card('Configurar el dominio').locator('.tags .tag')).toHaveText(['Blocked', 'Blocked by BLO-2']);
+    await page.getByRole('link', { name: 'Configurar el dominio' }).click();
+    await expect(page.getByRole('dialog').locator('dl.meta')).toContainText('Block reason');
+    expect(await page.locator('body').innerText()).not.toMatch(/\b(web|status|reason)\.[a-z]/);
+  });
 });

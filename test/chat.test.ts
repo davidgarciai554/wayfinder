@@ -370,3 +370,14 @@ test('routine and user tasks, and other transitions, are never approved by chat'
   const other = createTask(home, 'demo', { title: 'Otra' }, 'mcp').task.id;
   assert.throws(() => setStatus(home, 'demo', other, 'in-progress', 'mcp', { planExists: () => true }), isKey('store.invalidTransition'));
 });
+
+test('WAY-13: a chat approval drops a blocked key written by hand on the proposal: nobody reviewed it', (t) => {
+  const { home, id, file } = setup(t);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('plan: ""', 'plan: ""\nblocked: Texto que nadie revisó'));
+  recordOrders(home, 'demo', [id], Date.now());
+  reviewTask(home, 'demo', id);
+  const { task } = approveByChat(home, 'demo', id, { userQuote: `haz ${id}`, verdict: 'clean' });
+  assert.equal(task.status, 'todo');
+  assert.equal(readTask(home, 'demo', id).blocked, '');
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /^blocked:/m);
+});

@@ -542,6 +542,24 @@ test('WAY-14: tasks carry their tags in the list and the detail; the web create 
   assert.deepEqual(JSON.parse((await get(port, `/api/projects/demo/tasks/${tagged}`)).body).tags, ['web', 'docs']);
 });
 
+test('WAY-13: tasks carry the block reason in the list and the detail (null when free); the web has no route to change it', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const stuck = createTask(home, 'demo', { title: 'Parada' }, 'web').task.id;
+  const free = createTask(home, 'demo', { title: 'Libre' }, 'web').task.id;
+  logProgress(home, 'demo', stuck, 'Avanzamos: parada.', { blockers: 'Espera <b>la</b> clave' }, undefined, true);
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body).tasks;
+  assert.equal(list.find((x: { id: string }) => x.id === stuck).blocked, 'Espera <b>la</b> clave');
+  assert.equal(list.find((x: { id: string }) => x.id === free).blocked, null);
+  assert.equal(JSON.parse((await get(port, `/api/projects/demo/tasks/${stuck}`)).body).blocked, 'Espera <b>la</b> clave');
+
+  const files = tree(home);
+  const updated = readTask(home, 'demo', stuck).updated;
+  for (const action of ['block', 'unblock']) {
+    assert.equal((await post(port, `/api/projects/demo/tasks/${stuck}/${action}`, { expectedUpdated: updated, note: 'x' }, headers)).status, 405, action);
+  }
+  assert.deepEqual(tree(home), files);
+});
+
 test('WAY-11: an error moved to another task is listed in that task and its page links to it', async (t) => {
   const { home, port } = await writer(t);
   const wrong = createTask(home, 'demo', { title: 'Equivocada' }, 'web').task.id;

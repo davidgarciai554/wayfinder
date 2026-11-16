@@ -107,6 +107,18 @@ Una tarea puede depender de otras del mismo proyecto («WAY-7 depende de WAY-2»
 - Es información para planificar: nunca impide un cambio de estado. Al empezar una tarea con dependencias sin hacer, Claude recibe un aviso.
 - Se ven en `wf_get`, en `wf_list` («bloqueada por WAY-n») y en la web: la etiqueta «Bloqueada por WAY-n» en la tarjeta y la fila «Depende de» en el detalle. Desde la web no se editan.
 
+### Bloquear una tarea
+
+Cuando una tarea no puede avanzar por algo que no es otra tarea (espera una decisión tuya, una credencial o un servicio externo), Claude la marca como bloqueada con su motivo: `wf_log` con `blocked: true` y el motivo en `blockers`. Si lo que espera es otra tarea, se usa una dependencia.
+
+- Solo se bloquean tareas «por hacer» o «en curso». El motivo es una línea de hasta 200 caracteres; el detalle va en la entrada del historial, que se guarda en el mismo paso.
+- No es un estado: la tarea sigue donde estaba. El bloqueo es información y nunca impide un cambio de estado.
+- Se desbloquea con `wf_log` y `blocked: false`; la entrada es la nota que dice qué la desbloqueó. Pasar la tarea a hecha o descartada, o reabrirla, también quita el bloqueo.
+- `blockers` sin `blocked` sigue siendo texto libre de esa entrada: ni bloquea la tarea ni cambia el motivo.
+- Se ve en `wf_list` («bloqueada: motivo»), en `wf_get` y en la web, con la etiqueta «Bloqueada» y el motivo en la tarjeta y en el detalle. En la lista de tareas que Claude recibe al empezar la sesión aparece solo la marca `[bloqueada]`; el motivo lo lee cuando lo necesita.
+- Desde la web no se bloquea ni se desbloquea: díselo a Claude.
+- **Versiones anteriores:** el bloqueo se guarda como una clave opcional (`blocked`) en el archivo de la tarea. Un plugin anterior que use la misma carpeta de datos lee la tarea con normalidad y conserva la clave, pero no muestra el bloqueo.
+
 ### Pedir varias tareas a la vez
 
 Si pides una sola tarea, Claude la hace en el mismo chat. Si pides varias por su ID («haz WAY-3, WAY-5 y WAY-7»):

@@ -207,3 +207,14 @@
 - **Archivos modificados:** `src/i18n/es.json`, `src/i18n/en.json`, `test/mcp.integration.test.ts`, `plugin/dist/wayfinder.mjs`.
 - **Validación:** la prueba «WAY-15: wf_update sets and clears depends_on…» comprueba ahora el texto completo que devuelve `wf_set_status`; fallaba con el bundle anterior (`Warning: Warning: …`) y pasa con el nuevo. `npm run typecheck`, `npm test` (173/173) y `npm run check:dist` en verde. Repetida la demo en español contra el bundle reconstruido: `Aviso: TIE-2 depende de tareas que aún no están hechas: TIE-1 [todo].`, con 370 comprobaciones correctas y ninguna fallida. `npm run test:e2e` y `npm run test:docker` no se repitieron tras el cambio: la web no recibe este texto.
 - **Resultado:** resuelto. El servidor MCP de una sesión ya abierta sigue con el texto antiguo hasta que se reinicie.
+
+## 2026-11-16 · Desde una sesión en worktree, `wf_update` rechaza un plan que existe en el worktree
+
+- **Contexto:** planificación de WAY-13 en una sesión de Claude Code Desktop que trabaja en un worktree del repositorio. El borrador del plan se escribió en `Planes/` dentro del worktree, sin commit. Windows 11. ERR-10 en Wayfinder, ligado a WAY-13.
+- **Reproducción:** abrir una sesión en un worktree del repositorio registrado, crear `Planes/AAAA-MM-DD-nombre.md` solo en el worktree y llamar a `wf_update` con ese `plan`. `wf_project` con `action: "get"` muestra como `consumerRoot` el checkout principal.
+- **Salida observada:** «El plan «Planes/2026-11-16-bloqueo-de-tareas-con-motivo.md» no existe en el proyecto.»
+- **Causa (hipótesis):** el servidor MCP del plugin arranca con `CLAUDE_PROJECT_DIR` (o el directorio de trabajo) en la carpeta del proyecto, no en el worktree de la sesión. `resolveProject` toma `consumerRoot` de ahí y `makePlanExists` comprueba el archivo en esa carpeta (`src/store/resolve.ts`). No se ha podido ver el entorno real del proceso MCP. La misma comprobación se usa al pasar de `todo` a `in-progress`.
+- **Investigación:** leído `src/store/resolve.ts`. `findRepoRoot` devolvería la raíz del worktree si recibiera su carpeta, así que el valor de partida es el que apunta al checkout principal.
+- **Archivos modificados:** ninguno. Queda fuera del plan de WAY-13.
+- **Validación:** ninguna: sin corregir.
+- **Resultado:** abierto. Salida usada, por orden de la persona: copiar el plan al checkout principal como archivo sin seguimiento. Deja dos copias que pueden divergir, y hay que quitar la del checkout principal antes de integrar una rama que confirme ese mismo archivo.

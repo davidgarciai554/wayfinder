@@ -73,6 +73,8 @@ export function approveByChat(
     }
 
     task.status = 'todo';
+    // WAY-13: a proposal cannot be blocked; a key written by hand was not part of the review.
+    delete task.data.blocked;
     task.approvedVia = 'chat';
     if (needsSecond) task.riskAcknowledged = true;
     task.updated = isoLocal(now);

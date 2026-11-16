@@ -110,6 +110,8 @@ function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
     dependsOn: dependencyStates(task, tasks),
     /** WAY-14: labels matching TAG_RE; the board shows them as text and filters by them. */
     tags: task.tags,
+    /** WAY-13: why the task is blocked, one clean line, or null. The page inserts it as text only. */
+    blocked: task.blocked || null,
   };
 }
 

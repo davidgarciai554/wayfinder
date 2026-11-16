@@ -77,6 +77,22 @@ test('20 concurrent progress entries and description edits lose nothing', { time
   assert.equal(gitOut(home, 'status', '--porcelain'), '');
 });
 
+test('WAY-13: a block and concurrent description edits and progress entries lose nothing', { timeout: 120_000 }, async (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const id = createTask(home, 'demo', { title: 'Bloqueada a la vez' }, 'web').task.id;
+  const before = commitCount(home);
+  const modes = ['block', 'update', 'progress', 'update', 'progress', 'update'];
+  const results = await Promise.all(modes.map((mode, i) => run([mode, home, 'demo', id, String(i)])));
+  for (const r of results) assert.equal(r.code, 0, r.err);
+  const task = readTask(home, 'demo', id);
+  assert.equal(task.blocked, 'Motivo 0', 'a later write keeps the block');
+  assert.match(task.body, /^Descripción \d+\n$/);
+  assert.deepEqual(parseEntries(task.history).slice(1).map((e) => e.text.split('\n')[0]).sort(), ['Avance 2', 'Avance 4', 'Bloqueo 0']);
+  assert.equal(commitCount(home), before + modes.length);
+  assert.equal(gitOut(home, 'status', '--porcelain'), '');
+});
+
 test('two concurrent updates that would close a cycle: one is saved, the other is rejected under the lock', { timeout: 120_000 }, async (t) => {
   const home = makeHome(t);
   makeProject(home);

@@ -216,6 +216,9 @@ function tagsFor(task, status = task.status) {
     tags.push(el('span', { class: 'tag f-risk' }, warningIcon(), t('web.flag.risk')));
   }
   if (task.modifiedOutside) tags.push(el('span', { class: 'tag f-outside', text: t('web.flag.outside') }));
+  // WAY-13: blocked by hand, with a reason shown next to it. Icon and text, never colour alone; it
+  // goes before «Bloqueada por WAY-n» (a dependency), which keeps the neutral style.
+  if (task.blocked) tags.push(el('span', { class: 'tag f-risk' }, lockIcon(), t('web.flag.blocked')));
   // WAY-15: only done frees a dependency; a missing task does not block. Text and icon, never colour alone.
   // A done or discarded task is no longer waiting for anything.
   const waiting = ['proposed', 'todo', 'in-progress'].includes(status);
@@ -272,6 +275,8 @@ function card(task, selectedId) {
     el('a', { class: 'card-title', href: href(view.slug, 'task', task.id), 'data-focus': `task:${task.id}`, text: task.title }),
     labelList(task),
     tags.length ? el('div', { class: 'tags' }, tags) : null,
+    // WAY-13: the reason as plain text, cut to two lines by CSS; the detail shows it whole.
+    task.blocked ? el('p', { class: 'card-reason', text: task.blocked }) : null,
     task.status === 'proposed' || task.reopensTo ? actions(task, 'card-actions') : null,
   );
 }
@@ -645,6 +650,7 @@ async function taskDetail() {
           row(t('web.meta.priority'), t(`web.priority.${task.priority}`)),
           row(t('web.meta.origin'), t(`web.origin.${task.origin}`)),
           row(t('web.meta.plan'), task.plan ? el('span', { class: 'mono', text: task.plan }) : '—'),
+          ...(task.blocked ? row(t('web.meta.blockReason'), task.blocked) : []),
           ...(task.dependsOn?.length ? row(t('web.meta.dependsOn'), dependencyList(task)) : []),
           row(t('web.meta.created'), el('span', { class: 'mono', text: exact(task.created) })),
           row(t('web.meta.updated'), el('span', { class: 'mono', text: exact(task.updated) })),
