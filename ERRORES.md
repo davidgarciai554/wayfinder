@@ -229,3 +229,14 @@
 - **Archivos modificados:** `plugin/dist/wayfinder.mjs`.
 - **Validación:** en el checkout principal, `npm run check:dist` coincide con un build limpio y `npm test` pasa 191/191 con el bundle reconstruido. Frente a `2a8dbdf`, el bundle cambia 52 líneas y ningún comentario de ruta.
 - **Resultado:** corregido. Mientras el build dependa de la carpeta, el bundle que se confirma hay que construirlo desde un checkout con su propio `node_modules`; desde un worktree, `check:dist` no detecta la diferencia.
+
+## 2026-11-17 · Dos specs e2e fallan si la web espera `/api/projects` antes de pintar al navegar
+
+- **Contexto:** implementación de WAY-24 en un worktree, sin commit. Para refrescar el aviso de formato al navegar, el manejador de `hashchange` de `web/app.js` pasó a esperar `loadProjects()` antes de `render()`. Windows 11, Node 24.12, Playwright con un worker. ERR-12 en Wayfinder, ligado a WAY-24.
+- **Reproducción:** con ese manejador (`await loadProjects(); await render();`), ejecutar `npm run test:e2e`.
+- **Salida observada:** 2 fallos y 50 correctas. En `errors.spec.ts:10`, la pestaña «Errores» aún no tenía `aria-current` y el locator encontraba también una tarjeta del tablero anterior (`strict mode violation`). En `write.spec.ts:222`, tras Esc en el diálogo de reapertura, el botón «Reabrir» no recuperaba el foco.
+- **Causa confirmada:** esperar la petición retrasaba el pintado de la navegación. La vista anterior seguía más tiempo en pantalla, y dos navegaciones seguidas pintaban dos veces el diálogo de la tarea, lo que reemplazaba el botón que tenía el foco. Además, con dos navegaciones muy seguidas, `keepBoard` conservaba el tablero con la escritura activada aunque la carpeta hubiera pasado a solo lectura.
+- **Solución:** `hashchange` vuelve a pintar en el acto, como antes. `/api/projects` se pide en segundo plano y solo se repinta (con `keepFocus` y nunca sobre un formulario abierto) si cambia el modo de escritura. `paintFormat` marca `writeModeChanged` y `doRender` no conserva el tablero mientras esa marca esté activa.
+- **Archivos modificados:** `web/app.js`.
+- **Validación:** `npm run test:e2e` 52/52, incluidas `errors.spec.ts:10`, `write.spec.ts:222` y las cinco de `e2e/format.spec.ts`. `npm test` 205/205 y `npm run typecheck` en verde.
+- **Resultado:** corregido antes de confirmar nada. La navegación de la web no debe esperar peticiones adicionales para pintar.

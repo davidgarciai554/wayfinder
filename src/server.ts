@@ -14,7 +14,8 @@ import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/pa
 import { listProjects, requireProject } from './store/project.ts';
 import { findSecrets } from './store/secrets.ts';
 import type { Status } from './store/transitions.ts';
-import { createTask, dependencyStates, listTasks, readTask, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import { createTask, dependencyStates, listTasks, readTask, readTaskForWrite, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import { checkFormat, formatWarning } from './store/format.ts';
 
 export interface ServeOptions {
   home: string;
@@ -81,8 +82,8 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const DEFAULT_PORT = 4747;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const MAX_JSON = 256 * 1024;
-/** Store errors caused by the current state of the task rather than by the request. */
-const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition']);
+/** Store errors caused by the current state of the task (or of the data folder, WAY-24) rather than by the request. */
+const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition', 'store.dataNewer', 'store.taskUnknownStatus']);
 const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound', 'store.errorNotFound']);
 
 function errorMeta(error: ErrorRecord) {
@@ -225,7 +226,13 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[0] !== 'projects') return notFound(res);
     if (parts.length === 1) {
+      // WAY-24: worked out on every request (the page asks on each refresh and navigation), never
+      // cached; present only when the folder is newer or its mark unreadable. The validated integers
+      // and the translated notice only: no paths.
+      const format = checkFormat(home);
+      const warning = formatWarning(home, format);
       return json(res, 200, {
+        ...(warning ? { format: { ...format, message: t(lang, warning.key, warning.vars) } } : {}),
         projects: listProjects(home).map((p) => {
           const { tasks, unreadable } = listTasks(home, p.slug);
           const counts: Record<string, number> = {};
@@ -421,7 +428,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
           // (todo would approve a proposal).
           let to: Status | null = route.action === 'approve' ? 'todo' : 'discarded';
           if (route.action === 'reopen') {
-            const current = readTask(home, route.slug, route.id);
+            const current = readTaskForWrite(home, route.slug, route.id);
             to = reopenTarget(current);
             if (!to) throw new WayfinderError('store.invalidTransition', { from: current.status, to: 'reopen', valid: '—' });
           }

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { WayfinderError, type Warning } from './errors.ts';
+import { FORMAT_FILE, FORMAT_VERSION } from './format.ts';
 import { commitPaths, gitAvailable, initRepo, isGitRepo } from './git.ts';
 import { findSecrets } from './secrets.ts';
 import { writeFileAtomic } from './sync.ts';
@@ -44,7 +45,8 @@ function scanExisting(home: string): Array<{ file: string; pattern: string }> {
 }
 
 /**
- * Idempotent. An existing Wayfinder home is never modified: it is only scanned for secrets.
+ * Idempotent. An existing Wayfinder home is never modified: it is only scanned for secrets, and
+ * it does not get the format mark either (WAY-24: no mark reads as format 1).
  * A non-empty folder that is not a Wayfinder home is refused instead of being taken over.
  */
 export function initHome(home: string, options: { lang?: Lang } = {}): InitResult {
@@ -60,7 +62,8 @@ export function initHome(home: string, options: { lang?: Lang } = {}): InitResul
     throw new WayfinderError('init.notWritable', { path: home, detail: (error as Error).message });
   }
   writeFileAtomic(join(home, '.gitignore'), GITIGNORE);
-  const files = ['.gitignore'];
+  writeFileAtomic(join(home, FORMAT_FILE), `${FORMAT_VERSION}\n`);
+  const files = ['.gitignore', FORMAT_FILE];
   if (options.lang) {
     writeFileAtomic(join(home, 'config.json'), `${JSON.stringify({ language: options.lang }, null, 2)}\n`);
     files.push('config.json');

@@ -607,3 +607,61 @@ test('WAY-11: an error moved to another task is listed in that task and its page
   assert.equal(page.task, right);
   assert.equal(page.taskTitle, 'Correcta');
 });
+
+test('WAY-24: /api/projects carries the data format on every request; with a newer one, writes answer 409 and change nothing', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const idea = createTask(home, 'demo', { title: 'Idea' }, 'mcp').task.id;
+  const first = JSON.parse((await get(port, '/api/projects')).body);
+  assert.equal('format' in first, false, 'format 1: no field');
+
+  // The same live server: the mark changes on disk and the next request says so (no cache, ERR-9).
+  writeFileSync(join(home, 'FORMAT'), '2\n');
+  const newer = JSON.parse((await get(port, '/api/projects')).body);
+  assert.equal(newer.format.state, 'newer');
+  assert.equal(newer.format.found, 2);
+  assert.equal(newer.format.supported, 1);
+  assert.match(newer.format.message, /^The data folder uses format 2 and this version of Wayfinder only understands up to 1/);
+  for (const value of Object.values(newer.format)) {
+    assert.equal(String(value).includes(home) || String(value).includes(home.replaceAll('\\', '/')), false, 'no path of the data folder');
+  }
+  assert.deepEqual(newer.projects.map((p: { slug: string }) => p.slug), ['demo'], 'the projects are still listed');
+
+  const files = tree(home);
+  const meta = JSON.parse((await get(port, `/api/projects/demo/tasks/${idea}`)).body);
+  for (const [path, body] of [
+    ['/api/projects/demo/tasks', { title: 'Nueva' }],
+    [`/api/projects/demo/tasks/${idea}/approve`, { expectedUpdated: meta.updated }],
+    [`/api/projects/demo/tasks/${idea}/discard`, { expectedUpdated: meta.updated }],
+  ] as const) {
+    const reply = await post(port, path, body, headers);
+    assert.equal(reply.status, 409, path);
+    assert.match(JSON.parse(reply.body).error, /^The data folder uses format 2/);
+  }
+  assert.deepEqual(tree(home), files);
+
+  writeFileSync(join(home, 'FORMAT'), 'abc');
+  const unreadable = JSON.parse((await get(port, '/api/projects')).body);
+  assert.deepEqual({ state: unreadable.format.state, supported: unreadable.format.supported }, { state: 'unreadable', supported: 1 });
+  assert.doesNotMatch(unreadable.format.message, /abc/);
+  assert.equal((await post(port, '/api/projects/demo/tasks', { title: 'Sí se puede' }, headers)).status, 201, 'an unreadable mark does not block');
+});
+
+test('WAY-24: a task status unknown to this version is listed with its literal status and cannot be changed from the web', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const file = join(home, 'projects/demo/tasks/WF-3-later.md');
+  writeFileSync(file, '---\nid: WF-3\ntitle: Later\nstatus: snoozed\nupdated: 2026-11-01T10:00:00+01:00\n---\n');
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body);
+  assert.deepEqual(list.tasks.map((x: { id: string; status: string }) => `${x.id}:${x.status}`), ['WF-3:snoozed']);
+  assert.equal(list.unreadable.length, 0);
+  const detail = JSON.parse((await get(port, '/api/projects/demo/tasks/WF-3')).body);
+  assert.equal(detail.status, 'snoozed');
+  assert.equal(detail.reopensTo, null);
+  assert.equal(JSON.parse((await get(port, '/api/projects')).body).projects[0].counts.snoozed, 1);
+  const before = readFileSync(file, 'utf8');
+  for (const action of ['approve', 'discard', 'reopen']) {
+    const reply = await post(port, `/api/projects/demo/tasks/WF-3/${action}`, { expectedUpdated: detail.updated, note: 'x' }, headers);
+    assert.equal(reply.status, 409, action);
+    assert.match(JSON.parse(reply.body).error, /WF-3 has a status this version does not know \("snoozed"\)/, action);
+  }
+  assert.equal(readFileSync(file, 'utf8'), before);
+});

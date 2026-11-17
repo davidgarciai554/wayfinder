@@ -8,6 +8,9 @@
 const DONE_LIMIT = 10;
 const LOG_PAGE = 7;
 const STATUS_ORDER = ['proposed', 'todo', 'in-progress', 'done'];
+/** WAY-24: any other status was written by a newer version; it is shown as text, never as a class. */
+const KNOWN_STATUSES = [...STATUS_ORDER, 'discarded'];
+const isKnownStatus = (status) => KNOWN_STATUSES.includes(status);
 
 let messages = {};
 let lang = 'es';
@@ -18,7 +21,13 @@ let logShown = LOG_PAGE;
 let refreshTimer;
 let pendingChanges = 0;
 let returnFocusTo = null;
+/** This browser holds the key (/api/session). */
+let keyCanWrite = false;
+/** WAY-24: the data folder is from a newer format, so it is read only whatever the key. */
+let dataNewer = false;
 let canWrite = false;
+/** canWrite changed since the last render: the board cannot be kept as it is. */
+let writeModeChanged = false;
 /** Links with the key, only when this page is served on this PC (loopback): { local, remote }. */
 let share = null;
 let lastOwnWrite = 0;
@@ -190,7 +199,12 @@ function setLive(text, state = 'online') {
 }
 
 function statusLabel(status) {
-  return t(`web.status.${status}`);
+  return isKnownStatus(status) ? t(`web.status.${status}`) : t('web.status.unknown', { status });
+}
+
+/** A status pill; an unknown status gets a neutral pill (DESIGN.md: in text, without colour). */
+function statusPill(status) {
+  return el('span', { class: isKnownStatus(status) ? `pill s-${status}` : 'pill', text: statusLabel(status) });
 }
 
 function loading() {
@@ -211,6 +225,8 @@ function failure(error, retry) {
 function tagsFor(task, status = task.status) {
   const tags = [];
   if (task.status === 'proposed') tags.push(el('span', { class: 'tag s-proposed', text: t('web.flag.unapproved') }));
+  // WAY-24: the literal status, as text in a neutral tag ('' is the detail header, which has its own pill).
+  if (task.status && !isKnownStatus(task.status)) tags.push(el('span', { class: 'tag', text: statusLabel(task.status) }));
   if (task.approvedVia === 'chat') tags.push(el('span', { class: 'tag f-chat', text: t('web.flag.chat') }));
   if (task.riskAcknowledged) {
     tags.push(el('span', { class: 'tag f-risk' }, warningIcon(), t('web.flag.risk')));
@@ -255,7 +271,7 @@ function dependencyList(task) {
     ? el('li', {}, el('span', { class: 'mono', text: d.id }), ` ${t('web.dependencyMissing')}`)
     : el('li', {},
         el('a', { href: href(view.slug, 'task', d.id), 'data-focus': `task:${d.id}` }, el('span', { class: 'mono', text: d.id }), ` · ${d.title}`),
-        ' ', el('span', { class: `pill s-${d.status}`, text: statusLabel(d.status) }),
+        ' ', statusPill(d.status),
         d.status === 'discarded' ? el('span', { class: 'muted', text: ` ${t('web.dependencyDiscarded')}` }) : null)));
 }
 
@@ -542,6 +558,9 @@ async function renderBoard() {
         : null),
   ];
   if (showDiscarded) columns.push(column('discarded', t('web.column.discarded'), byStatus('discarded').sort(recentFirst), selectedId));
+  // WAY-24: a status written by a newer version gets no column of its own (that would be false):
+  // they go together at the end, read only, each with its literal status as text.
+  const others = visible.filter((x) => !isKnownStatus(x.status)).sort(recentFirst);
 
   // Jump links for the stacked (compact) layout. They move focus instead of changing the hash,
   // which belongs to the router.
@@ -596,16 +615,20 @@ async function renderBoard() {
         canWrite ? el('button', { type: 'button', class: 'button button-primary', 'data-focus': 'new-task', text: t('web.newTask'), onclick: (e) => openCreate(e.currentTarget) }) : null,
       ),
     ),
-    canWrite ? null : el('p', { class: 'info' },
-      t('web.readOnly'),
-      // On this PC the page can get its own key: one click enables writing here.
-      share?.local ? [' ', el('a', { href: share.local, 'data-focus': 'enable-write', text: t('web.enableWrite') })] : null,
-    ),
+    canWrite ? null : dataNewer
+      // No key can help here: the notice above says what to do.
+      ? el('p', { class: 'info', text: t('web.readOnlyDataNewer') })
+      : el('p', { class: 'info' },
+          t('web.readOnly'),
+          // On this PC the page can get its own key: one click enables writing here.
+          share?.local ? [' ', el('a', { href: share.local, 'data-focus': 'enable-write', text: t('web.enableWrite') })] : null,
+        ),
     unreadable,
     filtering,
     data.tasks.length === 0 ? el('p', { class: 'empty', text: t('web.emptyBoard') }) : null,
     jump,
     el('div', { class: 'columns' }, columns),
+    others.length ? el('div', { class: 'columns' }, column('other', t('web.column.other'), others, selectedId)) : null,
   );
 
   main.replaceChildren(el('div', { class: 'workspace' }, boardArea));
@@ -640,8 +663,9 @@ async function taskDetail() {
     el('header', { class: 'detail-head' },
       el('div', { class: 'detail-top' }, el('span', { class: 'mono muted', text: task.id }), close),
       el('h1', { id: 'task-title', tabindex: '-1', 'data-focus': 'task-title', text: task.title }),
-      el('div', { class: 'tags' }, el('span', { class: `pill s-${task.status}`, text: statusLabel(task.status) }), tagsFor({ ...task, status: '' }, task.status)),
+      el('div', { class: 'tags' }, statusPill(task.status), tagsFor({ ...task, status: '' }, task.status)),
       labelList(task),
+      isKnownStatus(task.status) ? null : el('p', { class: 'info', text: t('web.unknownStatusNote') }),
       actions(task, 'detail-actions'),
     ),
     el('div', { class: 'detail-grid' },
@@ -990,7 +1014,9 @@ async function doRender(keepFocus, firstPaint, focus) {
   renderChrome();
   // Opening or closing a task keeps the board that is already underneath: only the dialog changes.
   const onBoard = (v) => v && (v.page === 'board' || v.page === 'task');
-  const keepBoard = !firstPaint && !keepFocus && onBoard(previous) && onBoard(view) && previous.slug === view.slug && main.querySelector('.workspace');
+  // …unless writing was switched on or off since (WAY-24): its buttons must come or go.
+  const keepBoard = !writeModeChanged && !firstPaint && !keepFocus && onBoard(previous) && onBoard(view) && previous.slug === view.slug && main.querySelector('.workspace');
+  writeModeChanged = false;
   if (!keepBoard && (firstPaint || !keepFocus)) loading();
   try {
     if (!view.slug) renderProjects();
@@ -1041,7 +1067,25 @@ async function doRender(keepFocus, firstPaint, focus) {
 }
 
 async function loadProjects() {
-  projects = (await api('/api/projects')).projects;
+  const data = await api('/api/projects');
+  projects = data.projects;
+  paintFormat(data.format ?? null);
+}
+
+/**
+ * WAY-24: the data-format notice, repainted on every /api/projects answer (each refresh and
+ * navigation, and the 30 s safety net). Apart from #banner, whose hidden flag is the connection.
+ * The role=status region stays in the page and only its content changes, and only when the text
+ * does, so screen readers announce it once.
+ */
+function paintFormat(format) {
+  const before = canWrite;
+  dataNewer = format?.state === 'newer';
+  canWrite = keyCanWrite && !dataNewer;
+  if (canWrite !== before) writeModeChanged = true;
+  const text = typeof format?.message === 'string' ? format.message : '';
+  const region = $('format-notice');
+  if (region.textContent !== text) region.replaceChildren(...(text ? [el('div', { class: 'banner', text })] : []));
 }
 
 async function refresh({ announce = true } = {}) {
@@ -1182,12 +1226,22 @@ async function start() {
     });
   }
   try {
-    canWrite = (await api('/api/session')).canWrite === true;
+    keyCanWrite = (await api('/api/session')).canWrite === true;
   } catch {
-    canWrite = false;
+    keyCanWrite = false;
   }
   await setupShare();
-  window.addEventListener('hashchange', () => render());
+  window.addEventListener('hashchange', () => {
+    render();
+    // WAY-24: each navigation also asks for the projects, so the data-format notice is current. The
+    // page is not held for it; only a change of the write mode draws the view again, never over an
+    // open form (like refresh). Offline, the connection banner already says so.
+    loadProjects().then(() => {
+      if (!writeModeChanged) return;
+      if (document.querySelector('dialog[open]:not(#task-dialog)')) pendingChanges += 1;
+      else render({ keepFocus: true });
+    }, () => undefined);
+  });
   // Phones suspend background pages and may drop the live connection: on return, reconnect if it
   // closed and refresh the data, without moving the focus.
   document.addEventListener('visibilitychange', () => {

@@ -7,6 +7,7 @@ import { parseEntries, type HistoryEntry } from './history.ts';
 import { projectDir, safeJoin } from './paths.ts';
 import { listTasks, readTask, type Task } from './tasks.ts';
 import { flatten } from './text.ts';
+import { isStatus } from './transitions.ts';
 
 export const MAX_INDEX = 30;
 export const MAX_DAYS = 30;
@@ -137,7 +138,8 @@ export function search(home: string, slug: string, query: string, limit: number)
     const dir = safeJoin(projectDir(home, slug), 'tasks');
     if (spend(existsSync(dir) ? dirSize(dir) : 0)) {
       for (const task of listTasks(home, slug).tasks) {
-        const proposed = task.status === 'proposed';
+        // A status this version does not know (WAY-24) may be an unapproved one: marked like a proposal.
+        const proposed = task.status === 'proposed' || !isStatus(task.status);
         const head = `${task.title}\n${task.body}`;
         const at = find(head);
         if (at >= 0) tasks.push({ kind: 'task', id: task.id, proposed, snippet: snippet(head, at, needle.length) });

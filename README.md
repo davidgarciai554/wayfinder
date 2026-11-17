@@ -199,6 +199,21 @@ wayfinder serve
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
 
+## Formato de los datos y actualizaciones
+
+La carpeta de datos lleva en su raíz un archivo `FORMAT` con un único número entero: la versión del formato de los datos (hoy, `1`). Lo escribe la carpeta al crearse. Una carpeta creada antes de que existiera no lo tiene y cuenta como formato 1; Wayfinder no lo añade por su cuenta, porque abrir la carpeta nunca escribe nada.
+
+- **Datos más nuevos que el plugin.** Si `FORMAT` dice un número mayor del que entiende tu versión (por ejemplo, una sesión de Claude que sigue con el plugin con el que arrancó, o una imagen de Docker antigua sobre la misma carpeta):
+  - Claude recibe un aviso al empezar la sesión y al final de cada respuesta de las herramientas `wf_*`; la web lo muestra bajo la barra superior.
+  - La carpeta queda **en solo lectura**: se puede leer todo, pero no se guarda nada (tareas, avances, errores, capturas ni las órdenes «registra este proyecto» o «abre Wayfinder»). La web oculta sus botones aunque tengas la clave.
+  - Para salir: reinicia la sesión de Claude o actualiza Wayfinder; en Docker, reconstruye la imagen. Si la marca fuera errónea, restáurala desde el historial git de la carpeta de datos o borra `FORMAT` (vuelve a formato 1). No hay ninguna opción para saltarse el bloqueo.
+  - La marca se lee en cada operación, así que un proceso que ya estaba en marcha se entera sin reiniciarse. La web lo muestra en el siguiente refresco o navegación (como mucho, unos 30 segundos).
+- **Marca que no se entiende** (vacía, texto, un número no válido): se avisa, se trata como formato 1 y se sigue trabajando.
+- **Estados nuevos.** Una tarea con un estado que tu versión no conoce se muestra con ese estado tal cual (en la web, en la sección «Otros estados») y no se puede cambiar; las tareas que dependen de ella siguen bloqueadas. Los errores ya funcionaban así.
+- **Qué cambios admite la 1.x sin subir la marca:** claves o campos opcionales nuevos, valores nuevos de estado (de tareas o de errores) y tipos de entrada nuevos. Una versión que no los entiende los conserva, los muestra y no los sobrescribe.
+- **Qué obliga a subir la marca (y a una 2.0):** renombrar o quitar un campo, cambiar su significado, mover la estructura de carpetas, o añadir valores a la prioridad o al origen de las tareas (una versión anterior los leería como `medium` o `user` y los perdería al reescribir la tarea). La marca es siempre un único entero decimal. `test/format.test.ts` fija la versión y esos valores, pero no detecta renombres ni cambios de significado: la regla hay que aplicarla al revisar.
+- **Versiones anteriores:** las versiones publicadas antes de este aviso (0.1.0 incluida) no leen `FORMAT`. Una sesión con un plugin anterior puede seguir escribiendo en una carpeta de formato más nuevo; el aviso solo protege desde esta versión.
+
 ## Seguridad y privacidad
 
 - Nunca guardes secretos ni datos personales en tareas, bitácoras o capturas. Wayfinder rechaza los patrones de secreto más comunes, pero es una ayuda, no una garantía.

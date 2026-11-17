@@ -128,12 +128,13 @@ test('corrupt task files are reported as unreadable without hiding the rest', (t
   const dir = join(home, 'projects/demo/tasks');
   writeFileSync(join(dir, 'WF-90-yaml.md'), '---\nid: [unclosed\n---\n');
   writeFileSync(join(dir, 'WF-91-noid.md'), '---\ntitle: Sin id\nstatus: todo\n---\n');
-  writeFileSync(join(dir, 'WF-92-status.md'), '---\nid: WF-92\ntitle: X\nstatus: blocked\n---\n');
+  // WAY-24: a status from a newer version (lowercase word) is read; one that cannot be a status is not.
+  writeFileSync(join(dir, 'WF-92-status.md'), '---\nid: WF-92\ntitle: X\nstatus: Not A Status\n---\n');
   const { tasks, unreadable } = listTasks(home, 'demo');
   assert.equal(tasks.length, 1);
   assert.equal(unreadable.length, 3);
   assert.match(unreadable.map((u) => u.reason).join('|'), /invalid YAML/);
-  assert.match(unreadable.map((u) => u.reason).join('|'), /unknown status: blocked/);
+  assert.match(unreadable.map((u) => u.reason).join('|'), /unknown status: Not A Status/);
   // New IDs never collide with an unreadable file that still has a numeric prefix.
   assert.equal(createTask(home, 'demo', { title: 'Nueva' }, 'web').task.id, 'WF-93');
 });

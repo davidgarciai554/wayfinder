@@ -2,6 +2,7 @@ import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WayfinderError } from './errors.ts';
+import { assertFormatWritable } from './format.ts';
 
 const sleeper = new Int32Array(new SharedArrayBuffer(4));
 export function sleepSync(ms: number): void {
@@ -36,8 +37,12 @@ const LOCK_TIMEOUT_MS = 20_000;
 /**
  * Cross-process lock based on an atomic mkdir. A lock older than LOCK_TTL_MS is treated as
  * orphaned. Only valid on local disks: network shares and sync folders may not honour mkdir atomicity.
+ *
+ * Every write to the data folder and its .state/ runs here, so this is where data from a newer
+ * format becomes read only (WAY-24): it throws before taking the lock, with nothing written.
  */
 export function withLock<T>(home: string, fn: () => T): T {
+  assertFormatWritable(home);
   const lockDir = join(home, '.wayfinder.lock');
   const started = Date.now();
   for (;;) {

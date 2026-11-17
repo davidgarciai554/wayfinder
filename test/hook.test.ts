@@ -14,7 +14,7 @@ import { getHome } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
 import { createTask, logProgress, setStatus } from '../src/store/tasks.ts';
 import { createError, discardError, resolveError } from '../src/store/error-records.ts';
-import { makeHome } from './helpers.ts';
+import { commitCount, makeHome, makeLegacyHome, tree } from './helpers.ts';
 
 const bundle = fileURLToPath(new URL('../plugin/dist/wayfinder.mjs', import.meta.url));
 
@@ -423,4 +423,75 @@ test('session-start never lets open errors push the task list out', (t) => {
   assert.ok(ctx.length <= 4000);
   assert.doesNotMatch(ctx, /Open errors/);
   assert.match(ctx, /list truncated/);
+});
+
+test('WAY-24: with data from a newer format, every session start opens with the notice, even with a long task list', (t) => {
+  const { home, repo } = setup(t);
+  const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: 'en' };
+  for (let i = 0; i < 60; i++) createTask(home, 'consumer', { title: `Task with a fairly long title number ${i}` }, 'web');
+  const first: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+  assert.doesNotMatch(first, /WAYFINDER NOTICE/, 'format 1: no notice');
+  writeFileSync(join(home, 'FORMAT'), '3\n');
+  for (let n = 0; n < 2; n++) {
+    const ctx: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+    assert.ok(ctx.length <= 4000);
+    assert.match(ctx, /^WAYFINDER NOTICE: The data folder uses format 3 and this version of Wayfinder only understands up to 1[^\n]*do not try to fix the data\.$/m);
+    assert.ok(ctx.startsWith('WAYFINDER NOTICE'), 'the notice goes first, so truncation never drops it');
+    assert.match(ctx, /CO-1 \[todo\]/, 'the tasks are still listed');
+    assert.match(ctx, /list truncated/);
+    assert.doesNotMatch(ctx, /unreadable/i);
+  }
+  // An unregistered repository is asked to register with the notice in front.
+  const other = join(home, '..', 'other');
+  mkdirSync(other);
+  execFileSync('git', ['init', '-q', other]);
+  const ask: string = hook('session-start', { cwd: other }, { ...env, CLAUDE_PROJECT_DIR: other }).json.hookSpecificOutput.additionalContext;
+  assert.match(ask, /^WAYFINDER NOTICE: The data folder uses format 3/);
+  // An unreadable mark: its own notice, never «newer».
+  writeFileSync(join(home, 'FORMAT'), 'abc\n');
+  const unreadable: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+  assert.match(unreadable, /^WAYFINDER NOTICE: The format mark of the data folder \(the FORMAT file\)/);
+  assert.doesNotMatch(unreadable, /abc/, 'nothing of the file reaches the context');
+});
+
+test('WAY-24: on a folder written before the mark the hook adds nothing and writes nothing', (t) => {
+  const home = makeLegacyHome(t);
+  const repo = join(home, '..', 'consumer');
+  mkdirSync(repo);
+  execFileSync('git', ['init', '-q', repo]);
+  // LEGACY_FILES has project «demo» at D:/demo: point it at this repository, as a person would.
+  const project = join(home, 'projects/demo/PROJECT.md');
+  writeFileSync(project, readFileSync(project, 'utf8').replace('D:/demo', repo.replaceAll('\\', '/')));
+  execFileSync('git', ['-C', home, '-c', 'user.name=T', '-c', 'user.email=t@localhost', '-c', 'commit.gpgsign=false', 'commit', '-q', '-am', 'wf: move'], { stdio: 'pipe' });
+  const before = { tree: tree(home), commits: commitCount(home) };
+  const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: 'en' };
+  const ctx: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /WF-1 \[todo\]/);
+  assert.doesNotMatch(ctx, /WAYFINDER NOTICE/);
+  hook('stop', { stop_hook_active: false }, env);
+  assert.deepEqual({ tree: tree(home), commits: commitCount(home) }, before);
+  assert.equal(existsSync(join(home, 'FORMAT')), false);
+});
+
+test('WAY-24: a status unknown to this version is mentioned by ID and status only; stop never asks for a log it cannot write', (t) => {
+  const { home, repo } = setup(t);
+  const env = { WAYFINDER_HOME: home, CLAUDE_PROJECT_DIR: repo, WAYFINDER_LANG: 'en' };
+  writeFileSync(join(home, 'projects/consumer/tasks/CO-7-later.md'), '---\nid: CO-7\ntitle: TITLE-OF-UNKNOWN\nstatus: snoozed\n---\n');
+  const ctx: string = hook('session-start', { cwd: repo }, env).json.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /With a status this version does not know[^\n]*\n- CO-7 \[snoozed\]$/m);
+  assert.doesNotMatch(ctx, /TITLE-OF-UNKNOWN/);
+
+  // In progress and nothing logged would block the stop, but a newer format cannot be written.
+  const id = createTask(home, 'consumer', { title: 'Work' }, 'web').task.id;
+  setStatus(home, 'consumer', id, 'in-progress', 'mcp', { trivial: true, note: 'minimal' });
+  const day = new Date();
+  const tomorrow = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 12).getTime();
+  const stop = () => {
+    let out = '';
+    runHook('stop', { stdin: () => JSON.stringify({ stop_hook_active: false }), out: (s) => (out += s) }, env, () => tomorrow);
+    return out;
+  };
+  assert.match(stop(), /"decision":"block"/);
+  writeFileSync(join(home, 'FORMAT'), '2\n');
+  assert.equal(stop(), '');
 });

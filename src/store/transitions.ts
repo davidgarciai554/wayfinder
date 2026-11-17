@@ -2,6 +2,11 @@ import { WayfinderError } from './errors.ts';
 
 export const STATUSES = ['proposed', 'todo', 'in-progress', 'done', 'discarded'] as const;
 export type Status = (typeof STATUSES)[number];
+/**
+ * What a status written by a newer version may look like. Tasks and error records with such a
+ * status are read as they are, so they stay visible, but this version never rewrites them (WAY-24).
+ */
+export const STATUS_RE = /^[a-z][a-z-]{0,19}$/;
 export const PRIORITIES = ['low', 'medium', 'high'] as const;
 export type Priority = (typeof PRIORITIES)[number];
 export const ORIGINS = ['user', 'claude', 'routine'] as const;

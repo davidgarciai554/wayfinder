@@ -7,7 +7,7 @@ import { assertNoSecrets } from './log.ts';
 import { isWithin, projectDir, safeJoin } from './paths.ts';
 import { requireProject } from './project.ts';
 import { withLock } from './sync.ts';
-import { readTask, writeTaskUnlocked } from './tasks.ts';
+import { readTaskForWrite, writeTaskUnlocked } from './tasks.ts';
 import { isoLocal, localDay, systemClock, type Clock } from './time.ts';
 
 export const MAX_CAPTURE_BYTES = 10 * 1024 * 1024;
@@ -77,14 +77,15 @@ export function attachCapture(
 
   return withLock(home, () => {
     const now = clock();
+    // Read before copying: a task this version cannot rewrite (WAY-24) leaves no orphan capture.
+    const task = input.taskId ? readTaskForWrite(home, slug, input.taskId) : null;
     const name = `${localDay(now).replaceAll('-', '')}-${randomBytes(4).toString('hex')}.${ext}`;
     const target = safeJoin(projectDir(home, slug), 'assets', name);
     copyFileSync(real, target);
     const asset = `projects/${slug}/assets/${name}`;
     const paths = [asset];
     const markdown = `![${alt}](../assets/${name})`;
-    if (input.taskId) {
-      const task = readTask(home, slug, input.taskId);
+    if (task) {
       task.body = `${task.body.trimEnd()}\n\n${markdown}\n`;
       task.updated = isoLocal(now);
       writeTaskUnlocked(home, task);

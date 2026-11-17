@@ -827,3 +827,72 @@ test('WAY-11: wf_error update with task_id and a note moves an error; wf_get and
   assert.match((await call('wf_errors', { task_id: 'MYA-2' })).text, /^ERR-1 \[open\] \(MYA-2\) Bundle fails$/m);
   assert.match((await call('wf_errors', { task_id: 'MYA-1' })).text, /^No errors with these filters/);
 });
+
+test('WAY-24: the live MCP sees the data format change; a newer one is announced on every tool and every write fails', { timeout: 120_000 }, async (t) => {
+  const env = makeEnv(t);
+  const { call } = await connect(env);
+  assert.equal((await registerWithOrder(env, call)).isError, false);
+  await call('wf_create', { title: 'Idea' });
+  const tasks = join(env.home, 'projects', 'my-app', 'tasks');
+
+  // A status written by a newer version: listed and read with its literal status, never rewritten.
+  const later = join(tasks, 'MYA-9-later.md');
+  writeFileSync(later, '---\nid: MYA-9\ntitle: Later\nstatus: snoozed\npriority: low\norigin: user\n---\n');
+  const listed = await call('wf_list');
+  // Written by hand here, so it is also «modified outside Wayfinder».
+  assert.match(listed.text, /^MYA-9 \[snoozed\] \(low\) Later — status unknown to this version: read only, and it may not be approved; modified outside Wayfinder$/m);
+  assert.match((await call('wf_list', { status: ['done'] })).text, /^MYA-9 \[snoozed\]/m, 'whatever the status filter');
+  assert.doesNotMatch(listed.text, /unreadable|Warning:/);
+  assert.match((await call('wf_get', { id: 'MYA-9' })).text, /^status: snoozed \(unknown to this version\)$/m);
+  const hash = sha(later);
+  for (const [tool, args] of [
+    ['wf_set_status', { id: 'MYA-9', status: 'done' }],
+    ['wf_update', { id: 'MYA-9', title: 'Other' }],
+    ['wf_log', { task_id: 'MYA-9', entry: 'Avanzamos en MYA-9.' }],
+  ] as const) {
+    const r = await call(tool, args);
+    assert.equal(r.isError, true, tool);
+    assert.match(r.text, /^MYA-9 has a status this version does not know \("snoozed"\): it can be read but not changed/, tool);
+  }
+  assert.equal(sha(later), hash);
+  rmSync(later);
+
+  // The same process, without restarting: the mark now says format 2.
+  writeFileSync(join(env.home, 'FORMAT'), '2\n');
+  const status = () => execFileSync('git', ['-C', env.home, 'status', '--porcelain'], { encoding: 'utf8' });
+  const before = { status: status(), commits: commitCount(env.home) };
+  writeFileSync(join(env.captures, 'shot.png'), PNG);
+  const notice = /The data folder uses format 2 and this version of Wayfinder only understands up to 1[^\n]*by hand\./g;
+  const reads: Record<string, Record<string, unknown>> = {
+    wf_list: {}, wf_get: { id: 'MYA-1' }, wf_history: { task_id: 'MYA-1' }, wf_search: { query: 'Idea' }, wf_errors: {},
+    wf_project: { action: 'get' }, wf_web: { action: 'status' },
+  };
+  const writes: Record<string, Record<string, unknown>> = {
+    wf_create: { title: 'Other' }, wf_update: { id: 'MYA-1', title: 'Renamed' }, wf_set_status: { id: 'MYA-1', status: 'discarded', note: 'n' },
+    wf_log: { task_id: 'MYA-1', entry: 'Avanzamos en MYA-1.' }, wf_error: { action: 'create', title: 'Fails', task_id: 'MYA-1', context: 'npm test' },
+    wf_attach: { path: join(env.captures, 'shot.png'), alt: 'Shot', task_id: 'MYA-1' }, wf_review: { id: 'MYA-1' },
+  };
+  assert.deepEqual([...Object.keys(reads), ...Object.keys(writes)].sort(), MCP_TOOLS, 'every tool is covered');
+  for (const [tool, args] of Object.entries(reads)) {
+    const r = await call(tool, args);
+    assert.equal(r.isError, false, `${tool}: ${r.text}`);
+    assert.equal(r.text.match(notice)?.length, 1, `${tool} ends with the notice once`);
+    assert.match(r.text, /\nWarning: The data folder uses format 2/, tool);
+  }
+  const extraWrites: Array<[string, Record<string, unknown>]> = [['wf_web', { action: 'start' }], ['wf_project', { action: 'decline' }]];
+  for (const [tool, args] of [...Object.entries(writes), ...extraWrites]) {
+    const r = await call(tool, args);
+    assert.equal(r.isError, true, `${tool}: ${r.text}`);
+    assert.match(r.text, /^The data folder uses format 2/, tool);
+    assert.equal(r.text.match(notice)?.length, 1, `${tool} says it once`);
+  }
+  assert.deepEqual({ status: status(), commits: commitCount(env.home) }, before, 'nothing was written');
+
+  // An unreadable mark only warns; no mark at all (a 0.1.0 folder) says nothing.
+  writeFileSync(join(env.home, 'FORMAT'), 'abc');
+  const logged = await call('wf_log', { task_id: 'MYA-1', entry: 'Avanzamos en MYA-1: con marca ilegible.' });
+  assert.equal(logged.isError, false, logged.text);
+  assert.match(logged.text, /\nWarning: The format mark of the data folder \(the FORMAT file\)/);
+  rmSync(join(env.home, 'FORMAT'));
+  assert.doesNotMatch((await call('wf_list')).text, /Warning:/);
+});

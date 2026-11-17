@@ -140,6 +140,17 @@ const port = createTask(E2E_HOME, 'errores', { title: 'Revisar el puerto de prue
 createError(E2E_HOME, 'errores', { title: 'El puerto 4555 estaba ocupado', task: port, context: 'npm run test:e2e.', kind: 'environment' }, at(20));
 discardError(E2E_HOME, 'errores', 'ERR-14', 'Falsa alarma: otra prueba seguía abierta.', at(21));
 
+// Data format (WAY-24): its own project, with two tasks whose status only a newer version knows
+// (one with a hostile title), written as that version would leave them. The format mark itself is
+// global: format.spec.ts changes FORMAT and puts it back.
+createProject(E2E_HOME, { slug: 'formato', name: 'formato', idPrefix: 'FOR', localPath: 'D:/formato' });
+createTask(E2E_HOME, 'formato', { title: 'Tarea normal' }, 'web', clock);
+const formatTasks = join(E2E_HOME, 'projects', 'formato', 'tasks');
+const newerTask = (id: string, title: string, status: string) =>
+  writeFileSync(join(formatTasks, `${id}-newer.md`), `---\nid: ${id}\ntitle: ${JSON.stringify(title)}\nstatus: ${status}\npriority: medium\norigin: user\ncreated: 2026-10-21T10:00:00+02:00\nupdated: 2026-10-21T10:00:00+02:00\nplan: ""\n---\n\nEscrita por una versión más nueva.\n`);
+newerTask('FOR-8', 'Pospuesta hasta diciembre', 'snoozed');
+newerTask('FOR-9', '<img src=x onerror=window.__xss=9>', 'review');
+
 // Real git, unless a spec switches it "off" with the flag file (git missing → 200 with a warning).
 rmSync(e2eGitOffFlag(lang), { force: true });
 setGitRunner((args) => {
