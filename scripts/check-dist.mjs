@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildAll } from './build.mjs';
+import { versionProblems } from './versions.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -54,6 +55,15 @@ for (const file of sources) {
     if (!allowed.has(m[1])) problems.push(`src/${file.replaceAll('\\', '/')}: git subcommand "${m[1]}" is not in ALLOWED_SUBCOMMANDS`);
   }
 }
+
+// One version number: the lockfile and the plugin manifest must repeat the one in package.json.
+// A build does not fix this: change the number in the file the message names.
+const readJson = async (...path) => JSON.parse(await readFile(join(root, ...path), 'utf8'));
+problems.push(...versionProblems({
+  pkg: await readJson('package.json'),
+  lock: await readJson('package-lock.json'),
+  plugin: await readJson('plugin', '.claude-plugin', 'plugin.json'),
+}));
 
 if (problems.length > 0) {
   console.error(`check:dist failed. Run "npm run build".\n${problems.join('\n')}`);

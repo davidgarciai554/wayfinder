@@ -148,6 +148,35 @@ Escribe la orden con el ID, por ejemplo «aprueba WAY-4». Para varias a la vez,
 2. Si ve algo sospechoso (instrucciones ocultas, peticiones de secretos, comandos de red…), te explica el motivo y no la aprueba hasta que repitas la orden, por ejemplo «aprueba WAY-4 igualmente».
 3. Solo se aprueban por chat las propuestas creadas por Claude, y quedan marcadas como «Aprobada por chat».
 
+## Actualizar el plugin
+
+Cada paso dice si está comprobado con Wayfinder o si solo lo dice la documentación de Claude Code. Lo comprobado se probó con Claude Code 2.1.322, con el plugin instalado desde una copia local del repositorio.
+
+1. **Mira qué tienes instalado.** `claude plugin list --json` muestra, para `wayfinder@wayfinder`:
+   - `version`: la versión que Claude Code tiene registrada.
+   - De dónde se carga: si aparece `readFromFolder`, de esa carpeta tuya; si no, de la copia en caché de `installPath`.
+   - `folderVersion`: la versión que dice esa carpeta. Si no coincide con `version`, hay una actualización por registrar.
+
+   `node "<esa carpeta>\dist\wayfinder.mjs" --version` imprime la versión del programa. *Comprobado.*
+2. **Si lo instalaste desde una copia local del repositorio, actualiza antes esa copia** (`git pull`). Claude Code carga el plugin directamente de la carpeta: el código nuevo entra en la siguiente sesión aunque el número de versión no haya cambiado. *Comprobado.*
+3. **Actualiza el plugin:**
+
+   ```powershell
+   claude plugin marketplace update wayfinder
+   claude plugin update wayfinder@wayfinder
+   ```
+
+   - **Desde una copia local.** *Comprobado, en ese orden.* Sin cambio de número responde «nothing to update» y «already at the latest version». Con cambio de número, por ejemplo «updated from 0.1.0 to 0.1.1», y `version` pasa a ser la nueva.
+   - **Desde GitHub** (copia en caché por versión). *Según la documentación de Claude Code; sin comprobar todavía con Wayfinder.* Claude Code solo trae una copia nueva cuando cambia el número de versión del plugin. «already at the latest version» significa que tienes la última versión numerada, no necesariamente los últimos cambios del repositorio: mientras el número siga en `0.1.0`, una copia instalada desde GitHub no cambia.
+4. **Reinicia las sesiones de Claude abiertas.** Una sesión en marcha sigue con el servidor anterior y no muestra las funciones nuevas. `claude plugin update` lo avisa: «Restart to apply changes» (*comprobado*). Claude Code dice que `/reload-plugins` también lo aplica sin cerrar la sesión (*sin comprobar*).
+
+Qué se conserva:
+
+- **Tus datos.** La carpeta de datos (`~/.wayfinder`, o la que pusieras en `home`) está fuera del plugin y de su caché. *Comprobado: `claude plugin update` no escribió nada en la carpeta configurada en `home`.*
+- **Tus opciones** (`language`, `home`, `capturesDir`, `webHost`). Claude Code las guarda en sus ajustes, fuera del plugin. *Comprobado: `claude plugin update` conservó `language` y `home`.* No está comprobado qué pasa al desinstalar y volver a instalar: para actualizar no hace falta, y si lo haces, revisa las opciones con `claude plugin configure wayfinder`.
+
+Si después de actualizar aparece el aviso de solo lectura, mira «[Formato de los datos y actualizaciones](#formato-de-los-datos-y-actualizaciones)». Lo que cambia entre versiones está en [CHANGELOG.md](CHANGELOG.md). Sin el plugin o con Docker, repite la instalación de su sección («Línea de comandos sin el plugin», «Docker»).
+
 ## Web
 
 Escribe en el chat **«abre Wayfinder»** (o «open Wayfinder»). Como en el registro, tiene que ser esa frase, escrita por ti: un «sí» no basta.
@@ -206,7 +235,7 @@ La carpeta de datos lleva en su raíz un archivo `FORMAT` con un único número 
 - **Datos más nuevos que el plugin.** Si `FORMAT` dice un número mayor del que entiende tu versión (por ejemplo, una sesión de Claude que sigue con el plugin con el que arrancó, o una imagen de Docker antigua sobre la misma carpeta):
   - Claude recibe un aviso al empezar la sesión y al final de cada respuesta de las herramientas `wf_*`; la web lo muestra bajo la barra superior.
   - La carpeta queda **en solo lectura**: se puede leer todo, pero no se guarda nada (tareas, avances, errores, capturas ni las órdenes «registra este proyecto» o «abre Wayfinder»). La web oculta sus botones aunque tengas la clave.
-  - Para salir: reinicia la sesión de Claude o actualiza Wayfinder; en Docker, reconstruye la imagen. Si la marca fuera errónea, restáurala desde el historial git de la carpeta de datos o borra `FORMAT` (vuelve a formato 1). No hay ninguna opción para saltarse el bloqueo.
+  - Para salir: reinicia la sesión de Claude o actualiza Wayfinder (ver «[Actualizar el plugin](#actualizar-el-plugin)»); en Docker, reconstruye la imagen. Si la marca fuera errónea, restáurala desde el historial git de la carpeta de datos o borra `FORMAT` (vuelve a formato 1). No hay ninguna opción para saltarse el bloqueo.
   - La marca se lee en cada operación, así que un proceso que ya estaba en marcha se entera sin reiniciarse. La web lo muestra en el siguiente refresco o navegación (como mucho, unos 30 segundos).
 - **Marca que no se entiende** (vacía, texto, un número no válido): se avisa, se trata como formato 1 y se sigue trabajando.
 - **Estados nuevos.** Una tarea con un estado que tu versión no conoce se muestra con ese estado tal cual (en la web, en la sección «Otros estados») y no se puede cambiar; las tareas que dependen de ella siguen bloqueadas. Los errores ya funcionaban así.
@@ -236,7 +265,7 @@ npm run typecheck
 npm test              # unitarios e integración (construye antes)
 npm run test:e2e      # Playwright
 npm run test:docker   # requiere Docker Desktop y la imagen wayfinder:dev
-npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red
+npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red; una sola versión
 ```
 
 El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está en `.claude-plugin/marketplace.json`.
