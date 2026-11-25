@@ -8499,7 +8499,7 @@ var WayfinderError = class extends Error {
 };
 
 // src/store/init.ts
-import { existsSync, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, statSync as statSync2 } from "node:fs";
+import { existsSync, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync4, statSync as statSync2 } from "node:fs";
 import { join as join5, relative } from "node:path";
 
 // src/store/format.ts
@@ -8546,7 +8546,7 @@ function assertFormatWritable(home) {
 
 // src/store/git.ts
 import { execFileSync } from "node:child_process";
-import { readFileSync as readFileSync2 } from "node:fs";
+import { readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
 
 // src/store/secrets.ts
@@ -8565,7 +8565,7 @@ function findSecrets(text2) {
 }
 
 // src/store/sync.ts
-import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join as join3 } from "node:path";
 import { randomBytes } from "node:crypto";
 var sleeper = new Int32Array(new SharedArrayBuffer(4));
@@ -8596,6 +8596,8 @@ var LOCK_TIMEOUT_MS = 2e4;
 function withLock(home, fn) {
   assertFormatWritable(home);
   const lockDir = join3(home, ".wayfinder.lock");
+  const ownerFile = join3(lockDir, "owner");
+  const token = `${process.pid}.${randomBytes(8).toString("hex")}`;
   const started = Date.now();
   for (; ; ) {
     try {
@@ -8622,10 +8624,16 @@ function withLock(home, fn) {
     }
   }
   try {
+    writeFileSync(ownerFile, token);
     assertFormatWritable(home);
     return fn();
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    let owner = "";
+    try {
+      owner = readFileSync2(ownerFile, "utf8");
+    } catch {
+    }
+    if (owner === token) rmSync(lockDir, { recursive: true, force: true });
   }
 }
 
@@ -8701,7 +8709,7 @@ function commitPaths(home, paths, message, trailers = []) {
     if (!TEXT_FILE.test(rel)) continue;
     let content;
     try {
-      content = readFileSync2(join4(home, rel), "utf8");
+      content = readFileSync3(join4(home, rel), "utf8");
     } catch {
       continue;
     }
@@ -8787,7 +8795,7 @@ function scanExisting(home) {
   for (const entry of readdirSync(projects, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
     const full = join5(entry.parentPath, entry.name);
-    const patterns = findSecrets(readFileSync3(full, "utf8"));
+    const patterns = findSecrets(readFileSync4(full, "utf8"));
     if (patterns.length) found.push({ file: relative(home, full).replaceAll("\\", "/"), pattern: patterns.join(", ") });
   }
   return found;
@@ -8893,13 +8901,13 @@ function projectDir(home, slug) {
 }
 
 // src/store/state.ts
-import { existsSync as existsSync2, readFileSync as readFileSync4 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync5 } from "node:fs";
 import { join as join7 } from "node:path";
 function readState(home, name) {
   const file2 = join7(home, ".state", name);
   if (!existsSync2(file2)) return {};
   try {
-    const parsed = JSON.parse(readFileSync4(file2, "utf8"));
+    const parsed = JSON.parse(readFileSync5(file2, "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
@@ -9051,7 +9059,7 @@ function consumeOrderUnlocked(home, slug, id) {
 // src/server.ts
 import { createServer } from "node:http";
 import { connect } from "node:net";
-import { existsSync as existsSync7, readdirSync as readdirSync5, readFileSync as readFileSync9, statSync as statSync3, watch } from "node:fs";
+import { existsSync as existsSync7, readdirSync as readdirSync5, readFileSync as readFileSync10, statSync as statSync3, watch } from "node:fs";
 import { extname, join as join11 } from "node:path";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -14230,7 +14238,7 @@ function hasHistoryFor(history, day) {
 }
 
 // src/store/error-records.ts
-import { existsSync as existsSync6, readdirSync as readdirSync4, readFileSync as readFileSync8, rmSync as rmSync2 } from "node:fs";
+import { existsSync as existsSync6, readdirSync as readdirSync4, readFileSync as readFileSync9, rmSync as rmSync2 } from "node:fs";
 import { join as join10 } from "node:path";
 
 // src/store/frontmatter.ts
@@ -14266,15 +14274,15 @@ ${content}${content.endsWith("\n") ? "" : "\n"}`;
 }
 
 // src/store/log.ts
-import { existsSync as existsSync4, readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync7 } from "node:fs";
 
 // src/store/project.ts
-import { existsSync as existsSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync6 } from "node:fs";
 import { join as join8 } from "node:path";
 function readProject(home, slug) {
   const file2 = join8(projectDir(home, slug), "PROJECT.md");
   if (!existsSync3(file2)) return null;
-  const parsed = parseFrontmatter(readFileSync5(file2, "utf8"));
+  const parsed = parseFrontmatter(readFileSync6(file2, "utf8"));
   if ("error" in parsed) return null;
   const { data, body } = parsed;
   if (typeof data.idPrefix !== "string" || !ID_PREFIX_RE.test(data.idPrefix)) return null;
@@ -14359,7 +14367,7 @@ function appendLogUnlocked(home, slug, entry, taskId, clock) {
   const now = clock();
   const day = localDay(now);
   const file2 = safeJoin(projectDir(home, slug), "log", `${day}.md`);
-  const previous = existsSync4(file2) ? readFileSync6(file2, "utf8").replace(/\r\n?/g, "\n") : `# ${day}
+  const previous = existsSync4(file2) ? readFileSync7(file2, "utf8").replace(/\r\n?/g, "\n") : `# ${day}
 `;
   const heading2 = `## ${localTime(now)}${taskId ? ` \xB7 ${taskId}` : ""}`;
   writeFileAtomic(file2, `${previous.trimEnd()}
@@ -14373,7 +14381,7 @@ ${text2}
 function hasFreeLogFor(home, slug, day) {
   const file2 = safeJoin(projectDir(home, slug), "log", `${day}.md`);
   if (!existsSync4(file2)) return false;
-  const text2 = readFileSync6(file2, "utf8").replace(/\r\n?/g, "\n");
+  const text2 = readFileSync7(file2, "utf8").replace(/\r\n?/g, "\n");
   const heads = [...text2.matchAll(/^## (.*)$/gm)];
   return heads.some((head, i) => {
     if (head[1].includes(" \xB7 ")) return false;
@@ -14393,7 +14401,7 @@ function appendLog(home, slug, entry, options = {}) {
 }
 
 // src/store/tasks.ts
-import { existsSync as existsSync5, readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync5, readdirSync as readdirSync3, readFileSync as readFileSync8 } from "node:fs";
 import { join as join9 } from "node:path";
 
 // src/store/review.ts
@@ -14557,7 +14565,7 @@ function listTasks(home, slug) {
   if (!existsSync5(dir)) return { tasks, unreadable };
   for (const name of readdirSync3(dir).filter((n) => n.endsWith(".md")).sort()) {
     const rel = `projects/${slug}/tasks/${name}`;
-    const result = toTask(rel, readFileSync7(join9(dir, name), "utf8"));
+    const result = toTask(rel, readFileSync8(join9(dir, name), "utf8"));
     if ("reason" in result) unreadable.push(result);
     else tasks.push(result);
   }
@@ -14571,7 +14579,7 @@ function readTask(home, slug, id) {
   const name = existsSync5(dir) ? readdirSync3(dir).find((n) => n === `${id}.md` || n.startsWith(`${id}-`)) : void 0;
   if (!name) throw new WayfinderError("store.taskNotFound", { id });
   const rel = `projects/${slug}/tasks/${name}`;
-  const result = toTask(rel, readFileSync7(join9(dir, name), "utf8"));
+  const result = toTask(rel, readFileSync8(join9(dir, name), "utf8"));
   if ("reason" in result) throw new WayfinderError("store.taskUnreadable", { file: rel, reason: result.reason });
   if (result.id !== id) throw new WayfinderError("store.taskUnreadable", { file: rel, reason: `id mismatch (${result.id})` });
   return result;
@@ -14965,7 +14973,7 @@ function listErrors(home, slug) {
   if (!existsSync6(dir)) return { errors, unreadable };
   for (const name of readdirSync4(dir).filter((n) => n.endsWith(".md")).sort()) {
     const rel = `projects/${slug}/errors/${name}`;
-    const result = toRecord(rel, readFileSync8(join10(dir, name), "utf8"));
+    const result = toRecord(rel, readFileSync9(join10(dir, name), "utf8"));
     if ("reason" in result) unreadable.push(result);
     else errors.push(result);
   }
@@ -14979,7 +14987,7 @@ function readError(home, slug, id) {
   const name = existsSync6(dir) ? readdirSync4(dir).find((n) => n === `${id}.md` || n.startsWith(`${id}-`)) : void 0;
   if (!name) throw new WayfinderError("store.errorNotFound", { id });
   const rel = `projects/${slug}/errors/${name}`;
-  const result = toRecord(rel, readFileSync8(join10(dir, name), "utf8"));
+  const result = toRecord(rel, readFileSync9(join10(dir, name), "utf8"));
   if ("reason" in result) throw new WayfinderError("store.errorUnreadable", { file: rel, reason: result.reason });
   if (result.id !== id) throw new WayfinderError("store.errorUnreadable", { file: rel, reason: `id mismatch (${result.id})` });
   return result;
@@ -15192,7 +15200,7 @@ function prepare(patch, note) {
 function readForWrite(home, slug, id) {
   const record2 = readError(home, slug, id);
   if (!isErrorStatus(record2.status)) throw new WayfinderError("store.errorUnknownStatus", { id, status: record2.status });
-  return { record: record2, previous: readFileSync8(safeJoin(home, record2.file), "utf8") };
+  return { record: record2, previous: readFileSync9(safeJoin(home, record2.file), "utf8") };
 }
 function updateError(home, slug, id, patch, options = {}) {
   requireProject(home, slug);
@@ -15490,7 +15498,7 @@ function startServer(options) {
     if (parts[2] === "log" && parts.length === 4 && DAY_RE.test(parts[3])) {
       const file2 = safeJoin(projectDir(home, slug), "log", `${parts[3]}.md`);
       if (!existsSync7(file2)) return notFound(res);
-      const text2 = readFileSync9(file2, "utf8").replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n/, "");
+      const text2 = readFileSync10(file2, "utf8").replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n/, "");
       return json2(res, 200, { day: parts[3], html: md.render(text2) });
     }
     if (parts[2] === "assets" && parts.length === 3) {
@@ -15513,7 +15521,7 @@ function startServer(options) {
     const dir = safeJoin(projectDir(home, slug), "assets");
     const file2 = safeJoin(dir, name);
     if (!existsSync7(file2) || !isWithin(dir, file2) || !statSync3(file2).isFile()) return notFound(res);
-    send(res, 200, readFileSync9(file2), MIME[extname(name).toLowerCase()] ?? "application/octet-stream");
+    send(res, 200, readFileSync10(file2), MIME[extname(name).toLowerCase()] ?? "application/octet-stream");
   }
   function handle(req, res) {
     try {
@@ -15553,7 +15561,7 @@ function startServer(options) {
     if (file2) {
       const full = join11(webDir2, file2);
       if (!existsSync7(full)) return notFound(res);
-      return send(res, 200, readFileSync9(full), MIME[extname(file2)]);
+      return send(res, 200, readFileSync10(full), MIME[extname(file2)]);
     }
     if (pathname === "/api/events") return openEvents(req, res);
     const parts = pathname.split("/").filter(Boolean);
@@ -49732,7 +49740,7 @@ ${markdown}
 }
 
 // src/store/resolve.ts
-import { existsSync as existsSync8, readFileSync as readFileSync10, statSync as statSync5 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync11, statSync as statSync5 } from "node:fs";
 import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join12, resolve as resolve3 } from "node:path";
 function findRepoRoot(dir) {
   let current = resolve3(dir);
@@ -49747,13 +49755,13 @@ function readOriginUrl(root) {
   let gitDir = join12(root, ".git");
   try {
     if (statSync5(gitDir).isFile()) {
-      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync10(gitDir, "utf8"));
+      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync11(gitDir, "utf8"));
       if (!pointer) return null;
       gitDir = resolve3(root, pointer[1].trim());
       const common = join12(gitDir, "commondir");
-      if (existsSync8(common)) gitDir = resolve3(gitDir, readFileSync10(common, "utf8").trim());
+      if (existsSync8(common)) gitDir = resolve3(gitDir, readFileSync11(common, "utf8").trim());
     }
-    const config3 = readFileSync10(join12(gitDir, "config"), "utf8");
+    const config3 = readFileSync11(join12(gitDir, "config"), "utf8");
     const section = /\[remote\s+"origin"\]([^[]*)/.exec(config3);
     const url2 = section ? /^\s*url\s*=\s*(.+)$/m.exec(section[1]) : null;
     return url2 ? url2[1].trim() : null;
@@ -49857,7 +49865,7 @@ function isDeclined(home, root) {
 }
 
 // src/store/memory.ts
-import { existsSync as existsSync9, readdirSync as readdirSync6, readFileSync as readFileSync11, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync9, readdirSync as readdirSync6, readFileSync as readFileSync12, statSync as statSync6 } from "node:fs";
 import { join as join13 } from "node:path";
 var MAX_INDEX = 30;
 var MAX_DAYS = 30;
@@ -49891,7 +49899,7 @@ function parseLog(day, raw) {
   });
 }
 function readLog(home, slug, day) {
-  return readFileSync11(safeJoin(projectDir(home, slug), "log", `${day}.md`), "utf8");
+  return readFileSync12(safeJoin(projectDir(home, slug), "log", `${day}.md`), "utf8");
 }
 function timeline(home, slug, days) {
   return logDays(home, slug).slice(0, Math.min(Math.max(days, 1), MAX_DAYS)).map((day) => parseLog(day, readLog(home, slug, day)).map((e) => ({ ...e, text: firstLine(e.text) })));
@@ -49935,7 +49943,7 @@ function search(home, slug, query, limit) {
   for (const day of logDays(home, slug)) {
     const file2 = safeJoin(projectDir(home, slug), "log", `${day}.md`);
     if (!spend(statSync6(file2).size)) break;
-    for (const e of parseLog(day, readFileSync11(file2, "utf8"))) {
+    for (const e of parseLog(day, readFileSync12(file2, "utf8"))) {
       const at = find(e.text);
       if (at >= 0) dated.push({ kind: "log", id: e.id, when: `${day} ${e.time}`, snippet: snippet(e.text, at, needle.length) });
     }
@@ -49961,7 +49969,7 @@ ${task.body}`;
 }
 
 // src/hook.ts
-import { readFileSync as readFileSync12 } from "node:fs";
+import { readFileSync as readFileSync13 } from "node:fs";
 import { join as join14, resolve as resolve4 } from "node:path";
 var HOOK_EVENTS = ["session-start", "prompt", "pre-tool", "post-tool-failure", "stop"];
 var MAX_CONTEXT = 4e3;
@@ -49973,7 +49981,7 @@ var ERRORS_SHOWN = 5;
 function manifestDefaults(env) {
   if (!env.CLAUDE_PLUGIN_ROOT) return {};
   try {
-    const manifest = JSON.parse(readFileSync12(join14(env.CLAUDE_PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+    const manifest = JSON.parse(readFileSync13(join14(env.CLAUDE_PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
     const value = (key) => {
       const v = manifest?.userConfig?.[key]?.default;
       return typeof v === "string" ? v : void 0;
@@ -50237,7 +50245,7 @@ language: ${lang}`;
 }
 function readStdin() {
   try {
-    return readFileSync12(0, "utf8");
+    return readFileSync13(0, "utf8");
   } catch {
     return "";
   }

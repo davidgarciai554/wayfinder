@@ -286,6 +286,7 @@
 - **Salida observada:** 211/212. Falla «20 concurrent progress entries and description edits lose nothing» a los 27,8 s con `WayfinderError: store.lockTimeout` (`src/store/sync.ts:70`, desde `logProgress` en `test/fixtures/worker.ts:14`).
 - **Causa (hipótesis):** con la máquina cargada, 20 procesos que confirman cada uno con git no terminan de pasar por el candado dentro de `LOCK_TIMEOUT_MS` (20 s). No se ha medido cuánto tiempo pasa cada proceso con el candado tomado.
 - **Investigación:** `node --test test/concurrency.test.ts` solo: 6/6 dos veces. La pasada completa siguiente da 212/212. El cambio de WAY-32 no toca `src/store`.
+- **Recurrencia (2026-11-25, WAYF-9):** en la validación del PR #7 (WAY-40) tras rebasar sobre `d0e21eb`, con la suite en 230 s, fallan «20 concurrent processes create 20 distinct IDs and 20 commits» y «20 concurrent progress entries…» con `store.lockTimeout` a los 26-29 s. `node --test test/concurrency.test.ts` solo: 7/7 tres veces; la pasada completa siguiente da 214/214. Ninguna prueba ha visto un bloqueo huérfano con el archivo `owner` de WAY-40, aunque no se ha descartado del todo que influya.
 - **Archivos modificados:** ninguno.
 - **Validación:** ninguna; queda abierto.
 - **Resultado:** sin resolver. Si se repite en el CI o sin carga, hay que medir cuánto tiempo se retiene el candado antes de decidir entre subir el tiempo de espera de la prueba o cambiar el candado.
@@ -300,3 +301,14 @@
 - **Archivos modificados:** `src/store/sync.ts`, `test/format.test.ts`, `plugin/dist/wayfinder.mjs` (bundle).
 - **Validación:** la prueba nueva falla sin el cambio y pasa con él; `node --test test/format.test.ts test/concurrency.test.ts` 14/14; `npm run typecheck`.
 - **Resultado:** resuelto.
+
+## 2026-11-25 · Bloqueo del almacén sin dueño: quien lo pierde por antigüedad borra el del nuevo titular (WAY-40)
+
+- **Contexto:** hallazgo S27-8 (P3) de la auditoría WAY-27, tarea WAY-40 aprobada por el usuario. Windows 11, Node 24.
+- **Reproducción:** el proceso A toma el bloqueo; su operación dura más que `LOCK_TTL_MS` (10 s, simulado envejeciendo el mtime del directorio); el proceso B lo da por huérfano, lo borra y lo toma; A termina y libera. Prueba «WAY-40: a process whose lock was taken as orphaned does not release the new holder's lock» en `test/concurrency.test.ts` (modo `hold` de `test/fixtures/worker.ts`).
+- **Salida observada:** antes de la corrección, `AssertionError [ERR_ASSERTION]: the new holder keeps its lock`: A borraba el bloqueo de B y un tercer proceso podía entrar mientras B escribía.
+- **Causa (confirmada con la prueba):** el bloqueo (`.wayfinder.lock`) no guardaba quién lo tomó, y `withLock` lo borraba siempre en su `finally`.
+- **Solución:** cada titular deja un token propio (PID y bytes aleatorios) en `.wayfinder.lock/owner` y solo borra el bloqueo si aún lleva su token. Límite documentado en el código: leer el token y borrar son dos pasos, y una toma que caiga justo entre ambos no queda cubierta; cerrarlo exige un bloqueo del sistema operativo. Tampoco evita que A y B escriban a la vez cuando A supera los 10 s; eso queda fuera de esta corrección mínima.
+- **Archivos modificados:** `src/store/sync.ts`, `test/concurrency.test.ts`, `test/fixtures/worker.ts`, `plugin/dist/wayfinder.mjs` (bundle).
+- **Validación:** la prueba nueva falla sin el cambio y pasa con él; `node --test test/format.test.ts test/concurrency.test.ts` 15/15; `npm run typecheck`; `npm run check:dist`; `npm test` completo (ver PR).
+- **Resultado:** resuelto en lo que pide WAY-40 (quien pierde el bloqueo no borra el del nuevo titular).
