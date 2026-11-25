@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -151,6 +151,25 @@ test('data from a newer format is read only: every write path refuses before tou
   assert.deepEqual(listTasks(home, 'demo').tasks.map((x) => x.id), ['WF-1', 'WF-2']);
   assert.equal(readTask(home, 'demo', 'WF-1').title, 'Una');
   assert.equal(listErrors(home, 'demo').errors.length, 1);
+});
+
+test('a newer format written while waiting for the lock is refused under the lock, and the lock is released', async (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const lockDir = join(home, '.wayfinder.lock');
+  mkdirSync(lockDir);
+  // Another process holds the lock, raises FORMAT and then releases it.
+  const other = spawn(
+    process.execPath,
+    ['-e', "setTimeout(() => { const fs = require('node:fs'); fs.writeFileSync(process.argv[1], '2\\n'); fs.rmSync(process.argv[2], { recursive: true, force: true }); }, 300)", join(home, FORMAT_FILE), lockDir],
+    { stdio: 'ignore' },
+  );
+  const exited = new Promise((resolve) => other.on('close', resolve));
+  let ran = false;
+  assert.throws(() => withLock(home, () => (ran = true)), isKey('store.dataNewer'));
+  assert.equal(await exited, 0);
+  assert.equal(ran, false, 'nothing was written');
+  assert.equal(existsSync(lockDir), false, 'the lock was released');
 });
 
 test('an unreadable mark is warned about but never blocks', (t) => {

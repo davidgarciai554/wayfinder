@@ -39,7 +39,8 @@ const LOCK_TIMEOUT_MS = 20_000;
  * orphaned. Only valid on local disks: network shares and sync folders may not honour mkdir atomicity.
  *
  * Every write to the data folder and its .state/ runs here, so this is where data from a newer
- * format becomes read only (WAY-24): it throws before taking the lock, with nothing written.
+ * format becomes read only (WAY-24): it throws before waiting for the lock, and again once it holds
+ * it, since another process may raise FORMAT meanwhile; either way nothing is written.
  */
 export function withLock<T>(home: string, fn: () => T): T {
   assertFormatWritable(home);
@@ -72,6 +73,7 @@ export function withLock<T>(home: string, fn: () => T): T {
     }
   }
   try {
+    assertFormatWritable(home);
     return fn();
   } finally {
     rmSync(lockDir, { recursive: true, force: true });

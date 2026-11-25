@@ -8622,6 +8622,7 @@ function withLock(home, fn) {
     }
   }
   try {
+    assertFormatWritable(home);
     return fn();
   } finally {
     rmSync(lockDir, { recursive: true, force: true });

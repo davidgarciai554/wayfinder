@@ -289,3 +289,14 @@
 - **Archivos modificados:** ninguno.
 - **Validación:** ninguna; queda abierto.
 - **Resultado:** sin resolver. Si se repite en el CI o sin carga, hay que medir cuánto tiempo se retiene el candado antes de decidir entre subir el tiempo de espera de la prueba o cambiar el candado.
+
+## 2026-11-25 · `withLock` comprobaba el formato de datos antes de esperar el bloqueo, pero no después
+
+- **Contexto:** hallazgo repetido en las revisiones automáticas de los PR #4, #5 y #6 sobre `withLock` (`src/store/sync.ts`, WAY-24). Windows 11, Node 24.
+- **Reproducción:** con el bloqueo tomado por otro proceso, ese proceso escribe `FORMAT` = 2 y suelta el bloqueo; `withLock` lo toma y ejecuta la escritura. Prueba «a newer format written while waiting for the lock is refused under the lock, and the lock is released» en `test/format.test.ts`.
+- **Salida observada:** antes de la corrección, `AssertionError [ERR_ASSERTION]: Missing expected exception.`: la escritura se hacía sobre datos de un formato más nuevo.
+- **Causa (confirmada con la prueba):** `assertFormatWritable` solo se llamaba al entrar, antes del bucle de espera; lo que cambiara durante la espera no se volvía a mirar.
+- **Solución:** repetir `assertFormatWritable` justo después de tomar el bloqueo, dentro del `try/finally`, para que el bloqueo se libere también cuando se rechaza. Se mantiene la comprobación de entrada para no esperar en vano.
+- **Archivos modificados:** `src/store/sync.ts`, `test/format.test.ts`, `plugin/dist/wayfinder.mjs` (bundle).
+- **Validación:** la prueba nueva falla sin el cambio y pasa con él; `node --test test/format.test.ts test/concurrency.test.ts` 14/14; `npm run typecheck`.
+- **Resultado:** resuelto.
