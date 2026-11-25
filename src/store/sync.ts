@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { WayfinderError } from './errors.ts';
@@ -38,12 +38,20 @@ const LOCK_TIMEOUT_MS = 20_000;
  * Cross-process lock based on an atomic mkdir. A lock older than LOCK_TTL_MS is treated as
  * orphaned. Only valid on local disks: network shares and sync folders may not honour mkdir atomicity.
  *
+ * WAY-40: each holder leaves its own token in the lock and only releases a lock that still carries it,
+ * so a process whose lock was taken as orphaned does not release the new holder's. Reading the token
+ * and removing the lock are two steps: a takeover that lands between them is not covered; closing
+ * that gap needs an OS lock instead of mkdir.
+ *
  * Every write to the data folder and its .state/ runs here, so this is where data from a newer
- * format becomes read only (WAY-24): it throws before taking the lock, with nothing written.
+ * format becomes read only (WAY-24): it throws before waiting for the lock, and again once it holds
+ * it, since another process may raise FORMAT meanwhile; either way nothing is written.
  */
 export function withLock<T>(home: string, fn: () => T): T {
   assertFormatWritable(home);
   const lockDir = join(home, '.wayfinder.lock');
+  const ownerFile = join(lockDir, 'owner');
+  const token = `${process.pid}.${randomBytes(8).toString('hex')}`;
   const started = Date.now();
   for (;;) {
     try {
@@ -72,8 +80,21 @@ export function withLock<T>(home: string, fn: () => T): T {
     }
   }
   try {
+    writeFileSync(ownerFile, token);
+  } catch (error) {
+    rmSync(lockDir, { recursive: true, force: true });
+    throw error;
+  }
+  try {
+    assertFormatWritable(home);
     return fn();
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    let owner = '';
+    try {
+      owner = readFileSync(ownerFile, 'utf8');
+    } catch {
+      // Taken as orphaned and already released by its new holder.
+    }
+    if (owner === token) rmSync(lockDir, { recursive: true, force: true });
   }
 }

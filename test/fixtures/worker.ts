@@ -1,4 +1,7 @@
 // Child process used by the concurrency tests: performs one store operation and exits.
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { sleepSync, withLock } from '../../src/store/sync.ts';
 import { createTask, logProgress, updateTask } from '../../src/store/tasks.ts';
 import { reviewTask } from '../../src/store/review.ts';
 import { createError } from '../../src/store/error-records.ts';
@@ -22,6 +25,13 @@ if (mode === 'create') {
 } else if (mode === 'update') {
   updateTask(home, slug, arg, { body: `Descripción ${extra}` });
   process.stdout.write(extra);
+} else if (mode === 'hold') {
+  // Takes the lock, says so in the signals folder (arg) and holds it until told to release it.
+  withLock(home, () => {
+    writeFileSync(join(arg, 'acquired'), '');
+    const started = Date.now();
+    while (!existsSync(join(arg, 'release')) && Date.now() - started < 30_000) sleepSync(20);
+  });
 } else if (mode === 'depend') {
   try {
     updateTask(home, slug, arg, { depends_on: [extra] });

@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEntries } from '../src/store/history.ts';
 import { createTask, listTasks, readTask } from '../src/store/tasks.ts';
 import { listErrors } from '../src/store/error-records.ts';
+import { LOCK_TTL_MS, sleepSync, withLock } from '../src/store/sync.ts';
 import { commitCount, gitOut, makeHome, makeProject } from './helpers.ts';
 
 const worker = fileURLToPath(new URL('./fixtures/worker.ts', import.meta.url));
@@ -104,4 +105,26 @@ test('two concurrent updates that would close a cycle: one is saved, the other i
   const deps = [readTask(home, 'demo', a).dependsOn, readTask(home, 'demo', b).dependsOn];
   assert.equal(deps.filter((d) => d.length === 1).length, 1, 'only one edge was written');
   assert.equal(gitOut(home, 'status', '--porcelain'), '');
+});
+
+test('WAY-40: a process whose lock was taken as orphaned does not release the new holder\'s lock', { timeout: 120_000 }, async (t) => {
+  const home = makeHome(t);
+  const signals = join(dirname(home), 'signals');
+  mkdirSync(signals);
+  const lockDir = join(home, '.wayfinder.lock');
+  let other: ReturnType<typeof run> | undefined;
+  withLock(home, () => {
+    // This operation outlives the TTL: another process takes the lock as orphaned meanwhile.
+    const old = new Date(Date.now() - 2 * LOCK_TTL_MS);
+    utimesSync(lockDir, old, old);
+    other = run(['hold', home, '', signals]);
+    const started = Date.now();
+    while (!existsSync(join(signals, 'acquired')) && Date.now() - started < 30_000) sleepSync(20);
+  });
+  assert.equal(existsSync(join(signals, 'acquired')), true, 'the other process took the aged lock');
+  assert.equal(existsSync(lockDir), true, 'the new holder keeps its lock');
+  writeFileSync(join(signals, 'release'), '');
+  const result = await other!;
+  assert.equal(result.code, 0, result.err);
+  assert.equal(existsSync(lockDir), false, 'the new holder releases its own lock');
 });
