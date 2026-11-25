@@ -665,3 +665,13 @@ test('WAY-24: a task status unknown to this version is listed with its literal s
   }
   assert.equal(readFileSync(file, 'utf8'), before);
 });
+
+test('WAY-34: an asset under a Windows reserved slug answers 4xx and the server keeps serving', async (t) => {
+  const { port } = await serve(t);
+  for (const slug of ['con', 'nul', 'aux', 'com1']) {
+    const r = await get(port, `/api/projects/${slug}/assets/x.png`);
+    assert.ok(r.status >= 400 && r.status < 500, `${slug} → ${r.status}`);
+  }
+  const after = await get(port, '/api/projects');
+  assert.equal(after.status, 200);
+});

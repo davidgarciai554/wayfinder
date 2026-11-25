@@ -251,3 +251,14 @@
 - **Archivos modificados:** `.github/workflows/ci.yml`.
 - **Validación:** ver la ejecución del CI del PR #2 tras el cambio.
 - **Resultado:** abierto en el producto; mitigado en el CI.
+
+## 2026-11-25 · La prueba WAY-23 de `test/server.test.ts` falla a veces con `ECONNRESET`
+
+- **Contexto:** implementación de WAY-34/WAY-35 en un worktree de ChinorrisPC (Windows 11, Node 24.12, git 2.55). Mientras tanto, otros hilos ejecutaban pruebas en el mismo PC (los puertos 4555/4556 del e2e estaban ocupados).
+- **Reproducción:** `node --test --test-name-pattern="WAY-23" test/server.test.ts` varias veces seguidas.
+- **Salida observada:** `Error: read ECONNRESET` (`errno -4077`) en una de las peticiones `get`, tras 10–20 s. En la base sin cambios (5c5bae6) falló 1 de cada 4 ejecuciones y con el cambio de WAY-34/35 2 de cada 4 (una de ellas dentro de `npm test` completo); las ejecuciones correctas tardan entre 5 y 11 s.
+- **Causa:** hipótesis, sin confirmar. La prueba crea 20 tareas (un commit de git cada una) con el PC cargado, y el socket de alguna petición se cierra antes de la respuesta. No depende de WAY-34/35: falla igual en la base.
+- **Investigación:** comparación de base y cambio con la misma orden. No se ha investigado más porque queda fuera del alcance de WAY-34/35.
+- **Archivos modificados:** ninguno.
+- **Validación:** ninguna; queda abierto.
+- **Resultado:** sin resolver. Si se repite en CI (WAY-26), hay que reproducirlo con el PC sin carga y revisar los tiempos de espera del servidor y del cliente `get`.

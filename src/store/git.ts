@@ -21,6 +21,17 @@ export interface GitResult {
 
 export type GitRunner = (args: string[]) => GitResult;
 
+/**
+ * WAY-35: variables that point git at another repository, work tree, index or object store
+ * (`git rev-parse --local-env-vars`). Inherited from a git hook or a shell that exports them,
+ * they win over `-C`, so they are dropped. Windows env names are case-insensitive.
+ */
+const REPO_ENV = new Set([
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_OBJECT_DIRECTORY',
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE', 'GIT_NO_REPLACE_OBJECTS',
+  'GIT_REPLACE_REF_BASE', 'GIT_PREFIX', 'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR',
+]);
+
 const realRunner: GitRunner = (args) => {
   try {
     const stdout = execFileSync('git', args, {
@@ -30,7 +41,7 @@ const realRunner: GitRunner = (args) => {
       // Node's default is 1 MiB, and the log of a whole listing (modifiedOutsideAmong) passes it
       // at around 12,000 commits. 64 MiB covers some 500,000.
       maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      env: { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !REPO_ENV.has(name.toUpperCase()))), GIT_TERMINAL_PROMPT: '0' },
     });
     return { ok: true, missing: false, stdout, stderr: '' };
   } catch (error) {
