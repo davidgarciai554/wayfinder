@@ -107,6 +107,18 @@ Una tarea puede depender de otras del mismo proyecto («WAY-7 depende de WAY-2»
 - Es información para planificar: nunca impide un cambio de estado. Al empezar una tarea con dependencias sin hacer, Claude recibe un aviso.
 - Se ven en `wf_get`, en `wf_list` («bloqueada por WAY-n») y en la web: la etiqueta «Bloqueada por WAY-n» en la tarjeta y la fila «Depende de» en el detalle. Desde la web no se editan.
 
+### Bloquear una tarea
+
+Cuando una tarea no puede avanzar por algo que no es otra tarea (espera una decisión tuya, una credencial o un servicio externo), Claude la marca como bloqueada con su motivo: `wf_log` con `blocked: true` y el motivo en `blockers`. Si lo que espera es otra tarea, se usa una dependencia.
+
+- Solo se bloquean tareas «por hacer» o «en curso». El motivo es una línea de hasta 200 caracteres; el detalle va en la entrada del historial, que se guarda en el mismo paso.
+- No es un estado: la tarea sigue donde estaba. El bloqueo es información y nunca impide un cambio de estado.
+- Se desbloquea con `wf_log` y `blocked: false`; la entrada es la nota que dice qué la desbloqueó. Pasar la tarea a hecha o descartada, o reabrirla, también quita el bloqueo.
+- `blockers` sin `blocked` sigue siendo texto libre de esa entrada: ni bloquea la tarea ni cambia el motivo.
+- Se ve en `wf_list` («bloqueada: motivo»), en `wf_get` y en la web, con la etiqueta «Bloqueada» y el motivo en la tarjeta y en el detalle. En la lista de tareas que Claude recibe al empezar la sesión aparece solo la marca `[bloqueada]`; el motivo lo lee cuando lo necesita.
+- Desde la web no se bloquea ni se desbloquea: díselo a Claude.
+- **Versiones anteriores:** el bloqueo se guarda como una clave opcional (`blocked`) en el archivo de la tarea. Un plugin anterior que use la misma carpeta de datos lee la tarea con normalidad y conserva la clave, pero no muestra el bloqueo.
+
 ### Pedir varias tareas a la vez
 
 Si pides una sola tarea, Claude la hace en el mismo chat. Si pides varias por su ID («haz WAY-3, WAY-5 y WAY-7»):
@@ -135,6 +147,35 @@ Escribe la orden con el ID, por ejemplo «aprueba WAY-4». Para varias a la vez,
 1. Claude revisa la propuesta antes de aprobarla.
 2. Si ve algo sospechoso (instrucciones ocultas, peticiones de secretos, comandos de red…), te explica el motivo y no la aprueba hasta que repitas la orden, por ejemplo «aprueba WAY-4 igualmente».
 3. Solo se aprueban por chat las propuestas creadas por Claude, y quedan marcadas como «Aprobada por chat».
+
+## Actualizar el plugin
+
+Cada paso dice si está comprobado con Wayfinder o si solo lo dice la documentación de Claude Code. Lo comprobado se probó con Claude Code 2.1.322, con el plugin instalado desde una copia local del repositorio.
+
+1. **Mira qué tienes instalado.** `claude plugin list --json` muestra, para `wayfinder@wayfinder`:
+   - `version`: la versión que Claude Code tiene registrada.
+   - De dónde se carga: si aparece `readFromFolder`, de esa carpeta tuya; si no, de la copia en caché de `installPath`.
+   - `folderVersion`: la versión que dice esa carpeta. Si no coincide con `version`, hay una actualización por registrar.
+
+   `node "<esa carpeta>\dist\wayfinder.mjs" --version` imprime la versión del programa. *Comprobado.*
+2. **Si lo instalaste desde una copia local del repositorio, actualiza antes esa copia** (`git pull`). Claude Code carga el plugin directamente de la carpeta: el código nuevo entra en la siguiente sesión aunque el número de versión no haya cambiado. *Comprobado.*
+3. **Actualiza el plugin:**
+
+   ```powershell
+   claude plugin marketplace update wayfinder
+   claude plugin update wayfinder@wayfinder
+   ```
+
+   - **Desde una copia local.** *Comprobado, en ese orden.* Sin cambio de número responde «nothing to update» y «already at the latest version». Con cambio de número, por ejemplo «updated from 0.1.0 to 0.1.1», y `version` pasa a ser la nueva.
+   - **Desde GitHub** (copia en caché por versión). *Según la documentación de Claude Code; sin comprobar todavía con Wayfinder.* Claude Code solo trae una copia nueva cuando cambia el número de versión del plugin. «already at the latest version» significa que tienes la última versión numerada, no necesariamente los últimos cambios del repositorio: mientras el número siga en `0.1.0`, una copia instalada desde GitHub no cambia.
+4. **Reinicia las sesiones de Claude abiertas.** Una sesión en marcha sigue con el servidor anterior y no muestra las funciones nuevas. `claude plugin update` lo avisa: «Restart to apply changes» (*comprobado*). Claude Code dice que `/reload-plugins` también lo aplica sin cerrar la sesión (*sin comprobar*).
+
+Qué se conserva:
+
+- **Tus datos.** La carpeta de datos (`~/.wayfinder`, o la que pusieras en `home`) está fuera del plugin y de su caché. *Comprobado: `claude plugin update` no escribió nada en la carpeta configurada en `home`.*
+- **Tus opciones** (`language`, `home`, `capturesDir`, `webHost`). Claude Code las guarda en sus ajustes, fuera del plugin. *Comprobado: `claude plugin update` conservó `language` y `home`.* No está comprobado qué pasa al desinstalar y volver a instalar: para actualizar no hace falta, y si lo haces, revisa las opciones con `claude plugin configure wayfinder`.
+
+Si después de actualizar aparece el aviso de solo lectura, mira «[Formato de los datos y actualizaciones](#formato-de-los-datos-y-actualizaciones)». Lo que cambia entre versiones está en [CHANGELOG.md](CHANGELOG.md). Sin el plugin o con Docker, repite la instalación de su sección («Línea de comandos sin el plugin», «Docker»).
 
 ## Web
 
@@ -187,6 +228,21 @@ wayfinder serve
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
 
+## Formato de los datos y actualizaciones
+
+La carpeta de datos lleva en su raíz un archivo `FORMAT` con un único número entero: la versión del formato de los datos (hoy, `1`). Lo escribe la carpeta al crearse. Una carpeta creada antes de que existiera no lo tiene y cuenta como formato 1; Wayfinder no lo añade por su cuenta, porque abrir la carpeta nunca escribe nada.
+
+- **Datos más nuevos que el plugin.** Si `FORMAT` dice un número mayor del que entiende tu versión (por ejemplo, una sesión de Claude que sigue con el plugin con el que arrancó, o una imagen de Docker antigua sobre la misma carpeta):
+  - Claude recibe un aviso al empezar la sesión y al final de cada respuesta de las herramientas `wf_*`; la web lo muestra bajo la barra superior.
+  - La carpeta queda **en solo lectura**: se puede leer todo, pero no se guarda nada (tareas, avances, errores, capturas ni las órdenes «registra este proyecto» o «abre Wayfinder»). La web oculta sus botones aunque tengas la clave.
+  - Para salir: reinicia la sesión de Claude o actualiza Wayfinder (ver «[Actualizar el plugin](#actualizar-el-plugin)»); en Docker, reconstruye la imagen. Si la marca fuera errónea, restáurala desde el historial git de la carpeta de datos o borra `FORMAT` (vuelve a formato 1). No hay ninguna opción para saltarse el bloqueo.
+  - La marca se lee en cada operación, así que un proceso que ya estaba en marcha se entera sin reiniciarse. La web lo muestra en el siguiente refresco o navegación (como mucho, unos 30 segundos).
+- **Marca que no se entiende** (vacía, texto, un número no válido): se avisa, se trata como formato 1 y se sigue trabajando.
+- **Estados nuevos.** Una tarea con un estado que tu versión no conoce se muestra con ese estado tal cual (en la web, en la sección «Otros estados») y no se puede cambiar; las tareas que dependen de ella siguen bloqueadas. Los errores ya funcionaban así.
+- **Qué cambios admite la 1.x sin subir la marca:** claves o campos opcionales nuevos, valores nuevos de estado (de tareas o de errores) y tipos de entrada nuevos. Una versión que no los entiende los conserva, los muestra y no los sobrescribe.
+- **Qué obliga a subir la marca (y a una 2.0):** renombrar o quitar un campo, cambiar su significado, mover la estructura de carpetas, o añadir valores a la prioridad o al origen de las tareas (una versión anterior los leería como `medium` o `user` y los perdería al reescribir la tarea). La marca es siempre un único entero decimal. `test/format.test.ts` fija la versión y esos valores, pero no detecta renombres ni cambios de significado: la regla hay que aplicarla al revisar.
+- **Versiones anteriores:** las versiones publicadas antes de este aviso (0.1.0 incluida) no leen `FORMAT`. Una sesión con un plugin anterior puede seguir escribiendo en una carpeta de formato más nuevo; el aviso solo protege desde esta versión.
+
 ## Seguridad y privacidad
 
 - Nunca guardes secretos ni datos personales en tareas, bitácoras o capturas. Wayfinder rechaza los patrones de secreto más comunes, pero es una ayuda, no una garantía.
@@ -209,7 +265,7 @@ npm run typecheck
 npm test              # unitarios e integración (construye antes)
 npm run test:e2e      # Playwright
 npm run test:docker   # requiere Docker Desktop y la imagen wayfinder:dev
-npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red
+npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red; una sola versión
 ```
 
 El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está en `.claude-plugin/marketplace.json`.

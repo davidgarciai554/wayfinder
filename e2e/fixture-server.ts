@@ -80,6 +80,22 @@ setStatus(E2E_HOME, 'dependencias', earlier, 'done', 'mcp', { clock });
 const free = createTask(E2E_HOME, 'dependencias', { title: 'Ya libre' }, 'web', clock).task.id;
 updateTask(E2E_HOME, 'dependencias', free, { depends_on: [earlier] }, { clock });
 
+// Blocks (WAY-13): a blocked task with a long reason, one blocked and also waiting for a
+// dependency, a free one, hostile text as a reason and a value written by hand that is not text.
+createProject(E2E_HOME, { slug: 'bloqueos', name: 'bloqueos', idPrefix: 'BLO', localPath: 'D:/bloqueos' });
+const blockTask = (title: string, reason?: string) => {
+  const task = createTask(E2E_HOME, 'bloqueos', { title }, 'web', clock).task;
+  if (reason) logProgress(E2E_HOME, 'bloqueos', task.id, 'Avanzamos: la tarea queda bloqueada.', { blockers: reason }, clock, true);
+  return task;
+};
+blockTask('Publicar la versión', `Falta la clave de firma del paquete: la tiene el equipo de plataforma y hay que pedirla en https://intranet.example/solicitudes/${'firmadepaquetes/'.repeat(3)} antes del viernes.`);
+const domain = blockTask('Comprar el dominio').id;
+const dns = blockTask('Configurar el dominio', 'Espera la decisión sobre el proveedor de DNS.').id;
+updateTask(E2E_HOME, 'bloqueos', dns, { depends_on: [domain] }, { clock });
+blockTask('Texto hostil', '<img src=x onerror=window.__xss=8>');
+const handWritten = join(E2E_HOME, blockTask('Valor escrito a mano').file);
+writeFileSync(handWritten, readFileSync(handWritten, 'utf8').replace('plan: ""', 'plan: ""\nblocked: 7'));
+
 // Tags (WAY-14): its own project, so the counts of the other specs do not change.
 createProject(E2E_HOME, { slug: 'etiquetas', name: 'etiquetas', idPrefix: 'ETI', localPath: 'D:/etiquetas' });
 createTask(E2E_HOME, 'etiquetas', { title: 'Filtro del tablero', tags: ['web'] }, 'web', clock);
@@ -123,6 +139,17 @@ for (let i = 2; i <= 13; i++) {
 const port = createTask(E2E_HOME, 'errores', { title: 'Revisar el puerto de pruebas' }, 'web', clock).task.id;
 createError(E2E_HOME, 'errores', { title: 'El puerto 4555 estaba ocupado', task: port, context: 'npm run test:e2e.', kind: 'environment' }, at(20));
 discardError(E2E_HOME, 'errores', 'ERR-14', 'Falsa alarma: otra prueba seguía abierta.', at(21));
+
+// Data format (WAY-24): its own project, with two tasks whose status only a newer version knows
+// (one with a hostile title), written as that version would leave them. The format mark itself is
+// global: format.spec.ts changes FORMAT and puts it back.
+createProject(E2E_HOME, { slug: 'formato', name: 'formato', idPrefix: 'FOR', localPath: 'D:/formato' });
+createTask(E2E_HOME, 'formato', { title: 'Tarea normal' }, 'web', clock);
+const formatTasks = join(E2E_HOME, 'projects', 'formato', 'tasks');
+const newerTask = (id: string, title: string, status: string) =>
+  writeFileSync(join(formatTasks, `${id}-newer.md`), `---\nid: ${id}\ntitle: ${JSON.stringify(title)}\nstatus: ${status}\npriority: medium\norigin: user\ncreated: 2026-10-21T10:00:00+02:00\nupdated: 2026-10-21T10:00:00+02:00\nplan: ""\n---\n\nEscrita por una versión más nueva.\n`);
+newerTask('FOR-8', 'Pospuesta hasta diciembre', 'snoozed');
+newerTask('FOR-9', '<img src=x onerror=window.__xss=9>', 'review');
 
 // Real git, unless a spec switches it "off" with the flag file (git missing → 200 with a warning).
 rmSync(e2eGitOffFlag(lang), { force: true });

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { commitCount, makeLegacyHome, tree } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
@@ -50,6 +51,16 @@ test('serve refuses a data folder that init has not prepared (empty Docker volum
   } finally {
     rmSync(empty, { recursive: true, force: true });
   }
+});
+
+test('WAY-24: init on a folder written before the format mark leaves it exactly as it was', (t) => {
+  const home = makeLegacyHome(t);
+  const before = { tree: tree(home), commits: commitCount(home) };
+  const r = run(['init'], { WAYFINDER_HOME: home, WAYFINDER_LANG: 'en' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, '', 'no warning');
+  assert.deepEqual({ tree: tree(home), commits: commitCount(home) }, before);
+  assert.equal(existsSync(join(home, 'FORMAT')), false);
 });
 
 test('--version prints a version', () => {

@@ -28,6 +28,7 @@ import {
   isStatus,
   PRIORITIES,
   ORIGINS,
+  STATUS_RE,
   type Actor,
   type Origin,
   type Priority,
@@ -37,7 +38,11 @@ import {
 export interface Task {
   id: string;
   title: string;
-  status: Status;
+  /**
+   * One of STATUSES, or a status from a newer version matching STATUS_RE (WAY-24): such a task is
+   * listed and read, but never rewritten here (see readTaskForWrite).
+   */
+  status: Status | (string & {});
   priority: Priority;
   origin: Origin;
   created: string;
@@ -55,6 +60,12 @@ export interface Task {
    * TAG_RE are ignored, so a hand-edited file never hides the task.
    */
   tags: string[];
+  /**
+   * WAY-13: why the task is blocked (frontmatter blocked), '' when it is not. A flag, not a
+   * status: only a todo or in-progress task can be blocked. On any other status, or with a value
+   * that is not text, it reads as not blocked, so an older version or a hand edit never hides the task.
+   */
+  blocked: string;
   /** The description: the stored body above the history section. */
   body: string;
   /** Raw history section (see history.ts); null for tasks created before it existed. */
@@ -74,8 +85,15 @@ export const MAX_TITLE = 200;
 /** Lowercase letters, digits and hyphens: no spaces, Unicode or delimiters can reach the outputs. */
 export const TAG_RE = /^[a-z0-9][a-z0-9-]{0,29}$/;
 export const MAX_TAGS = 10;
+/** WAY-13: the reason is shown in lists and cards, so it is as short as a title. */
+const MAX_BLOCK_REASON = 200;
 export const MAX_BODY = 20_000;
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+
+/** WAY-13: a block only means something while the task is open and approved. */
+function canBeBlocked(status: string): boolean {
+  return status === 'todo' || status === 'in-progress';
+}
 
 function tasksDir(home: string, slug: string): string {
   return safeJoin(projectDir(home, slug), 'tasks');
@@ -88,7 +106,8 @@ function toTask(rel: string, raw: string): Task | Unreadable {
   const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : undefined);
   const id = str('id');
   if (!id || !ID_RE.test(id)) return { file: rel, reason: 'missing or invalid id' };
-  if (!isStatus(d.status)) return { file: rel, reason: `unknown status: ${String(d.status)}` };
+  const status = str('status');
+  if (!status || !STATUS_RE.test(status)) return { file: rel, reason: `unknown status: ${String(d.status)}` };
   const title = str('title');
   if (!title) return { file: rel, reason: 'missing title' };
   const priority = (PRIORITIES as readonly string[]).includes(String(d.priority)) ? (d.priority as Priority) : 'medium';
@@ -97,7 +116,7 @@ function toTask(rel: string, raw: string): Task | Unreadable {
   return {
     id,
     title,
-    status: d.status,
+    status,
     priority,
     origin,
     created: str('created') ?? '',
@@ -107,6 +126,7 @@ function toTask(rel: string, raw: string): Task | Unreadable {
     riskAcknowledged: d.riskAcknowledged === true ? true : undefined,
     dependsOn: Array.isArray(d.depends_on) ? [...new Set(d.depends_on.filter((x): x is string => typeof x === 'string' && ID_RE.test(x)))] : [],
     tags: Array.isArray(d.tags) ? [...new Set(d.tags.filter((x): x is string => typeof x === 'string' && TAG_RE.test(x)))].slice(0, MAX_TAGS) : [],
+    blocked: canBeBlocked(status) && typeof d.blocked === 'string' ? flatten(d.blocked, MAX_BLOCK_REASON) : '',
     body: description,
     history,
     file: rel,
@@ -142,6 +162,23 @@ export function readTask(home: string, slug: string, id: string): Task {
   return result;
 }
 
+export type KnownTask = Task & { status: Status };
+
+/**
+ * WAY-24: a task with a status this version does not know is shown but never rewritten, so a
+ * newer status is not lost (writeTaskUnlocked would replace it). Same rule as error records.
+ */
+function assertKnownStatus(task: Task): asserts task is KnownTask {
+  if (!isStatus(task.status)) throw new WayfinderError('store.taskUnknownStatus', { id: task.id, status: task.status });
+}
+
+/** readTask for every path that rewrites the task: it refuses a status this version does not know. */
+export function readTaskForWrite(home: string, slug: string, id: string): KnownTask {
+  const task = readTask(home, slug, id);
+  assertKnownStatus(task);
+  return task;
+}
+
 export function validateTitle(title: string): string {
   const clean = title.replace(/\s+/g, ' ').trim();
   if (clean === '' || clean.length > MAX_TITLE || CONTROL_CHARS.test(title)) {
@@ -156,6 +193,16 @@ function validateBody(body: string): string {
   if (clean.length > MAX_BODY) throw new WayfinderError('store.bodyTooLong', { max: MAX_BODY });
   assertNoReservedHeading(clean);
   assertNoSecrets(clean);
+  return clean;
+}
+
+/** WAY-13: one clean line, like a title. Rejected, never cut: the detail belongs in the entry. */
+function validateBlockReason(reason: string | undefined): string {
+  const clean = (reason ?? '').replace(/\s+/g, ' ').trim();
+  // flatten strips control and invisible characters: any difference means the text had some.
+  if (clean === '' || clean.length > MAX_BLOCK_REASON || flatten(clean, MAX_BLOCK_REASON) !== clean) {
+    throw new WayfinderError('store.invalidBlockReason', { max: MAX_BLOCK_REASON });
+  }
   return clean;
 }
 
@@ -189,6 +236,8 @@ function validatePriority(priority: string | undefined): Priority {
 
 /** Writes the task file keeping unknown frontmatter keys. Must run inside the lock. */
 export function writeTaskUnlocked(home: string, task: Task): void {
+  // Last line of defence: callers read with readTaskForWrite, which already refused it.
+  assertKnownStatus(task);
   const data: Record<string, unknown> = { ...task.data };
   const known: Record<string, unknown> = {
     id: task.id,
@@ -249,6 +298,7 @@ export function createTask(
       origin,
       dependsOn: [],
       tags: [],
+      blocked: '',
       created: now,
       updated: now,
       plan: '',
@@ -275,10 +325,13 @@ function assertUnchanged(task: Task, expectedUpdated: string | undefined): void 
 
 export const MAX_DEPENDENCIES = 20;
 
-/** Only done frees a dependency; a missing task is shown but does not block (see WAY-15). */
+/**
+ * Only done frees a dependency; a missing task is shown but does not block (see WAY-15). A status
+ * this version does not know is not done, so it blocks (WAY-24).
+ */
 export interface DependencyState {
   id: string;
-  status: Status | null;
+  status: Task['status'] | null;
   title: string | null;
 }
 
@@ -348,7 +401,7 @@ export function updateTask(
     if (!options.planExists(patch.plan)) throw new WayfinderError('store.planNotFound', { plan: patch.plan });
   }
   return withLock(home, () => {
-    const task = readTask(home, slug, id);
+    const task = readTaskForWrite(home, slug, id);
     assertUnchanged(task, options.expectedUpdated);
     if (title !== undefined) task.title = title;
     if (body !== undefined) task.body = body;
@@ -401,7 +454,7 @@ export function setStatus(
   const note = options.note?.trim() || undefined;
   if (note) assertNoSecrets(note);
   return withLock(home, () => {
-    const task = readTask(home, slug, id);
+    const task = readTaskForWrite(home, slug, id);
     assertUnchanged(task, options.expectedUpdated);
     const from = task.status;
     const rule = checkTransition(actor, from, to);
@@ -424,6 +477,12 @@ export function setStatus(
       }
     }
     task.status = to;
+    // WAY-13: a block only survives between todo and in-progress. Closing, reopening or approving
+    // drops it: an older version or a hand edit may have left a key nobody reviewed.
+    if (!(canBeBlocked(from) && canBeBlocked(to))) {
+      task.blocked = '';
+      delete task.data.blocked;
+    }
     if (actor === 'web' && from === 'proposed' && to === 'todo') task.approvedVia = 'web';
     const date = clock();
     task.updated = isoLocal(date);
@@ -453,6 +512,11 @@ export const MAX_HISTORY_FIELD = 1000;
 /**
  * Records progress on a task: appends an entry to its history and a linked line to today's
  * log, under one lock and in one commit. Everything is validated before writing anything.
+ *
+ * WAY-13: `blocked` also sets or clears the block, in that same commit, so the reason and the
+ * unblocking note are always in the history. true: fields.blockers is the reason kept on the task
+ * (it replaces an earlier one). false: the block is removed and the entry is the note. Left out,
+ * the block is not touched, whatever fields.blockers says.
  */
 export function logProgress(
   home: string,
@@ -461,6 +525,7 @@ export function logProgress(
   entry: string,
   fields: HistoryFields = {},
   clock: Clock = systemClock,
+  blocked?: boolean,
 ): WriteResult & { entry: number; logFile: string } {
   requireProject(home, slug);
   assertId(id);
@@ -471,8 +536,18 @@ export function logProgress(
     if (value !== undefined && value.length > MAX_HISTORY_FIELD) throw new WayfinderError('store.logEntryTooLong', { max: MAX_HISTORY_FIELD });
   }
   assertNoSecrets([text, ...Object.values(fields)].filter(Boolean).join('\n'));
+  const reason = blocked === true ? validateBlockReason(fields.blockers) : undefined;
   return withLock(home, () => {
-    const task = readTask(home, slug, id);
+    const task = readTaskForWrite(home, slug, id);
+    if (reason !== undefined) {
+      if (!canBeBlocked(task.status)) throw new WayfinderError('store.blockNotAllowed', { id, status: task.status });
+      task.blocked = reason;
+      task.data.blocked = reason;
+    } else if (blocked === false) {
+      if (!task.blocked) throw new WayfinderError('store.notBlocked', { id });
+      task.blocked = '';
+      delete task.data.blocked;
+    }
     const date = clock();
     task.history = appendEntry(task.history, formatEntry(localDay(date), localTime(date), text, fields));
     const n = parseEntries(task.history).length;

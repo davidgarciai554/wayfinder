@@ -196,3 +196,58 @@
 - **Archivos modificados:** `src/server.ts`, `src/store/tasks.ts`, `test/server.test.ts`.
 - **Validación:** `node --test test/server.test.ts` (caso «an open task cannot be reopened» → 409) y `test/store.test.ts`; `npm run typecheck`.
 - **Resultado:** resuelto antes de cerrar el incremento; nunca llegó al plugin instalado.
+
+## 2026-11-13 · El aviso de dependencias abiertas sale con el prefijo «Aviso:» repetido
+
+- **Contexto:** prueba de aceptación de los últimos cambios (WAY-8 a WAY-19) sobre un proyecto de demostración con una carpeta de datos temporal, usando `plugin/dist/wayfinder.mjs` por MCP. Windows 11, Node 24.12.0. ERR-8 en Wayfinder, ligado a WAY-15.
+- **Reproducción:** `wf_update` de una tarea con `depends_on` apuntando a otra que está en `todo`, y después `wf_set_status` de la primera a `in-progress` (con plan, o con `trivial` y nota).
+- **Salida observada:** `TIE-2 ahora está en in-progress.` seguido de `Aviso: Aviso: TIE-2 depende de tareas que aún no están hechas: TIE-1 [todo].` En inglés, `Warning: Warning: …`.
+- **Causa confirmada:** el texto `store.dependenciesOpen` (`src/i18n/es.json` y `en.json`) ya empieza por «Aviso:» / «Warning:», y el MCP envuelve todos los avisos con `cli.warning` («Aviso: {message}») en `ok()` de `src/mcp.ts`. Los demás avisos no llevan prefijo propio. `test/store.test.ts` solo comprueba la clave del aviso, no el texto final.
+- **Solución:** el texto `store.dependenciesOpen` ya no lleva prefijo propio en ninguno de los dos idiomas; el prefijo lo pone quien muestra el aviso (`cli.warning` en el MCP), como en el resto de avisos. Era un defecto de texto: el estado cambiaba bien y los datos no se veían afectados.
+- **Archivos modificados:** `src/i18n/es.json`, `src/i18n/en.json`, `test/mcp.integration.test.ts`, `plugin/dist/wayfinder.mjs`.
+- **Validación:** la prueba «WAY-15: wf_update sets and clears depends_on…» comprueba ahora el texto completo que devuelve `wf_set_status`; fallaba con el bundle anterior (`Warning: Warning: …`) y pasa con el nuevo. `npm run typecheck`, `npm test` (173/173) y `npm run check:dist` en verde. Repetida la demo en español contra el bundle reconstruido: `Aviso: TIE-2 depende de tareas que aún no están hechas: TIE-1 [todo].`, con 370 comprobaciones correctas y ninguna fallida. `npm run test:e2e` y `npm run test:docker` no se repitieron tras el cambio: la web no recibe este texto.
+- **Resultado:** resuelto. El servidor MCP de una sesión ya abierta sigue con el texto antiguo hasta que se reinicie.
+
+## 2026-11-16 · Desde una sesión en worktree, `wf_update` rechaza un plan que existe en el worktree
+
+- **Contexto:** planificación de WAY-13 en una sesión de Claude Code Desktop que trabaja en un worktree del repositorio. El borrador del plan se escribió en `Planes/` dentro del worktree, sin commit. Windows 11. ERR-10 en Wayfinder, ligado a WAY-13.
+- **Reproducción:** abrir una sesión en un worktree del repositorio registrado, crear `Planes/AAAA-MM-DD-nombre.md` solo en el worktree y llamar a `wf_update` con ese `plan`. `wf_project` con `action: "get"` muestra como `consumerRoot` el checkout principal.
+- **Salida observada:** «El plan «Planes/2026-11-16-bloqueo-de-tareas-con-motivo.md» no existe en el proyecto.»
+- **Causa (hipótesis):** el servidor MCP del plugin arranca con `CLAUDE_PROJECT_DIR` (o el directorio de trabajo) en la carpeta del proyecto, no en el worktree de la sesión. `resolveProject` toma `consumerRoot` de ahí y `makePlanExists` comprueba el archivo en esa carpeta (`src/store/resolve.ts`). No se ha podido ver el entorno real del proceso MCP. La misma comprobación se usa al pasar de `todo` a `in-progress`.
+- **Investigación:** leído `src/store/resolve.ts`. `findRepoRoot` devolvería la raíz del worktree si recibiera su carpeta, así que el valor de partida es el que apunta al checkout principal.
+- **Archivos modificados:** ninguno. Queda fuera del plan de WAY-13.
+- **Validación:** ninguna: sin corregir.
+- **Resultado:** abierto. Salida usada, por orden de la persona: copiar el plan al checkout principal como archivo sin seguimiento. Deja dos copias que pueden divergir, y hay que quitar la del checkout principal antes de integrar una rama que confirme ese mismo archivo.
+
+## 2026-11-16 · `check:dist` falla tras integrar un bundle construido en un worktree
+
+- **Contexto:** implementación de WAY-23 en un worktree de Claude Code Desktop (`.claude/worktrees/…`) sin `node_modules` propio: las dependencias se resuelven en el `node_modules` del checkout principal, tres carpetas más arriba. `npm test` y `npm run check:dist` pasaron en el worktree. Windows 11, Node 24.12. ERR-11 en Wayfinder, ligado a WAY-23.
+- **Reproducción:** en un worktree sin `node_modules` propio, ejecutar `npm run build` y confirmar `plugin/dist/wayfinder.mjs`; llevar ese commit al checkout principal y ejecutar allí `npm run check:dist`.
+- **Salida observada:** `plugin/dist/wayfinder.mjs: content differs from a fresh build`. El commit `dea4e73` cambiaba 580 líneas del bundle; 382 eran comentarios de ruta, de `// node_modules/yaml/…` a `// ../../../node_modules/yaml/…`.
+- **Causa confirmada:** esbuild escribe en el bundle la ruta de cada módulo relativa a la carpeta desde la que se construye. Desde el worktree esa ruta sube tres niveles, así que el bundle sale distinto del que se obtiene en el checkout principal. `check:dist` compara con un build hecho en el mismo sitio: por eso pasa en el worktree y falla fuera.
+- **Solución:** reconstruir con `npm run build` desde el checkout principal y confirmar ese `plugin/dist/wayfinder.mjs`. No se ha tocado `scripts/build.mjs`: un bundle que no dependa de la carpeta de construcción queda como mejora aparte.
+- **Archivos modificados:** `plugin/dist/wayfinder.mjs`.
+- **Validación:** en el checkout principal, `npm run check:dist` coincide con un build limpio y `npm test` pasa 191/191 con el bundle reconstruido. Frente a `2a8dbdf`, el bundle cambia 52 líneas y ningún comentario de ruta.
+- **Resultado:** corregido. Mientras el build dependa de la carpeta, el bundle que se confirma hay que construirlo desde un checkout con su propio `node_modules`; desde un worktree, `check:dist` no detecta la diferencia.
+
+## 2026-11-17 · Dos specs e2e fallan si la web espera `/api/projects` antes de pintar al navegar
+
+- **Contexto:** implementación de WAY-24 en un worktree, sin commit. Para refrescar el aviso de formato al navegar, el manejador de `hashchange` de `web/app.js` pasó a esperar `loadProjects()` antes de `render()`. Windows 11, Node 24.12, Playwright con un worker. ERR-12 en Wayfinder, ligado a WAY-24.
+- **Reproducción:** con ese manejador (`await loadProjects(); await render();`), ejecutar `npm run test:e2e`.
+- **Salida observada:** 2 fallos y 50 correctas. En `errors.spec.ts:10`, la pestaña «Errores» aún no tenía `aria-current` y el locator encontraba también una tarjeta del tablero anterior (`strict mode violation`). En `write.spec.ts:222`, tras Esc en el diálogo de reapertura, el botón «Reabrir» no recuperaba el foco.
+- **Causa confirmada:** esperar la petición retrasaba el pintado de la navegación. La vista anterior seguía más tiempo en pantalla, y dos navegaciones seguidas pintaban dos veces el diálogo de la tarea, lo que reemplazaba el botón que tenía el foco. Además, con dos navegaciones muy seguidas, `keepBoard` conservaba el tablero con la escritura activada aunque la carpeta hubiera pasado a solo lectura.
+- **Solución:** `hashchange` vuelve a pintar en el acto, como antes. `/api/projects` se pide en segundo plano y solo se repinta (con `keepFocus` y nunca sobre un formulario abierto) si cambia el modo de escritura. `paintFormat` marca `writeModeChanged` y `doRender` no conserva el tablero mientras esa marca esté activa.
+- **Archivos modificados:** `web/app.js`.
+- **Validación:** `npm run test:e2e` 52/52, incluidas `errors.spec.ts:10`, `write.spec.ts:222` y las cinco de `e2e/format.spec.ts`. `npm test` 205/205 y `npm run typecheck` en verde.
+- **Resultado:** corregido antes de confirmar nada. La navegación de la web no debe esperar peticiones adicionales para pintar.
+
+## 2026-11-25 · En el CI de Windows, `wf_attach` y el hook pre-tool rechazan rutas de la carpeta temporal
+
+- **Contexto:** primer CI en GitHub Actions (WAY-26, PR #2), `windows-latest` con Node 22 y 24. En ChinorrisPC estas pruebas pasan.
+- **Reproducción:** `npm test` en el runner con su `TEMP` por defecto (`C:\Users\RUNNER~1\AppData\Local\Temp`, nombre corto 8.3).
+- **Salida observada:** 205/210 en los dos Node. Fallan «data from a newer format is read only…», «a task status from a newer version…», «pre-tool denies direct edits of WAYFINDER_HOME…», «wf_attach only copies real images…» y «WAY-24: the live MCP sees the data format change…», con `attach.symlink` («… is or goes through a symbolic link or junction») sobre rutas bajo `RUNNER~1`, o una aserción `false` en el hook pre-tool.
+- **Causa (hipótesis apoyada en el código):** `src/store/attach.ts:51-58` compara `realpathSync.native(ruta)` con la ruta pedida; `realpath` expande `RUNNER~1` a `runneradmin`, la comparación difiere y se toma por enlace. `src/store/paths.ts:81` usa también `realpathSync.native`, lo que explicaría el fallo del hook pre-tool. Afectaría a cualquier usuario cuya ruta llegue en forma 8.3. No se ha reproducido en ChinorrisPC.
+- **Solución en el CI:** el workflow fija `TEMP` y `TMP` a `RUNNER_TEMP` (ruta larga) con un comentario que remite a esta entrada. El defecto del producto queda sin corregir: necesita su propia tarea.
+- **Archivos modificados:** `.github/workflows/ci.yml`.
+- **Validación:** ver la ejecución del CI del PR #2 tras el cambio.
+- **Resultado:** abierto en el producto; mitigado en el CI.

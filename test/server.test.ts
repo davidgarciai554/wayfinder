@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
@@ -234,6 +235,40 @@ test('lists projects and tasks with flags, and renders task Markdown safely', as
   assert.doesNotMatch(html, /evil\.example\.com/);
   assert.match(html, /src="\/api\/projects\/demo\/assets\/pic\.png"/);
   assert.equal(task.title, '<img src=x onerror=alert(1)>', 'titles are data; the client renders them with textContent');
+});
+
+test('WAY-23: the task list flags the file edited outside Wayfinder with two git processes, whatever the number of tasks', async (t) => {
+  const { home, port } = await serve(t);
+  const make = (n: number) => {
+    for (let i = 0; i < n; i++) createTask(home, 'demo', { title: 'Tarea' }, 'web');
+  };
+  make(5);
+  const edited = readTask(home, 'demo', 'WF-2');
+  writeFileSync(join(home, edited.file), `${readFileSync(join(home, edited.file), 'utf8')}editado a mano\n`);
+  // Real git, counted.
+  const calls: string[][] = [];
+  const restore = setGitRunner((args) => {
+    calls.push(args);
+    try {
+      return { ok: true, missing: false, stdout: execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), stderr: '' };
+    } catch (error) {
+      return { ok: false, missing: false, stdout: '', stderr: String((error as Error).message) };
+    }
+  });
+  t.after(restore);
+  const flagged = async (): Promise<string[]> => {
+    calls.length = 0;
+    const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body);
+    return list.tasks.filter((x: { modifiedOutside: boolean }) => x.modifiedOutside).map((x: { id: string }) => x.id);
+  };
+  assert.deepEqual(await flagged(), ['WF-2']);
+  assert.equal(calls.length, 2, '5 tasks');
+  make(15);
+  assert.deepEqual(await flagged(), ['WF-2']);
+  assert.equal(calls.length, 2, '20 tasks');
+  // One task alone still asks git for its own file.
+  assert.equal(JSON.parse((await get(port, '/api/projects/demo/tasks/WF-2')).body).modifiedOutside, true);
+  assert.equal(JSON.parse((await get(port, '/api/projects/demo/tasks/WF-1')).body).modifiedOutside, false);
 });
 
 test('assets are served only from the project assets folder', async (t) => {
@@ -542,6 +577,24 @@ test('WAY-14: tasks carry their tags in the list and the detail; the web create 
   assert.deepEqual(JSON.parse((await get(port, `/api/projects/demo/tasks/${tagged}`)).body).tags, ['web', 'docs']);
 });
 
+test('WAY-13: tasks carry the block reason in the list and the detail (null when free); the web has no route to change it', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const stuck = createTask(home, 'demo', { title: 'Parada' }, 'web').task.id;
+  const free = createTask(home, 'demo', { title: 'Libre' }, 'web').task.id;
+  logProgress(home, 'demo', stuck, 'Avanzamos: parada.', { blockers: 'Espera <b>la</b> clave' }, undefined, true);
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body).tasks;
+  assert.equal(list.find((x: { id: string }) => x.id === stuck).blocked, 'Espera <b>la</b> clave');
+  assert.equal(list.find((x: { id: string }) => x.id === free).blocked, null);
+  assert.equal(JSON.parse((await get(port, `/api/projects/demo/tasks/${stuck}`)).body).blocked, 'Espera <b>la</b> clave');
+
+  const files = tree(home);
+  const updated = readTask(home, 'demo', stuck).updated;
+  for (const action of ['block', 'unblock']) {
+    assert.equal((await post(port, `/api/projects/demo/tasks/${stuck}/${action}`, { expectedUpdated: updated, note: 'x' }, headers)).status, 405, action);
+  }
+  assert.deepEqual(tree(home), files);
+});
+
 test('WAY-11: an error moved to another task is listed in that task and its page links to it', async (t) => {
   const { home, port } = await writer(t);
   const wrong = createTask(home, 'demo', { title: 'Equivocada' }, 'web').task.id;
@@ -553,4 +606,62 @@ test('WAY-11: an error moved to another task is listed in that task and its page
   const page = JSON.parse((await get(port, `/api/projects/demo/errors/${error.id}`)).body);
   assert.equal(page.task, right);
   assert.equal(page.taskTitle, 'Correcta');
+});
+
+test('WAY-24: /api/projects carries the data format on every request; with a newer one, writes answer 409 and change nothing', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const idea = createTask(home, 'demo', { title: 'Idea' }, 'mcp').task.id;
+  const first = JSON.parse((await get(port, '/api/projects')).body);
+  assert.equal('format' in first, false, 'format 1: no field');
+
+  // The same live server: the mark changes on disk and the next request says so (no cache, ERR-9).
+  writeFileSync(join(home, 'FORMAT'), '2\n');
+  const newer = JSON.parse((await get(port, '/api/projects')).body);
+  assert.equal(newer.format.state, 'newer');
+  assert.equal(newer.format.found, 2);
+  assert.equal(newer.format.supported, 1);
+  assert.match(newer.format.message, /^The data folder uses format 2 and this version of Wayfinder only understands up to 1/);
+  for (const value of Object.values(newer.format)) {
+    assert.equal(String(value).includes(home) || String(value).includes(home.replaceAll('\\', '/')), false, 'no path of the data folder');
+  }
+  assert.deepEqual(newer.projects.map((p: { slug: string }) => p.slug), ['demo'], 'the projects are still listed');
+
+  const files = tree(home);
+  const meta = JSON.parse((await get(port, `/api/projects/demo/tasks/${idea}`)).body);
+  for (const [path, body] of [
+    ['/api/projects/demo/tasks', { title: 'Nueva' }],
+    [`/api/projects/demo/tasks/${idea}/approve`, { expectedUpdated: meta.updated }],
+    [`/api/projects/demo/tasks/${idea}/discard`, { expectedUpdated: meta.updated }],
+  ] as const) {
+    const reply = await post(port, path, body, headers);
+    assert.equal(reply.status, 409, path);
+    assert.match(JSON.parse(reply.body).error, /^The data folder uses format 2/);
+  }
+  assert.deepEqual(tree(home), files);
+
+  writeFileSync(join(home, 'FORMAT'), 'abc');
+  const unreadable = JSON.parse((await get(port, '/api/projects')).body);
+  assert.deepEqual({ state: unreadable.format.state, supported: unreadable.format.supported }, { state: 'unreadable', supported: 1 });
+  assert.doesNotMatch(unreadable.format.message, /abc/);
+  assert.equal((await post(port, '/api/projects/demo/tasks', { title: 'Sí se puede' }, headers)).status, 201, 'an unreadable mark does not block');
+});
+
+test('WAY-24: a task status unknown to this version is listed with its literal status and cannot be changed from the web', async (t) => {
+  const { home, port, headers } = await writer(t);
+  const file = join(home, 'projects/demo/tasks/WF-3-later.md');
+  writeFileSync(file, '---\nid: WF-3\ntitle: Later\nstatus: snoozed\nupdated: 2026-11-01T10:00:00+01:00\n---\n');
+  const list = JSON.parse((await get(port, '/api/projects/demo/tasks')).body);
+  assert.deepEqual(list.tasks.map((x: { id: string; status: string }) => `${x.id}:${x.status}`), ['WF-3:snoozed']);
+  assert.equal(list.unreadable.length, 0);
+  const detail = JSON.parse((await get(port, '/api/projects/demo/tasks/WF-3')).body);
+  assert.equal(detail.status, 'snoozed');
+  assert.equal(detail.reopensTo, null);
+  assert.equal(JSON.parse((await get(port, '/api/projects')).body).projects[0].counts.snoozed, 1);
+  const before = readFileSync(file, 'utf8');
+  for (const action of ['approve', 'discard', 'reopen']) {
+    const reply = await post(port, `/api/projects/demo/tasks/WF-3/${action}`, { expectedUpdated: detail.updated, note: 'x' }, headers);
+    assert.equal(reply.status, 409, action);
+    assert.match(JSON.parse(reply.body).error, /WF-3 has a status this version does not know \("snoozed"\)/, action);
+  }
+  assert.equal(readFileSync(file, 'utf8'), before);
 });

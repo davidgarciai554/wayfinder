@@ -12,6 +12,7 @@ import { withLock, writeFileAtomic } from './sync.ts';
 import { readTask, validateTitle } from './tasks.ts';
 import { flatten } from './text.ts';
 import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.ts';
+import { STATUS_RE } from './transitions.ts';
 
 /**
  * Error records: one Markdown file per error under projects/<slug>/errors/, linked to a task.
@@ -20,11 +21,8 @@ import { isoLocal, localDay, localTime, systemClock, type Clock } from './time.t
 /** discarded = closed without a fix (a false alarm or a failure that will not be fixed), with a note. */
 export const ERROR_STATUSES = ['open', 'resolved', 'discarded'] as const;
 export type ErrorStatus = (typeof ERROR_STATUSES)[number];
-/**
- * A status this version does not know (written by a newer one) is read as it is, so the record
- * stays visible, but it cannot be changed here: see readForWrite.
- */
-const STATUS_RE = /^[a-z][a-z-]{0,19}$/;
+// A status this version does not know (written by a newer one, STATUS_RE) is read as it is, so the
+// record stays visible, but it cannot be changed here: see readForWrite.
 
 export function isErrorStatus(value: unknown): value is ErrorStatus {
   return typeof value === 'string' && (ERROR_STATUSES as readonly string[]).includes(value);

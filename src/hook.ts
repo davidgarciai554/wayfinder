@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { resolveLang, t, type Lang } from './i18n/index.ts';
 import { ERROR_KINDS, listErrors, type ErrorKind, type ErrorRecord } from './store/error-records.ts';
+import { checkFormat, formatWarning } from './store/format.ts';
 import { initHome, isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
@@ -12,6 +13,7 @@ import { matchProject, findRepoRoot, rootKey } from './store/resolve.ts';
 import { listTasks, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
+import { isStatus } from './store/transitions.ts';
 
 export const HOOK_EVENTS = ['session-start', 'prompt', 'pre-tool', 'post-tool-failure', 'stop'] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
@@ -115,15 +117,23 @@ function consumerRoot(input: Record<string, unknown>, env: NodeJS.ProcessEnv): s
   return dir ? (findRepoRoot(dir) ?? resolve(dir)) : null;
 }
 
-/** Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection). */
-export function sessionContext(lang: Lang, slug: string, tasks: Task[], errors: ErrorRecord[] = []): string {
+/**
+ * Metadata plus the recent history of in-progress tasks; never descriptions: they may carry text from the web (prompt injection).
+ * notice: the data-format notice (WAY-24), first so the truncation never drops it.
+ */
+export function sessionContext(lang: Lang, slug: string, tasks: Task[], errors: ErrorRecord[] = [], notice = ''): string {
   const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, key, vars);
-  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${flatten(x.title, MAX_TITLE)}`;
+  // WAY-13: a blocked task carries a fixed mark before its title. The reason is free text written
+  // by Claude, so it stays out of this context: Claude reads it with wf_list or wf_get.
+  const row = (x: Task) => `- ${x.id} [${x.status}] (${x.priority}) ${x.blocked ? `${tr('hook.session.blocked')} ` : ''}${flatten(x.title, MAX_TITLE)}`;
   const active = tasks.filter((x) => x.status === 'in-progress' || x.status === 'todo');
   const proposed = tasks.filter((x) => x.status === 'proposed');
-  const lines = [tr('hook.session.header', { slug }), `language: ${lang}`, tr('hook.session.skill')];
+  // WAY-24: written by a newer version. Only ID and status (it matches STATUS_RE): the title may not be approved.
+  const unknown = tasks.filter((x) => !isStatus(x.status));
+  const lines = [...(notice ? [notice, ''] : []), tr('hook.session.header', { slug }), `language: ${lang}`, tr('hook.session.skill')];
   lines.push('', tr('hook.session.active'), ...(active.length ? active.map(row) : [tr('hook.session.none')]));
   if (proposed.length) lines.push('', tr('hook.session.proposed'), ...proposed.map(row));
+  if (unknown.length) lines.push('', tr('hook.session.unknownStatus'), ...unknown.map((x) => `- ${x.id} [${x.status}]`));
   let text = lines.join('\n');
   if (text.length > MAX_CONTEXT) {
     const note = `\n${tr('hook.session.truncated')}`;
@@ -310,11 +320,15 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
       return 0;
     }
 
+    // WAY-24: read on every session start, never cached. Fixed text plus the validated integers only.
+    const warning = event === 'session-start' ? formatWarning(home) : null;
+    const notice = warning ? t(lang, 'hook.session.formatNotice', { message: t(lang, warning.key, warning.vars) }) : '';
+
     const project = projectFor(home, input, env);
     if (!project) {
       if (event === 'session-start' && shouldAskRegistration(home, input, env)) {
         // Fixed text: nothing from the repository (folder name, remote) reaches the context.
-        const ask = `${t(lang, 'hook.session.askRegister')}\nlanguage: ${lang}`;
+        const ask = `${notice ? `${notice}\n\n` : ''}${t(lang, 'hook.session.askRegister')}\nlanguage: ${lang}`;
         io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: ask } }));
       }
       if (event === 'prompt') {
@@ -339,7 +353,7 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
       } catch {
         // An unreadable errors folder must not hide the tasks.
       }
-      io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(lang, project.slug, tasks, errors) } }));
+      io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: sessionContext(lang, project.slug, tasks, errors, notice) } }));
       return 0;
     }
     if (event === 'prompt') {
@@ -351,6 +365,8 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
     }
     if (event === 'stop') {
       if (input.stop_hook_active === true) return 0;
+      // Data from a newer format is read only (WAY-24): wf_log cannot record anything, so asking for it would only loop.
+      if (checkFormat(home).state === 'newer') return 0;
       // Without the transcript the hook cannot tell which task was worked on: progress on any
       // in-progress task, or a free log entry for minor work, is enough.
       const inProgress = listTasks(home, project.slug).tasks.filter((x) => x.status === 'in-progress');

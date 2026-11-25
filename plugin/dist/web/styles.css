@@ -227,6 +227,8 @@ main:focus { outline: none; }
 .column[data-status='in-progress'] { --col-stripe: var(--wf-stripe-progress); --col-fg: var(--wf-status-progress-fg); --col-bg: var(--wf-status-progress-bg); --col-border: var(--wf-status-progress-border); }
 .column[data-status='done'] { --col-stripe: var(--wf-stripe-done); --col-fg: var(--wf-status-done-fg); --col-bg: var(--wf-status-done-bg); --col-border: var(--wf-status-done-border); }
 .column[data-status='discarded'] { --col-stripe: var(--wf-status-discarded-fg); --col-fg: var(--wf-status-discarded-fg); --col-bg: var(--wf-status-discarded-bg); --col-border: var(--wf-status-discarded-border); }
+/* WAY-24: «Otros estados», neutral: the literal status in each card carries the meaning. */
+.column[data-status='other'] { --col-stripe: var(--wf-border-strong); --col-fg: var(--wf-muted); --col-bg: var(--wf-surface); --col-border: var(--wf-border); }
 .cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--wf-space-2); }
 .cards .none { color: var(--wf-muted); padding: var(--wf-space-1) var(--wf-space-1) var(--wf-space-2); }
 
@@ -255,6 +257,8 @@ main:focus { outline: none; }
 .f-chat { color: var(--wf-flag-chat-fg); background: var(--wf-flag-chat-bg); border-color: var(--wf-flag-chat-border); }
 .f-risk { color: var(--wf-flag-risk-fg); background: var(--wf-flag-risk-bg); border-color: var(--wf-flag-risk-border); font-weight: 600; }
 .f-outside { color: var(--wf-flag-outside-fg); background: var(--wf-flag-outside-bg); border-color: var(--wf-flag-outside-border); }
+/* WAY-13: the block reason on the card, cut to two lines (a local value; the detail shows it whole). */
+.card-reason { margin: 0; font-size: 13px; color: var(--wf-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 /* WAY-14: task labels, neutral (the label text carries the meaning, not a colour). */
 .labels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .t-label { color: var(--wf-muted); background: var(--wf-column); border-color: var(--wf-border); font-family: var(--wf-font-mono); overflow-wrap: anywhere; }

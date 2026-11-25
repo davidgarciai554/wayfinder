@@ -7,7 +7,7 @@ import { initHome } from '../src/store/init.ts';
 import { appendLog } from '../src/store/log.ts';
 import { assertSlug, safeJoin } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
-import { createTask, dependencyStates, isBlocking, listTasks, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
+import { createTask, dependencyStates, isBlocking, listTasks, logProgress, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
 import { parseEntries } from '../src/store/history.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { commitCount, fixedClock, gitOut, makeHome, makeProject, sha, tree } from './helpers.ts';
@@ -128,12 +128,13 @@ test('corrupt task files are reported as unreadable without hiding the rest', (t
   const dir = join(home, 'projects/demo/tasks');
   writeFileSync(join(dir, 'WF-90-yaml.md'), '---\nid: [unclosed\n---\n');
   writeFileSync(join(dir, 'WF-91-noid.md'), '---\ntitle: Sin id\nstatus: todo\n---\n');
-  writeFileSync(join(dir, 'WF-92-status.md'), '---\nid: WF-92\ntitle: X\nstatus: blocked\n---\n');
+  // WAY-24: a status from a newer version (lowercase word) is read; one that cannot be a status is not.
+  writeFileSync(join(dir, 'WF-92-status.md'), '---\nid: WF-92\ntitle: X\nstatus: Not A Status\n---\n');
   const { tasks, unreadable } = listTasks(home, 'demo');
   assert.equal(tasks.length, 1);
   assert.equal(unreadable.length, 3);
   assert.match(unreadable.map((u) => u.reason).join('|'), /invalid YAML/);
-  assert.match(unreadable.map((u) => u.reason).join('|'), /unknown status: blocked/);
+  assert.match(unreadable.map((u) => u.reason).join('|'), /unknown status: Not A Status/);
   // New IDs never collide with an unreadable file that still has a numeric prefix.
   assert.equal(createTask(home, 'demo', { title: 'Nueva' }, 'web').task.id, 'WF-93');
 });
@@ -366,4 +367,156 @@ test('WAY-14: tags read tolerantly; values this version cannot read survive an u
   writeFileSync(file, readFileSync(file, 'utf8').replace(/^tags:\n(?: {2}- .*\n)+/m, 'tags: web\n'));
   assert.deepEqual(readTask(home, 'demo', id).tags, [], 'a scalar is not a list');
   assert.throws(() => updateTask(home, 'demo', id, { tags: ['ghp_' + 'a'.repeat(36)] }, { clock }), isKey('store.invalidTag'));
+});
+
+/** The stored `blocked` key of a task file, straight from its frontmatter. */
+function storedBlock(file: string): unknown {
+  const parsed = parseFrontmatter(readFileSync(file, 'utf8'));
+  assert.ok(!('error' in parsed));
+  return parsed.data.blocked;
+}
+
+// WAY-13, written before the feature: it passes on a version that does not know `blocked`, which
+// is how an older plugin sharing the data folder behaves.
+test('WAY-13 compatibility: a hand-written blocked key leaves the task readable and survives update, log and set-status', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'Bloqueada por otra versión' }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('plan: ""', 'plan: ""\nblocked: Espera la credencial'));
+  assert.equal(readTask(home, 'demo', id).status, 'todo');
+  assert.equal(listTasks(home, 'demo').unreadable.length, 0);
+  updateTask(home, 'demo', id, { priority: 'high' }, { clock });
+  assert.equal(storedBlock(file), 'Espera la credencial');
+  logProgress(home, 'demo', id, 'Avanzamos en la tarea.', {}, clock);
+  assert.equal(storedBlock(file), 'Espera la credencial');
+  setStatus(home, 'demo', id, 'in-progress', 'mcp', { trivial: true, note: 'arreglo menor', clock });
+  assert.equal(storedBlock(file), 'Espera la credencial');
+  assert.equal(listTasks(home, 'demo').unreadable.length, 0);
+});
+
+test('WAY-13: wf_log blocks with a reason and unblocks with a note, each in one commit with its history entry', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'Publicar' }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  let commits = commitCount(home);
+
+  // The reason keeps YAML-significant characters as they are.
+  const reason = 'Falta la clave: "prod" #2 de \'David\'';
+  const blocked = logProgress(home, 'demo', id, 'Avanzamos: no puedo publicar.', { blockers: reason }, clock, true).task;
+  assert.equal(blocked.blocked, reason);
+  assert.equal(readTask(home, 'demo', id).blocked, reason);
+  assert.equal(storedBlock(file), reason);
+  assert.equal(commitCount(home), commits + 1);
+  assert.match(parseEntries(blocked.history).at(-1)!.text, /- Blockers: Falta la clave/);
+
+  // Blocking again replaces the reason; a plain wf_log never touches the block, whatever blockers says.
+  logProgress(home, 'demo', id, 'Avanzamos: cambia el motivo.', { blockers: 'Falta la aprobación de   seguridad\nde producción' }, clock, true);
+  assert.equal(readTask(home, 'demo', id).blocked, 'Falta la aprobación de seguridad de producción', 'whitespace collapses to one line');
+  logProgress(home, 'demo', id, 'Avanzamos: una duda aparte.', { blockers: 'Otra pregunta abierta' }, clock);
+  assert.equal(readTask(home, 'demo', id).blocked, 'Falta la aprobación de seguridad de producción');
+
+  // The block is information only: status changes between open statuses keep it.
+  setStatus(home, 'demo', id, 'in-progress', 'mcp', { trivial: true, note: 'menor', clock });
+  assert.equal(readTask(home, 'demo', id).blocked, 'Falta la aprobación de seguridad de producción');
+  setStatus(home, 'demo', id, 'todo', 'mcp', { note: 'pausa', clock });
+  assert.equal(readTask(home, 'demo', id).blocked, 'Falta la aprobación de seguridad de producción');
+
+  commits = commitCount(home);
+  const freed = logProgress(home, 'demo', id, 'Avanzamos: desbloqueada, ya hay aprobación.', {}, clock, false).task;
+  assert.equal(freed.blocked, '');
+  assert.equal(storedBlock(file), undefined, 'the key is removed, as before blocks existed');
+  assert.equal(commitCount(home), commits + 1);
+  assert.match(parseEntries(freed.history).at(-1)!.text, /^Avanzamos: desbloqueada, ya hay aprobación\.$/);
+  const [logName] = readdirSync(join(home, 'projects/demo/log'));
+  assert.match(readFileSync(join(home, 'projects/demo/log', logName), 'utf8'), /desbloqueada, ya hay aprobación/);
+});
+
+test('WAY-13: invalid blocks are rejected without writing anything', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const open = createTask(home, 'demo', { title: 'Abierta' }, 'web', clock).task.id;
+  const idea = createTask(home, 'demo', { title: 'Idea' }, 'mcp', clock).task.id;
+  const done = createTask(home, 'demo', { title: 'Hecha' }, 'web', clock).task.id;
+  setStatus(home, 'demo', done, 'in-progress', 'mcp', { trivial: true, note: 'menor', clock });
+  setStatus(home, 'demo', done, 'done', 'mcp', { clock });
+  const gone = createTask(home, 'demo', { title: 'Descartada' }, 'web', clock).task.id;
+  setStatus(home, 'demo', gone, 'discarded', 'web', { clock });
+  const before = tree(home);
+  const block = (id: string, blockers?: string) => logProgress(home, 'demo', id, 'Avanzamos.', { blockers }, clock, true);
+
+  for (const bad of [undefined, '', '   ', 'x'.repeat(201), 'oculto​dentro', 'al revés ‮', 'campana \u0007', 'etiqueta \u{E0041}']) {
+    assert.throws(() => block(open, bad), isKey('store.invalidBlockReason'), JSON.stringify(bad));
+  }
+  assert.throws(() => block(open, `token ghp_${'a'.repeat(36)}`), isKey('store.secretRejected'));
+  for (const id of [idea, done, gone]) assert.throws(() => block(id, 'Motivo válido'), isKey('store.blockNotAllowed'), id);
+  assert.throws(() => block('WF-99', 'Motivo válido'), isKey('store.taskNotFound'));
+  assert.throws(() => logProgress(home, 'demo', open, 'Avanzamos.', {}, clock, false), isKey('store.notBlocked'));
+  assert.deepEqual(tree(home), before);
+
+  // 200 characters is the limit.
+  assert.equal(block(open, 'x'.repeat(200)).task.blocked.length, 200);
+});
+
+test('WAY-13: the block reads tolerantly; a value that is not text never makes the task unreadable', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'A mano' }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  const write = (yaml: string) => writeFileSync(file, readFileSync(file, 'utf8').replace(/^blocked:.*\n(?: {2}.*\n)*/m, '').replace('plan: ""', `plan: ""\n${yaml}`));
+  for (const yaml of ['blocked: 7', 'blocked: true', 'blocked: ""', 'blocked: "   "', 'blocked:\n  - uno\n  - dos', 'blocked:\n  reason: mapa']) {
+    write(yaml);
+    assert.equal(readTask(home, 'demo', id).blocked, '', yaml);
+    assert.equal(listTasks(home, 'demo').unreadable.length, 0, yaml);
+  }
+  // Not removed silently by an unrelated write, and it cannot be "unblocked": there is no block.
+  write('blocked: 7');
+  updateTask(home, 'demo', id, { priority: 'high' }, { clock });
+  assert.equal(storedBlock(file), 7);
+  assert.throws(() => logProgress(home, 'demo', id, 'Avanzamos.', {}, clock, false), isKey('store.notBlocked'));
+
+  // A hand-written reason is cleaned and cut on reading: one line, no invisible characters.
+  write(`blocked: "línea uno\\nlínea dos \\u202E ${'x'.repeat(300)}"`);
+  const read = readTask(home, 'demo', id).blocked;
+  assert.match(read, /^línea uno línea dos x+…$/);
+  assert.equal(read.length, 200);
+});
+
+test('WAY-13: the block lives only on todo and in-progress; closing and reopening remove the key', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const clock = fixedClock();
+  const id = createTask(home, 'demo', { title: 'Se cierra bloqueada' }, 'web', clock).task.id;
+  const file = join(home, readTask(home, 'demo', id).file);
+  setStatus(home, 'demo', id, 'in-progress', 'mcp', { trivial: true, note: 'menor', clock });
+  logProgress(home, 'demo', id, 'Avanzamos: bloqueada.', { blockers: 'Espera a otro equipo' }, clock, true);
+  // The block never prevents a transition.
+  assert.equal(setStatus(home, 'demo', id, 'done', 'mcp', { clock }).task.blocked, '');
+  assert.equal(storedBlock(file), undefined);
+
+  // An older version closed the task and left the key: it is ignored while closed and dropped on reopening.
+  writeFileSync(file, readFileSync(file, 'utf8').replace('plan: ""', 'plan: ""\nblocked: Motivo residual'));
+  assert.equal(readTask(home, 'demo', id).blocked, '');
+  assert.equal(listTasks(home, 'demo').tasks.find((x) => x.id === id)!.blocked, '');
+  const reopened = setStatus(home, 'demo', id, 'todo', 'web', { note: 'Falta una parte.', clock }).task;
+  assert.equal(reopened.blocked, '');
+  assert.equal(storedBlock(file), undefined);
+
+  // Discarding removes it too.
+  logProgress(home, 'demo', id, 'Avanzamos: bloqueada otra vez.', { blockers: 'Sin presupuesto' }, clock, true);
+  setStatus(home, 'demo', id, 'discarded', 'web', { clock });
+  assert.equal(storedBlock(file), undefined);
+
+  // A proposal cannot be blocked: a key written by hand is ignored and dropped when the person approves it.
+  const idea = createTask(home, 'demo', { title: 'Idea con clave a mano' }, 'mcp', clock).task.id;
+  const ideaFile = join(home, readTask(home, 'demo', idea).file);
+  writeFileSync(ideaFile, readFileSync(ideaFile, 'utf8').replace('plan: ""', 'plan: ""\nblocked: Texto que nadie revisó'));
+  assert.equal(readTask(home, 'demo', idea).blocked, '');
+  assert.equal(setStatus(home, 'demo', idea, 'todo', 'web', { clock }).task.blocked, '');
+  assert.equal(storedBlock(ideaFile), undefined);
 });

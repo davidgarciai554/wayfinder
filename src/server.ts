@@ -8,13 +8,14 @@ import { dictionaries, t, translateReason, type Lang, type MessageKey } from './
 import { createRenderer } from './markdown.ts';
 import { WayfinderError } from './store/errors.ts';
 import { isCreationEntry, parseEntries } from './store/history.ts';
-import { modifiedOutside } from './store/git.ts';
+import { modifiedOutside, modifiedOutsideAmong } from './store/git.ts';
 import { ERROR_FIELDS, errorsForTask, listErrors, readError, unescapeField, type ErrorRecord } from './store/error-records.ts';
 import { ERROR_ID_RE, isWithin, projectDir, safeJoin, SLUG_RE } from './store/paths.ts';
 import { listProjects, requireProject } from './store/project.ts';
 import { findSecrets } from './store/secrets.ts';
 import type { Status } from './store/transitions.ts';
-import { createTask, dependencyStates, listTasks, readTask, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import { createTask, dependencyStates, listTasks, readTask, readTaskForWrite, reopenTarget, setStatus, type Task, type WriteResult } from './store/tasks.ts';
+import { checkFormat, formatWarning } from './store/format.ts';
 
 export interface ServeOptions {
   home: string;
@@ -81,16 +82,20 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const DEFAULT_PORT = 4747;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
 const MAX_JSON = 256 * 1024;
-/** Store errors caused by the current state of the task rather than by the request. */
-const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition']);
+/** Store errors caused by the current state of the task (or of the data folder, WAY-24) rather than by the request. */
+const CONFLICT_KEYS = new Set(['store.conflict', 'store.invalidTransition', 'store.dataNewer', 'store.taskUnknownStatus']);
 const NOT_FOUND_KEYS = new Set(['store.projectNotFound', 'store.taskNotFound', 'store.errorNotFound']);
 
 function errorMeta(error: ErrorRecord) {
   return { id: error.id, title: error.title, status: error.status, kind: error.kind, task: error.task, created: error.created, updated: error.updated };
 }
 
-/** byId: the tasks of the project, to give each dependency its title and status (read again when omitted). */
-function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
+/**
+ * byId: the tasks of the project, to give each dependency its title and status (read again when omitted).
+ * outside: the files modified outside Wayfinder, worked out once for a whole list (WAY-23); a single
+ * task asks git for its own file.
+ */
+function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>, outside?: ReadonlySet<string>) {
   const tasks = byId ?? (task.dependsOn.length ? new Map(listTasks(home, task.file.split('/')[1]).tasks.map((t) => [t.id, t])) : new Map<string, Task>());
   return {
     id: task.id,
@@ -103,13 +108,15 @@ function taskMeta(home: string, task: Task, byId?: ReadonlyMap<string, Task>) {
     plan: task.plan,
     approvedVia: task.approvedVia ?? null,
     riskAcknowledged: task.riskAcknowledged ?? false,
-    modifiedOutside: modifiedOutside(home, task.file),
+    modifiedOutside: outside ? outside.has(task.file) : modifiedOutside(home, task.file),
     /** Where «Reabrir» would send a done or discarded task (todo or proposed); null otherwise. */
     reopensTo: reopenTarget(task),
     /** WAY-15: each dependency with its title and status; status null when the task does not exist. */
     dependsOn: dependencyStates(task, tasks),
     /** WAY-14: labels matching TAG_RE; the board shows them as text and filters by them. */
     tags: task.tags,
+    /** WAY-13: why the task is blocked, one clean line, or null. The page inserts it as text only. */
+    blocked: task.blocked || null,
   };
 }
 
@@ -219,7 +226,13 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     }
     if (parts[0] !== 'projects') return notFound(res);
     if (parts.length === 1) {
+      // WAY-24: worked out on every request (the page asks on each refresh and navigation), never
+      // cached; present only when the folder is newer or its mark unreadable. The validated integers
+      // and the translated notice only: no paths.
+      const format = checkFormat(home);
+      const warning = formatWarning(home, format);
       return json(res, 200, {
+        ...(warning ? { format: { ...format, message: t(lang, warning.key, warning.vars) } } : {}),
         projects: listProjects(home).map((p) => {
           const { tasks, unreadable } = listTasks(home, p.slug);
           const counts: Record<string, number> = {};
@@ -238,8 +251,9 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     if (parts[2] === 'tasks' && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
       const byId = new Map(tasks.map((t) => [t.id, t]));
+      const outside = modifiedOutsideAmong(home, `projects/${slug}/tasks`, tasks.map((t) => t.file));
       return json(res, 200, {
-        tasks: tasks.map((x) => taskMeta(home, x, byId)),
+        tasks: tasks.map((x) => taskMeta(home, x, byId, outside)),
         unreadable: unreadable.map((u) => ({ file: u.file, reason: translateReason(lang, u.reason) })),
       });
     }
@@ -414,7 +428,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
           // (todo would approve a proposal).
           let to: Status | null = route.action === 'approve' ? 'todo' : 'discarded';
           if (route.action === 'reopen') {
-            const current = readTask(home, route.slug, route.id);
+            const current = readTaskForWrite(home, route.slug, route.id);
             to = reopenTarget(current);
             if (!to) throw new WayfinderError('store.invalidTransition', { from: current.status, to: 'reopen', valid: '—' });
           }

@@ -4,7 +4,7 @@ import { appendLogUnlocked, assertNoSecrets, taskLink } from './log.ts';
 import { consumeOrderUnlocked, getOrderUnlocked, ORDER_TTL_MS } from './mentions.ts';
 import { contentHash, consumeReviewUnlocked, getReviewUnlocked } from './review.ts';
 import { withLock } from './sync.ts';
-import { readTask, writeTaskUnlocked, type Task } from './tasks.ts';
+import { readTaskForWrite, writeTaskUnlocked, type Task } from './tasks.ts';
 import { isoLocal, systemClock, type Clock } from './time.ts';
 import { checkTransition } from './transitions.ts';
 
@@ -50,7 +50,7 @@ export function approveByChat(
 
   return withLock(home, () => {
     const now = clock();
-    const task = readTask(home, slug, id);
+    const task = readTaskForWrite(home, slug, id);
     checkTransition('chat', task.status, 'todo');
     if (task.origin !== 'claude') throw new WayfinderError('chat.originNotAllowed', { origin: task.origin });
     const content = squash(`${task.title}\n${task.body}`);
@@ -73,6 +73,8 @@ export function approveByChat(
     }
 
     task.status = 'todo';
+    // WAY-13: a proposal cannot be blocked; a key written by hand was not part of the review.
+    delete task.data.blocked;
     task.approvedVia = 'chat';
     if (needsSecond) task.riskAcknowledged = true;
     task.updated = isoLocal(now);
