@@ -186,6 +186,12 @@ test('WAY-38: the detector finds Spanish terms, key assignments, common formats 
     'The web prints /?k=<key> once per start',
   ];
   for (const text of clean) assert.deepEqual(findSecrets(text), [], text);
+  // Long text that is almost an assignment is scanned in linear time (it took minutes with backtracking).
+  for (const text of ['token-'.repeat(3000), 'a=b'.repeat(6000), 'x-'.repeat(10000)]) {
+    const start = performance.now();
+    assert.deepEqual(findSecrets(text), []);
+    assert.ok(performance.now() - start < 2000, `${text.slice(0, 12)}… took ${Math.round(performance.now() - start)} ms`);
+  }
   // The detector guards the data folder: a task carrying the web key is rejected.
   const home = makeHome(t);
   makeProject(home);

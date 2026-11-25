@@ -16,14 +16,26 @@ const PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ['bearer-token', /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/],
   ['url-credentials', /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i],
   ['password-assignment', /\b(?:pass(?:word|wd)?|contrase[ñn]a)\s*[=:]\s*\S+/i],
-  // A long value with a digit: prose ("token: the session one") and paths or URLs (cut at ':') pass.
-  [
-    'key-assignment',
-    /\b[\w-]*(?:api[_-]?key|secret|token|access[_-]?key|clave[ _-](?:de[ _-])?(?:api|acceso|secreta))[\w-]*["']?\s*[=:]\s*["']?(?=[\w+/=.-]*\d)[\w+/=.-]{20,}/i,
-  ],
 ];
+
+// key-assignment: a name, then = or :, then a value of 20 to 512 characters with a digit, so prose
+// ("token: the session one") and paths or URLs (cut at ':') pass. Each candidate is found with
+// bounded repeats and checked apart: one regex with `[\w-]*` around the names backtracked
+// cubically on text such as 'token-'.repeat(3000).
+const ASSIGNMENT = /([\w -]{1,64}?)["']?\s*[=:]\s*["']?([\w+/=.-]{20,512})/g;
+const KEY_WORD = /^[\w-]*(?:api[_-]?key|secret|token|access[_-]?key)[\w-]*$/i;
+const KEY_PHRASE = /\bclave[ _-](?:de[ _-])?(?:api|acceso|secreta)\s*$/i;
+
+function hasKeyAssignment(text: string): boolean {
+  for (const m of text.matchAll(ASSIGNMENT)) {
+    const name = m[1].trimEnd();
+    if (/\d/.test(m[2]) && (KEY_WORD.test(name.split(' ').pop() ?? '') || KEY_PHRASE.test(name))) return true;
+  }
+  return false;
+}
 
 /** Returns the names of the secret patterns found in `text` (empty when none). */
 export function findSecrets(text: string): string[] {
-  return PATTERNS.filter(([, re]) => re.test(text)).map(([name]) => name);
+  const found = PATTERNS.filter(([, re]) => re.test(text)).map(([name]) => name);
+  return hasKeyAssignment(text) ? [...found, 'key-assignment'] : found;
 }
