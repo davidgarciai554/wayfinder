@@ -1,7 +1,7 @@
 import { WayfinderError, type Warning } from './errors.ts';
 import { commitPaths } from './git.ts';
 import { appendLogUnlocked, assertNoSecrets, taskLink } from './log.ts';
-import { consumeOrderUnlocked, getOrderUnlocked, ORDER_TTL_MS } from './mentions.ts';
+import { consumeOrderUnlocked, getOrderUnlocked, isBareApproval, ORDER_TTL_MS } from './mentions.ts';
 import { contentHash, consumeReviewUnlocked, getReviewUnlocked } from './review.ts';
 import { withLock } from './sync.ts';
 import { readTaskForWrite, writeTaskUnlocked, type Task } from './tasks.ts';
@@ -38,7 +38,9 @@ export function approveByChat(
 ): { task: Task; warnings: Warning[]; riskAcknowledged: boolean } {
   const clock = options.clock ?? systemClock;
   const quote = input.userQuote.replace(/\s+/g, ' ').trim();
-  if (quote === '' || quote.length > MAX_QUOTE || !quoteNamesId(quote, id)) {
+  // Without the ID, the quote must be a bare approval, and the order must come from one (checked below).
+  const namesId = quoteNamesId(quote, id);
+  if (quote === '' || quote.length > MAX_QUOTE || (!namesId && !isBareApproval(quote))) {
     throw new WayfinderError('chat.invalidQuote', { id, max: MAX_QUOTE });
   }
   assertNoSecrets(quote);
@@ -53,11 +55,13 @@ export function approveByChat(
     const task = readTaskForWrite(home, slug, id);
     checkTransition('chat', task.status, 'todo');
     if (task.origin !== 'claude') throw new WayfinderError('chat.originNotAllowed', { origin: task.origin });
+    // A bare «apruebo» proves itself through the order the hook recorded; it may well appear in the content.
     const content = squash(`${task.title}\n${task.body}`);
-    if (content.includes(squash(quote))) throw new WayfinderError('chat.quoteFromContent', {});
+    if (namesId && content.includes(squash(quote))) throw new WayfinderError('chat.quoteFromContent', {});
 
     const order = getOrderUnlocked(home, slug, id);
     if (!order) throw new WayfinderError('chat.noOrder', { id });
+    if (!namesId && !order.bare) throw new WayfinderError('chat.invalidQuote', { id, max: MAX_QUOTE });
     if (now.getTime() - order.ts > ORDER_TTL_MS) throw new WayfinderError('chat.orderExpired', { id });
 
     const review = getReviewUnlocked(home, slug, id);

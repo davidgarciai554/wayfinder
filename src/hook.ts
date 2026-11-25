@@ -6,11 +6,12 @@ import { checkFormat, formatWarning } from './store/format.ts';
 import { initHome, isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
-import { extractOrders, extractRegisterOrder, extractWebOrder, recordOrders, recordRegisterOrder, recordWebOrder } from './store/mentions.ts';
+import { extractOrders, extractRegisterOrder, extractWebOrder, isAutomatedTurn, isBareApproval, ORDER_TTL_MS, recordOrders, recordRegisterOrder, recordWebOrder } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
 import { isDeclined } from './store/register.ts';
+import { reviewedSince } from './store/review.ts';
 import { matchProject, findRepoRoot, rootKey } from './store/resolve.ts';
-import { listTasks, type Task } from './store/tasks.ts';
+import { listTasks, readTask, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
 import { isStatus } from './store/transitions.ts';
@@ -209,6 +210,19 @@ function historyLines(tasks: Task[]): string[] {
     });
 }
 
+const COVERED_MCP_TOOL = /^mcp__.+__(navigate|preview_start|javascript_tool|browser_batch|run_in_terminal)$/;
+
+/** The text a PreToolUse check can inspect: the shell command, or the whole input of a covered MCP tool (WAY-36). */
+function inspectableText(input: Record<string, unknown>): string | null {
+  const tool = String(input.tool_name ?? '');
+  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  if (tool === 'Bash' || tool === 'PowerShell') return typeof toolInput.command === 'string' ? toolInput.command : '';
+  return COVERED_MCP_TOOL.test(tool) ? JSON.stringify(toolInput) : null;
+}
+
+/** Backslashes become slashes and runs of them collapse, so JSON-escaped Windows paths compare like plain ones. */
+const normalizeSlashes = (s: string) => s.replace(/[\\/]+/g, '/').toLowerCase();
+
 function denyReason(home: string, input: Record<string, unknown>): string | null {
   const tool = String(input.tool_name ?? '');
   const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
@@ -217,32 +231,31 @@ function denyReason(home: string, input: Record<string, unknown>): string | null
     if (typeof target === 'string' && target && isWithin(home, resolve(String(input.cwd ?? '.'), target))) return target;
     return null;
   }
-  if (tool === 'Bash' || tool === 'PowerShell') {
-    const cwd = typeof input.cwd === 'string' ? input.cwd : '';
-    if (cwd && isWithin(home, cwd)) return cwd;
-    const command = typeof toolInput.command === 'string' ? toolInput.command : '';
-    const norm = (s: string) => s.replaceAll('\\', '/').toLowerCase();
-    const cmd = norm(command);
-    const homeNorm = norm(resolve(home)).replace(/\/+$/, '');
-    const msysHome = homeNorm.replace(/^([a-z]):/, '/$1'); // Git Bash spelling: /c/Users/...
-    // Heuristic (documented as best effort): variables, relative paths or aliases can evade it.
-    if (cmd.includes(homeNorm) || cmd.includes(msysHome) || cmd.includes('wayfinder_home') || /(^|[\s/~"'`=:(])\.wayfinder(?=$|[\s/"'`);])/.test(cmd)) return command;
-    return null;
-  }
+  const shell = tool === 'Bash' || tool === 'PowerShell';
+  const text = inspectableText(input);
+  // Browser tools are left out: URLs naming `.wayfinder` would be false positives.
+  if (text === null || !(shell || tool.endsWith('__run_in_terminal'))) return null;
+  const cwd = shell && typeof input.cwd === 'string' ? input.cwd : '';
+  if (cwd && isWithin(home, cwd)) return cwd;
+  const cmd = normalizeSlashes(text);
+  const homeNorm = normalizeSlashes(resolve(home)).replace(/\/+$/, '');
+  const msysHome = homeNorm.replace(/^([a-z]):/, '/$1'); // Git Bash spelling: /c/Users/...
+  // Heuristic (documented as best effort): variables, relative paths or aliases can evade it.
+  if (cmd.includes(homeNorm) || cmd.includes(msysHome) || cmd.includes('wayfinder_home') || /(^|[\s/~"'`=:(])\.wayfinder(?=$|[\s/"'`);])/.test(cmd)) return text;
   return null;
 }
 
 /**
- * SEC-1: a command that asks the local web for the links with the key (`/api/share`) or forges the
- * browser headers that endpoint requires. Heuristic, like denyReason: it raises the bar against an
- * agent steered by untrusted text; it cannot stop one determined to obfuscate the command.
+ * SEC-1: a command or covered MCP tool that asks the local web for the links with the key
+ * (`/api/share`), forges the browser headers that endpoint requires, or carries the key itself in
+ * `k=` (WAY-36). Heuristic, like denyReason: it raises the bar against an agent steered by untrusted
+ * text; it cannot stop one determined to obfuscate the call.
  */
 function asksForWebKey(input: Record<string, unknown>): boolean {
-  const tool = String(input.tool_name ?? '');
-  if (tool !== 'Bash' && tool !== 'PowerShell') return false;
-  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
-  const cmd = (typeof toolInput.command === 'string' ? toolInput.command : '').replaceAll('\\', '/').toLowerCase();
-  return cmd.includes('/api/share') || cmd.includes('sec-fetch-');
+  const text = inspectableText(input);
+  if (text === null) return false;
+  const cmd = normalizeSlashes(text);
+  return cmd.includes('/api/share') || cmd.includes('sec-fetch-') || /[?&]k=[0-9a-f]{6}\.[0-9a-f]{48}/i.test(text);
 }
 
 const MAX_COMMAND = 2000;
@@ -292,6 +305,11 @@ function failureReminder(input: Record<string, unknown>): boolean {
   return typeof toolInput.command === 'string' && isBuildOrTestCommand(toolInput.command);
 }
 
+/** Fixed text only: nothing from the message reaches Claude's context. */
+function promptNotice(io: HookIo, lang: Lang, key: 'hook.prompt.automatedOrder' | 'hook.prompt.bareApprovalAmbiguous'): void {
+  io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: t(lang, key) } }));
+}
+
 /** Hooks never break the session: any failure exits 0 without output. */
 export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = process.env, now: () => number = Date.now): number {
   try {
@@ -332,6 +350,11 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
         io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: ask } }));
       }
       if (event === 'prompt') {
+        const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+        if (isAutomatedTurn(prompt)) {
+          if (extractRegisterOrder(prompt) || extractWebOrder(prompt)) promptNotice(io, lang, 'hook.prompt.automatedOrder');
+          return 0;
+        }
         recordRegistration(home, lang, input, env, now());
         recordWebOpening(home, lang, input, env, now());
       }
@@ -358,8 +381,27 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
     }
     if (event === 'prompt') {
       const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+      // WAY-33: an automated turn neither gives nor clears orders; Claude is told why it does not count.
+      if (isAutomatedTurn(prompt)) {
+        if (extractOrders(prompt, project.idPrefix).length > 0 || isBareApproval(prompt) || extractWebOrder(prompt)) promptNotice(io, lang, 'hook.prompt.automatedOrder');
+        return 0;
+      }
+      let ids = extractOrders(prompt, project.idPrefix);
+      const bare = ids.length === 0 && isBareApproval(prompt);
+      if (bare) {
+        // Plan v2, D10: the one proposal Claude presented with wf_review in the last 15 minutes.
+        const reviewed = reviewedSince(home, project.slug, now() - ORDER_TTL_MS).filter((id) => {
+          try {
+            return readTask(home, project.slug, id).status === 'proposed';
+          } catch {
+            return false;
+          }
+        });
+        if (reviewed.length === 1) ids = reviewed;
+        else promptNotice(io, lang, 'hook.prompt.bareApprovalAmbiguous');
+      }
       // Every message replaces the previous orders, so only the latest message counts.
-      recordOrders(home, project.slug, extractOrders(prompt, project.idPrefix), now());
+      recordOrders(home, project.slug, ids, now(), bare && ids.length > 0);
       recordWebOpening(home, lang, input, env, now());
       return 0;
     }

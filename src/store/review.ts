@@ -69,6 +69,12 @@ export function getReviewUnlocked(home: string, slug: string, id: string): { has
   return entry;
 }
 
+/** IDs of the tasks of a project reviewed at or after sinceMs (plan v2, D10). */
+export function reviewedSince(home: string, slug: string, sinceMs: number): string[] {
+  const entries = readState<Reviews>(home, FILE)[slug] ?? {};
+  return Object.keys(entries).filter((id) => typeof entries[id]?.ts === 'number' && entries[id].ts >= sinceMs);
+}
+
 export function consumeReviewUnlocked(home: string, slug: string, id: string): void {
   const all = readState<Reviews>(home, FILE);
   if (all[slug]?.[id]) {

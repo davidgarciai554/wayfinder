@@ -16,7 +16,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit|Bash|PowerShell",
+        "matcher": "^(Edit|Write|NotebookEdit|Bash|PowerShell|mcp__.+__(navigate|preview_start|javascript_tool|browser_batch|run_in_terminal))$",
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/wayfinder.mjs", "hook", "pre-tool"] }
         ]

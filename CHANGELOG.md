@@ -35,6 +35,9 @@ Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha di
 
 - Los listados de tareas usan dos procesos git en total, en lugar de dos por tarea (WAY-23).
 - Un solo número de versión para el paquete y el plugin: `npm test` y `npm run check:dist` fallan si `package.json`, `package-lock.json` y `plugin.json` no coinciden (WAY-25).
+- Las barreras de la clave de la web y de la carpeta de datos miran también las herramientas del navegador y de la terminal que llevan una dirección, código o un comando, y bloquean la clave escrita en `k=`. Siguen siendo de mejor esfuerzo (WAY-36).
+- Los avisos de tareas y subagentes en segundo plano ya no cuentan como órdenes del chat ni borran la última orden; los mensajes de otra sesión sí cuentan. Una tarea programada todavía no se distingue de un mensaje tuyo (WAY-33).
+- Para aprobar por chat basta «apruebo», sin ID, justo después de que Claude presente una única propuesta (WAY-33).
 
 ### Corregido
 
