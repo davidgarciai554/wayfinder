@@ -517,11 +517,12 @@ async function reload(focusKey) {
   await render({ keepFocus: true, focus: focusKey });
 }
 
-function column(id, title, tasks, selectedId, extra) {
+/** count: the column's total, which may be more than the cards shown (Done shows the 10 latest). */
+function column(id, title, tasks, selectedId, extra, count = tasks.length) {
   const headingId = `col-${id}`;
   return el('section', { class: 'column', 'aria-labelledby': headingId, id: `column-${id}`, 'data-status': id },
     // Focusable from script (jump links, after a discard) so a refresh can restore that focus.
-    el('h2', { id: headingId, tabindex: '-1', 'data-focus': headingId }, el('span', { text: title }), el('span', { class: 'count', text: String(tasks.length) })),
+    el('h2', { id: headingId, tabindex: '-1', 'data-focus': headingId }, el('span', { text: title }), el('span', { class: 'count', text: String(count) })),
     el('ul', { class: 'cards' },
       tasks.length ? tasks.map((x) => card(x, selectedId)) : el('li', { class: 'none', text: t('web.none') }),
     ),
@@ -557,7 +558,8 @@ async function renderBoard() {
     column('done', t('web.column.done'), doneShown, selectedId,
       done.length > DONE_LIMIT && !showAllDone
         ? el('button', { type: 'button', class: 'button button-quiet', 'data-focus': 'show-all-done', text: t('web.showAllDone', { n: done.length }), onclick: () => { showAllDone = true; render({ keepFocus: true }); } })
-        : null),
+        : null,
+      done.length),
   ];
   if (showDiscarded) columns.push(column('discarded', t('web.column.discarded'), byStatus('discarded').sort(recentFirst), selectedId));
   // WAY-24: a status written by a newer version gets no column of its own (that would be false):
@@ -644,6 +646,7 @@ let leaving = false; // a navigation away from the task is under way: do not sta
 let closedByRouter = false; // the router closed the dialog: its late "close" event is not a request to leave
 let taskClosed = null; // ID of the task just closed (Esc or the button), to focus the link that opened it
 let errorOpenedFrom = null; // { task, error }: Back from that error to that task focuses the error link
+let errorShown = null; // { id, status } of the last error page: Back to a folded list focuses its group
 
 async function taskDetail() {
   let task;
@@ -884,8 +887,10 @@ async function renderErrorDetail() {
     e = await api(`/api/projects/${encodeURIComponent(view.slug)}/errors/${encodeURIComponent(view.id)}`);
   } catch (error) {
     if (error.status !== 404) throw error;
+    errorShown = null;
     return main.replaceChildren(el('p', {}, back), el('h1', { text: t('web.errors.notFoundTitle') }), el('p', { role: 'alert', text: t('web.errors.notFound', { id: view.id }) }));
   }
+  errorShown = { id: e.id, status: e.status };
   const row = (label, value) => [el('dt', { text: label }), el('dd', {}, value)];
   const task = e.taskTitle !== null
     ? el('a', { href: href(view.slug, 'task', e.task), 'data-focus': `task:${e.task}`, onclick: () => { errorOpenedFrom = null; } },
@@ -1040,6 +1045,7 @@ async function doRender(keepFocus, firstPaint, focus) {
     failure(error, () => render());
     return;
   }
+  document.title = pageTitle();
   // With the task dialog open, focus lives inside it.
   const scope = $('task-dialog').open ? $('task-dialog') : main;
   if (focus) {
@@ -1058,10 +1064,15 @@ async function doRender(keepFocus, firstPaint, focus) {
     const closedTo = sameProject && closedTask === previous.id && view.page === 'errors' && main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`);
     const backToTask = sameProject && view.page === 'task' && errorOpenedFrom?.task === view.id && errorOpenedFrom.error === previous.id
       && scope.querySelector(`[data-focus="error:${CSS.escape(previous.id)}"]`);
+    // Back from an error to the list: its link, or the heading of its group while that is folded.
+    const backToErrors = sameProject && previous.page === 'errors' && view.page === 'errors' && !view.id
+      && (main.querySelector(`[data-focus="error:${CSS.escape(previous.id)}"]`)
+        ?? (errorShown?.id === previous.id ? main.querySelector(`#errors-${CSS.escape(errorShown.status)}`) : null));
     if (backToTask) backToTask.focus();
     else if (view.page === 'task') (view.entry && scope.querySelector(`#entry-${view.entry}`) || scope.querySelector('#task-title'))?.focus();
     else if (sameBoard) main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`)?.focus();
     else if (closedTo) closedTo.focus();
+    else if (backToErrors) backToErrors.focus();
     else if (pickerNavigation) $('project-select').focus();
     else {
       const heading = main.querySelector('h1');
@@ -1069,6 +1080,15 @@ async function doRender(keepFocus, firstPaint, focus) {
       heading?.focus();
     }
   }
+}
+
+/** «<view or title> · <project> · Wayfinder»: tabs and history say where each page is. */
+function pageTitle() {
+  if (!view.slug) return `${t('web.projectsTitle')} · Wayfinder`;
+  const project = projects.find((p) => p.slug === view.slug);
+  if (!project) return 'Wayfinder';
+  const title = view.page === 'task' ? $('task-title') : view.page === 'errors' && view.id ? $('error-title') : null;
+  return [title?.textContent || t(`web.tab.${view.page}`), project.name, 'Wayfinder'].join(' · ');
 }
 
 async function loadProjects() {
