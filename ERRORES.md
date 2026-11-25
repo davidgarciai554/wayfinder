@@ -266,6 +266,7 @@
 - **Validación:** ninguna; queda abierto.
 - **Resultado:** sin resolver. Si se repite en CI (WAY-26), hay que reproducirlo con el PC sin carga y revisar los tiempos de espera del servidor y del cliente `get`.
 - **Recurrencia (2026-11-25, WAYF-8):** el mismo `ECONNRESET` en «errors: list and detail are read-only…» (otra prueba de `test/server.test.ts`) durante un `npm test` completo con `TEMP` en forma 8.3 y el PC cargado por otros hilos; al repetir `node --test test/server.test.ts` pasó. Sigue sin resolver.
+- **Recurrencia (2026-11-25, WAYF-7, rama `fix/way-33-36-ordenes-y-clave`):** la prueba WAY-23 falló con `read ECONNRESET` en un `npm test` completo y en 1 de 2 ejecuciones aisladas, sobre la base 7ed1969, que aún no tenía la corrección de WAY-32 (`agent: false`). Tras rebasar sobre `origin/main` (f26d5c3, con la corrección), `npm test` completo pasó 223/223.
 - **Actualización 2026-11-25 (WAYF-4, WAY-32):** causa confirmada y corregida en la entrada siguiente: el agente HTTP reutiliza un socket keep-alive que el servidor ya ha cerrado mientras el git síncrono bloquea el proceso; las peticiones de `test/server.test.ts` pasan a usar `agent: false`.
 
 ## 2026-11-25 · `npm test` en rojo en `test/server.test.ts`: segunda dirección en 169.254 y ECONNRESET en sockets reutilizados
