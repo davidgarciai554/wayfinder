@@ -6,11 +6,12 @@ import { checkFormat, formatWarning } from './store/format.ts';
 import { initHome, isInitialized } from './store/init.ts';
 import { hasHistoryFor, isCreationEntry, parseEntries } from './store/history.ts';
 import { hasFreeLogFor } from './store/log.ts';
-import { extractOrders, extractRegisterOrder, extractWebOrder, recordOrders, recordRegisterOrder, recordWebOrder } from './store/mentions.ts';
+import { extractOrders, extractRegisterOrder, extractWebOrder, isAutomatedTurn, isBareApproval, ORDER_TTL_MS, recordOrders, recordRegisterOrder, recordWebOrder } from './store/mentions.ts';
 import { getHome, isWithin } from './store/paths.ts';
 import { isDeclined } from './store/register.ts';
+import { reviewedSince } from './store/review.ts';
 import { matchProject, findRepoRoot, rootKey } from './store/resolve.ts';
-import { listTasks, type Task } from './store/tasks.ts';
+import { listTasks, readTask, type Task } from './store/tasks.ts';
 import { flatten, neutralize } from './store/text.ts';
 import { localDay } from './store/time.ts';
 import { isStatus } from './store/transitions.ts';
@@ -304,6 +305,11 @@ function failureReminder(input: Record<string, unknown>): boolean {
   return typeof toolInput.command === 'string' && isBuildOrTestCommand(toolInput.command);
 }
 
+/** Fixed text only: nothing from the message reaches Claude's context. */
+function promptNotice(io: HookIo, lang: Lang, key: 'hook.prompt.automatedOrder' | 'hook.prompt.bareApprovalAmbiguous'): void {
+  io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: t(lang, key) } }));
+}
+
 /** Hooks never break the session: any failure exits 0 without output. */
 export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = process.env, now: () => number = Date.now): number {
   try {
@@ -344,6 +350,11 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
         io.out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: ask } }));
       }
       if (event === 'prompt') {
+        const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+        if (isAutomatedTurn(prompt)) {
+          if (extractRegisterOrder(prompt) || extractWebOrder(prompt)) promptNotice(io, lang, 'hook.prompt.automatedOrder');
+          return 0;
+        }
         recordRegistration(home, lang, input, env, now());
         recordWebOpening(home, lang, input, env, now());
       }
@@ -370,8 +381,27 @@ export function runHook(event: string, io: HookIo, baseEnv: NodeJS.ProcessEnv = 
     }
     if (event === 'prompt') {
       const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+      // WAY-33: an automated turn neither gives nor clears orders; Claude is told why it does not count.
+      if (isAutomatedTurn(prompt)) {
+        if (extractOrders(prompt, project.idPrefix).length > 0 || isBareApproval(prompt) || extractWebOrder(prompt)) promptNotice(io, lang, 'hook.prompt.automatedOrder');
+        return 0;
+      }
+      let ids = extractOrders(prompt, project.idPrefix);
+      const bare = ids.length === 0 && isBareApproval(prompt);
+      if (bare) {
+        // Plan v2, D10: the one proposal Claude presented with wf_review in the last 15 minutes.
+        const reviewed = reviewedSince(home, project.slug, now() - ORDER_TTL_MS).filter((id) => {
+          try {
+            return readTask(home, project.slug, id).status === 'proposed';
+          } catch {
+            return false;
+          }
+        });
+        if (reviewed.length === 1) ids = reviewed;
+        else promptNotice(io, lang, 'hook.prompt.bareApprovalAmbiguous');
+      }
       // Every message replaces the previous orders, so only the latest message counts.
-      recordOrders(home, project.slug, extractOrders(prompt, project.idPrefix), now());
+      recordOrders(home, project.slug, ids, now(), bare && ids.length > 0);
       recordWebOpening(home, lang, input, env, now());
       return 0;
     }

@@ -5,7 +5,7 @@ const FILE = 'chat-mentions.json';
 export const ORDER_TTL_MS = 15 * 60 * 1000;
 
 /** Per project: the explicit approval orders found in the person's latest message. */
-type Mentions = Record<string, { ts: number; ids: string[] }>;
+type Mentions = Record<string, { ts: number; ids: string[]; bare?: boolean }>;
 
 const APPROVAL_VERBS = [
   'aprueba', 'apruebo', 'apruébala', 'apruebala', 'aprobar', 'haz', 'hazla', 'empieza', 'empiézala', 'empiezala', 'arranca',
@@ -63,6 +63,33 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
     }
   }
   return found.size > MAX_ORDER_IDS ? [] : [...found];
+}
+
+/**
+ * WAY-33: turns Claude Code starts on its own and that nobody forwards: background task and
+ * subagent reports, and scheduled prompts when they come wrapped. Claude Code writes these tags at
+ * column zero and indents the report inside, so a quoted tag never matches. Messages from another
+ * session (`<cross-session-message>`) still count, by the person's decision (plan v2, D1').
+ * Limit: in Claude Code 2.1.332 a CronCreate or /loop prompt arrives as plain text and still counts.
+ */
+const AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/m;
+
+export function isAutomatedTurn(prompt: string): boolean {
+  return AUTOMATED_TURN.test(prompt);
+}
+
+const CROSS_SESSION = /^\s*<cross-session-message\b[^>\n]*>\n([\s\S]*?)\n<\/cross-session-message>\s*$/;
+/**
+ * A whole message that only approves, without an ID: «apruebo», «Sí, apruébala.», «approve». A
+ * message from another session is judged by its body. Anything more («apruebo el plan v1», «no
+ * apruebo», «¿apruebo?») is not one (plan v2, D9).
+ */
+const BARE_APPROVAL =
+  /^(?:(?:sí|si|ok|vale|yes)[\s,.!]*)?(?:i\s+)?(?:aprueba|apruebo|apruébala|apruebala|aprobada|approve|approved)(?:\s+(?:la propuesta|la|esa|esta|it|this))?[\s.!¡\p{Extended_Pictographic}\u{FE0F}]*$/u;
+
+export function isBareApproval(prompt: string): boolean {
+  const text = (CROSS_SESSION.exec(prompt)?.[1] ?? prompt).normalize('NFKC').trim().toLowerCase();
+  return text.length <= 40 && BARE_APPROVAL.test(text);
 }
 
 /** What the person wrote, without code blocks, inline code, quoted lines or invisible characters. */
@@ -170,20 +197,23 @@ export function takeRegisterOrderUnlocked(home: string, key: string, nowMs: numb
   return ts <= nowMs && nowMs - ts <= ORDER_TTL_MS;
 }
 
-/** Called only by the UserPromptSubmit hook: each message replaces the previous orders. */
-export function recordOrders(home: string, slug: string, ids: string[], nowMs: number): void {
+/**
+ * Called only by the UserPromptSubmit hook: each message replaces the previous orders. bare: the
+ * order came from a message without the ID (isBareApproval), so its quote cannot name the ID.
+ */
+export function recordOrders(home: string, slug: string, ids: string[], nowMs: number, bare = false): void {
   withLock(home, () => {
     const all = readState<Mentions>(home, FILE);
-    all[slug] = { ts: nowMs, ids };
+    all[slug] = bare ? { ts: nowMs, ids, bare } : { ts: nowMs, ids };
     writeState(home, FILE, all);
   });
 }
 
 /** Must run inside the store lock. */
-export function getOrderUnlocked(home: string, slug: string, id: string): { ts: number } | null {
+export function getOrderUnlocked(home: string, slug: string, id: string): { ts: number; bare: boolean } | null {
   const entry = readState<Mentions>(home, FILE)[slug];
   if (!entry || !Array.isArray(entry.ids) || !entry.ids.includes(id) || typeof entry.ts !== 'number') return null;
-  return { ts: entry.ts };
+  return { ts: entry.ts, bare: entry.bare === true };
 }
 
 /** Must run inside the store lock. Each order authorises a single approval. */

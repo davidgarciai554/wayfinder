@@ -434,7 +434,7 @@ export function createWayfinderServer(ctx: McpContext): McpServer {
     'wf_set_status',
     {
       description:
-        'Change a task status. proposed→todo is only allowed when the person explicitly ordered it in their latest message ("approve WF-12"): then pass user_requested, user_quote (their literal words), and the review verdict after calling wf_review. Moving to in-progress needs an existing plan in Planes/ or trivial: true with a note.',
+        'Change a task status. proposed→todo is only allowed when the person explicitly ordered it in their latest message ("approve WF-12", or a bare "apruebo" right after wf_review of that single proposal): then pass user_requested, user_quote (their literal words), and the review verdict after calling wf_review. Moving to in-progress needs an existing plan in Planes/ or trivial: true with a note.',
       inputSchema: z.object({
         id: z.string(),
         status: z.enum(STATUSES),

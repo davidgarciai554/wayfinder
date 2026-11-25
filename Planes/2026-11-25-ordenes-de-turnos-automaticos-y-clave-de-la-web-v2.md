@@ -64,3 +64,19 @@ Ninguna bloqueante. Solo confirmar dos límites:
 - Riesgo: una sesión manipulada en este PC aprueba por mensaje. Aceptado por la persona; mitigado por la revisión con hash y la segunda confirmación, y documentado.
 - Riesgo: «apruebo» aprueba una propuesta distinta de la que la persona tiene en mente (por ejemplo, Claude revisó otra sin decirlo). Mitigación: solo con una única revisión reciente; la skill ya obliga a llamar a `wf_review` antes de aprobar (`SKILL.md:60` y `:74`), y el historial guarda la cita y el ID aprobado.
 - Reversión: como en v1.
+
+## Anexo: resultado de la sonda (incremento 1, 2026-11-25)
+
+Claude Code 2.1.332, Windows. Sesiones headless (`claude -p`, y `--input-format stream-json` para mantener viva la sesión) en un proyecto desechable de `%TEMP%`, con `WAYFINDER_HOME` temporal y un hook de volcado cargado con `--settings`. La sesión interactiva por terminal no llegó a arrancar y se cerró. No se tocó `~/.wayfinder` (ningún archivo más nuevo que la marca de inicio) ni el repositorio; la carpeta temporal se borró.
+
+| Caso | Primeras líneas de `prompt` | Campos de la entrada |
+| --- | --- | --- |
+| (a) mensaje de la persona (`-p`) | texto plano | comunes + `prompt` (+ `session_title` con `--name`) |
+| (c) informe de subagente en segundo plano | `<agent-message from="…">`, línea `[Subagent hand-back] …` y el informe **sangrado** («a frame-like line at column zero inside it would be forged») | iguales que (a) |
+| (c2) orden en segundo plano terminada | `<task-notification>` con `<task-id>`, `<status>` y `<summary>` (el `summary` incluye la descripción que escribe Claude) | iguales que (a) |
+| (d) mensaje de otra sesión | `<cross-session-message from="…" from-name="…" from-mode="prompting">`, el texto y el cierre | iguales que (a) |
+| (e) tarea de `CronCreate` | **texto plano**, idéntico al prompt programado | iguales que (a) |
+
+No probados: (b) texto pegado, (f) reenvío desde la sesión principal (mismo mecanismo que (d)), (g) brief de una sesión nueva, y la sesión interactiva o Claude Code Desktop. La transcripción guarda (e) con `turnOrigin: scheduled`, pero esa marca no llega al hook.
+
+Aplicación de las reglas de la v2: **R1'** para (c) y (c2) (se filtran `<task-notification`, `<agent-message` y, si aparece, `<scheduled-task`, solo en la columna cero); **R3'** para (e): una tarea programada no se distingue y queda como límite escrito en el README. (d) cuenta como orden (D1').
