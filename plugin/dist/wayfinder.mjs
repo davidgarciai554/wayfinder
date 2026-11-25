@@ -14192,11 +14192,12 @@ function createRenderer(assetBase) {
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
   md.core.ruler.push("shift_headings", (state) => {
-    for (const token of state.tokens) {
-      if ((token.type === "heading_open" || token.type === "heading_close") && /^h[1-5]$/.test(token.tag)) {
-        token.tag = `h${Number(token.tag[1]) + 1}`;
-      }
-    }
+    const headings = state.tokens.filter((token) => token.type === "heading_open" || token.type === "heading_close");
+    if (headings.length === 0) return;
+    const level = (tag) => Number(tag[1]);
+    const base = state.env?.headingBase;
+    const shift = base ? base - Math.min(...headings.map((token) => level(token.tag))) : 1;
+    for (const token of headings) token.tag = `h${Math.min(level(token.tag) + shift, 6)}`;
   });
   return md;
 }
@@ -15493,7 +15494,7 @@ function startServer(options) {
     const project = requireProject(home, slug);
     const md = renderFor(slug);
     if (parts.length === 2) {
-      return json2(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body) });
+      return json2(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body, { headingBase: 2 }) });
     }
     if (parts[2] === "tasks" && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);

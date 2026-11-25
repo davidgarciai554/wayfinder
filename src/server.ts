@@ -246,7 +246,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     const project = requireProject(home, slug);
     const md = renderFor(slug);
     if (parts.length === 2) {
-      return json(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body) });
+      return json(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body, { headingBase: 2 }) });
     }
     if (parts[2] === 'tasks' && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);

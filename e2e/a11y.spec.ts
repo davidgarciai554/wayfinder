@@ -92,5 +92,11 @@ for (const lang of ['es', 'en'] as const) {
       await expect(page.getByRole('heading', { level: 2, name: `${TEXT[lang].done} 12` })).toBeVisible();
       await expect(page.locator('.jump a').last()).toHaveText(`${TEXT[lang].done} (12)`);
     });
+    test('A11Y-6: the project page goes from h1 to h2 without a gap', async ({ page }) => {
+      await page.goto(`${base(lang)}/#/wayfinder/project`);
+      await expect(page.locator('main').getByText('Gestor de tareas en Markdown.')).toBeVisible();
+      const headings = await page.locator('main :is(h1, h2, h3, h4, h5, h6)').evaluateAll((list) => list.map((h) => `${h.tagName}: ${h.textContent}`));
+      expect(headings).toEqual(['H1: wayfinder', 'H2: Qué es']);
+    });
   });
 }

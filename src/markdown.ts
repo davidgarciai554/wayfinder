@@ -36,13 +36,16 @@ export function createRenderer(assetBase: string) {
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
 
-  // Shift headings one level down: the page owns <h1> (the task or project title).
+  // The page owns <h1> (the task or project title), so headings move one level down. With
+  // env.headingBase (a page whose Markdown sits right under its <h1>), the highest heading present
+  // becomes that level instead, so a body that starts at «##» leaves no gap.
   md.core.ruler.push('shift_headings', (state) => {
-    for (const token of state.tokens) {
-      if ((token.type === 'heading_open' || token.type === 'heading_close') && /^h[1-5]$/.test(token.tag)) {
-        token.tag = `h${Number(token.tag[1]) + 1}`;
-      }
-    }
+    const headings = state.tokens.filter((token) => token.type === 'heading_open' || token.type === 'heading_close');
+    if (headings.length === 0) return;
+    const level = (tag: string) => Number(tag[1]);
+    const base = (state.env as { headingBase?: number } | undefined)?.headingBase;
+    const shift = base ? base - Math.min(...headings.map((token) => level(token.tag))) : 1;
+    for (const token of headings) token.tag = `h${Math.min(level(token.tag) + shift, 6)}`;
   });
   return md;
 }
