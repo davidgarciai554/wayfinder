@@ -231,6 +231,49 @@ test('pre-tool denies commands that ask the local web for the key or forge brows
   }
 });
 
+test('pre-tool covers browser and terminal MCP tools: the key, /api/share and the data folder (WAY-36)', (t) => {
+  const { home } = setup(t);
+  const decision = (tool_name: string, tool_input: unknown) => hook('pre-tool', { tool_name, tool_input }, { WAYFINDER_HOME: home, WAYFINDER_LANG: 'en' }).json?.hookSpecificOutput;
+  const key = `${'a1b2c3'}.${'0123456789abcdef'.repeat(3)}`;
+  for (const [tool, input] of [
+    ['mcp__Claude_Browser__javascript_tool', { action: 'javascript_exec', text: "fetch('/api/share').then((r) => r.json())", tabId: 1 }],
+    ['mcp__claude-in-chrome__javascript_tool', { action: 'javascript_exec', text: "await fetch('/api/share')", tabId: 1 }],
+    ['mcp__Claude_Browser__browser_batch', { actions: [{ tool: 'javascript_tool', input: { text: "fetch('/api/share')" } }] }],
+    ['mcp__Claude_Browser__navigate', { url: `http://127.0.0.1:4747/?k=${key}`, tabId: 1 }],
+    ['mcp__claude-in-chrome__navigate', { url: `http://192.168.1.20:4747/?x=1&k=${key.toUpperCase()}` }],
+    ['mcp__terminal__run_in_terminal', { command: 'curl http://127.0.0.1:4747/api/share' }],
+    ['mcp__terminal__run_in_terminal', { command: "curl -H 'Sec-Fetch-Site: same-origin' http://127.0.0.1:4747/x" }],
+  ] as const) {
+    const out = decision(tool, input);
+    assert.equal(out?.permissionDecision, 'deny', tool);
+    assert.match(out.permissionDecisionReason, /web key is for the person only/);
+  }
+  const inData = decision('mcp__terminal__run_in_terminal', { command: `type ${join(home, 'projects', 'consumer', 'PROJECT.md').replaceAll('/', '\\')}` });
+  assert.equal(inData?.permissionDecision, 'deny');
+  assert.match(inData.permissionDecisionReason, /data folder/);
+  for (const [tool, input] of [
+    ['mcp__Claude_Browser__navigate', { url: 'http://127.0.0.1:4747/', tabId: 1 }],
+    ['mcp__claude-in-chrome__navigate', { url: 'https://example.com/search?q=wayfinder&k=12345' }],
+    ['mcp__Claude_Browser__javascript_tool', { action: 'javascript_exec', text: 'document.title', tabId: 1 }],
+    ['mcp__Claude_Browser__navigate', { url: `file:///${home}/x.html` }],
+    // Out of the matcher and of these checks: a click on an already open tab is a known gap.
+    ['mcp__Claude_Browser__computer', { action: 'left_click', coordinate: [10, 10], text: "fetch('/api/share')" }],
+  ] as const) {
+    assert.equal(decision(tool, input), undefined, `${tool} ${JSON.stringify(input)}`);
+  }
+});
+
+test('the PreToolUse matcher covers the shell, edit, browser and terminal tools and nothing else', () => {
+  const hooks = JSON.parse(readFileSync(fileURLToPath(new URL('../plugin/hooks/hooks.json', import.meta.url)), 'utf8'));
+  const matcher = new RegExp(hooks.hooks.PreToolUse[0].matcher);
+  for (const name of ['mcp__Claude_Browser__javascript_tool', 'mcp__claude-in-chrome__navigate', 'mcp__terminal__run_in_terminal', 'Edit', 'Write', 'NotebookEdit', 'Bash', 'PowerShell']) {
+    assert.ok(matcher.test(name), name);
+  }
+  for (const name of ['mcp__Claude_Browser__computer', 'mcp__Claude_Browser__get_page_text', 'MultiEdit', 'BashOutput', 'mcp__Claude_Browser__navigate_back']) {
+    assert.ok(!matcher.test(name), name);
+  }
+});
+
 test('plugin options reach the hooks; unset placeholders are ignored', () => {
   const env = hookEnv({ CLAUDE_PLUGIN_OPTION_HOME: '~/wf-data', CLAUDE_PLUGIN_OPTION_LANGUAGE: 'en' });
   assert.equal(env.WAYFINDER_LANG, 'en');

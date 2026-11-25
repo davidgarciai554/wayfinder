@@ -209,6 +209,19 @@ function historyLines(tasks: Task[]): string[] {
     });
 }
 
+const COVERED_MCP_TOOL = /^mcp__.+__(navigate|preview_start|javascript_tool|browser_batch|run_in_terminal)$/;
+
+/** The text a PreToolUse check can inspect: the shell command, or the whole input of a covered MCP tool (WAY-36). */
+function inspectableText(input: Record<string, unknown>): string | null {
+  const tool = String(input.tool_name ?? '');
+  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  if (tool === 'Bash' || tool === 'PowerShell') return typeof toolInput.command === 'string' ? toolInput.command : '';
+  return COVERED_MCP_TOOL.test(tool) ? JSON.stringify(toolInput) : null;
+}
+
+/** Backslashes become slashes and runs of them collapse, so JSON-escaped Windows paths compare like plain ones. */
+const normalizeSlashes = (s: string) => s.replace(/[\\/]+/g, '/').toLowerCase();
+
 function denyReason(home: string, input: Record<string, unknown>): string | null {
   const tool = String(input.tool_name ?? '');
   const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
@@ -217,32 +230,31 @@ function denyReason(home: string, input: Record<string, unknown>): string | null
     if (typeof target === 'string' && target && isWithin(home, resolve(String(input.cwd ?? '.'), target))) return target;
     return null;
   }
-  if (tool === 'Bash' || tool === 'PowerShell') {
-    const cwd = typeof input.cwd === 'string' ? input.cwd : '';
-    if (cwd && isWithin(home, cwd)) return cwd;
-    const command = typeof toolInput.command === 'string' ? toolInput.command : '';
-    const norm = (s: string) => s.replaceAll('\\', '/').toLowerCase();
-    const cmd = norm(command);
-    const homeNorm = norm(resolve(home)).replace(/\/+$/, '');
-    const msysHome = homeNorm.replace(/^([a-z]):/, '/$1'); // Git Bash spelling: /c/Users/...
-    // Heuristic (documented as best effort): variables, relative paths or aliases can evade it.
-    if (cmd.includes(homeNorm) || cmd.includes(msysHome) || cmd.includes('wayfinder_home') || /(^|[\s/~"'`=:(])\.wayfinder(?=$|[\s/"'`);])/.test(cmd)) return command;
-    return null;
-  }
+  const shell = tool === 'Bash' || tool === 'PowerShell';
+  const text = inspectableText(input);
+  // Browser tools are left out: URLs naming `.wayfinder` would be false positives.
+  if (text === null || !(shell || tool.endsWith('__run_in_terminal'))) return null;
+  const cwd = shell && typeof input.cwd === 'string' ? input.cwd : '';
+  if (cwd && isWithin(home, cwd)) return cwd;
+  const cmd = normalizeSlashes(text);
+  const homeNorm = normalizeSlashes(resolve(home)).replace(/\/+$/, '');
+  const msysHome = homeNorm.replace(/^([a-z]):/, '/$1'); // Git Bash spelling: /c/Users/...
+  // Heuristic (documented as best effort): variables, relative paths or aliases can evade it.
+  if (cmd.includes(homeNorm) || cmd.includes(msysHome) || cmd.includes('wayfinder_home') || /(^|[\s/~"'`=:(])\.wayfinder(?=$|[\s/"'`);])/.test(cmd)) return text;
   return null;
 }
 
 /**
- * SEC-1: a command that asks the local web for the links with the key (`/api/share`) or forges the
- * browser headers that endpoint requires. Heuristic, like denyReason: it raises the bar against an
- * agent steered by untrusted text; it cannot stop one determined to obfuscate the command.
+ * SEC-1: a command or covered MCP tool that asks the local web for the links with the key
+ * (`/api/share`), forges the browser headers that endpoint requires, or carries the key itself in
+ * `k=` (WAY-36). Heuristic, like denyReason: it raises the bar against an agent steered by untrusted
+ * text; it cannot stop one determined to obfuscate the call.
  */
 function asksForWebKey(input: Record<string, unknown>): boolean {
-  const tool = String(input.tool_name ?? '');
-  if (tool !== 'Bash' && tool !== 'PowerShell') return false;
-  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
-  const cmd = (typeof toolInput.command === 'string' ? toolInput.command : '').replaceAll('\\', '/').toLowerCase();
-  return cmd.includes('/api/share') || cmd.includes('sec-fetch-');
+  const text = inspectableText(input);
+  if (text === null) return false;
+  const cmd = normalizeSlashes(text);
+  return cmd.includes('/api/share') || cmd.includes('sec-fetch-') || /[?&]k=[0-9a-f]{6}\.[0-9a-f]{48}/i.test(text);
 }
 
 const MAX_COMMAND = 2000;
