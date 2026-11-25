@@ -8631,6 +8631,23 @@ function withLock(home, fn) {
 // src/store/git.ts
 var ALLOWED_SUBCOMMANDS = /* @__PURE__ */ new Set(["init", "add", "commit", "status", "rev-parse", "log"]);
 var IDENTITY = { name: "Wayfinder", email: "wayfinder@localhost" };
+var REPO_ENV = /* @__PURE__ */ new Set([
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CONFIG",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_GRAFT_FILE",
+  "GIT_INDEX_FILE",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_PREFIX",
+  "GIT_SHALLOW_FILE",
+  "GIT_COMMON_DIR"
+]);
 var realRunner = (args) => {
   try {
     const stdout = execFileSync("git", args, {
@@ -8640,7 +8657,7 @@ var realRunner = (args) => {
       // Node's default is 1 MiB, and the log of a whole listing (modifiedOutsideAmong) passes it
       // at around 12,000 commits. 64 MiB covers some 500,000.
       maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }
+      env: { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !REPO_ENV.has(name.toUpperCase()))), GIT_TERMINAL_PROMPT: "0" }
     });
     return { ok: true, missing: false, stdout, stderr: "" };
   } catch (error62) {
@@ -15497,6 +15514,13 @@ function startServer(options) {
     send(res, 200, readFileSync9(file2), MIME[extname(name).toLowerCase()] ?? "application/octet-stream");
   }
   function handle(req, res) {
+    try {
+      routeRequest(req, res);
+    } catch (error62) {
+      fail(res, error62);
+    }
+  }
+  function routeRequest(req, res) {
     const hostHeader = (req.headers.host ?? "").toLowerCase();
     if (!allowedHosts().has(hostHeader)) return json2(res, 403, { error: t(lang, "web.forbiddenHost") });
     if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "POST") return json2(res, 405, { error: t(lang, "web.methodNotAllowed") });
@@ -15533,11 +15557,7 @@ function startServer(options) {
     const parts = pathname.split("/").filter(Boolean);
     if (parts[0] !== "api") return notFound(res);
     if (parts[1] === "projects" && parts[3] === "assets" && parts.length === 5) return serveAsset(res, parts[2], parts[4]);
-    try {
-      handleApi(req, res, parts.slice(1));
-    } catch (error62) {
-      fail(res, error62);
-    }
+    handleApi(req, res, parts.slice(1));
   }
   function fail(res, error62, field) {
     if (error62 instanceof WayfinderError) {

@@ -368,3 +368,33 @@ test('WAY-23: when the batch cannot run, the answer is the per-file one and fail
   assert.deepEqual([...modifiedOutsideAmong(home, TASKS, files)], []);
   assert.equal(calls.length, 1);
 });
+
+test('WAY-35: an inherited GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE cannot send a commit to another repository', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const other = join(home, '..', 'other');
+  mkdirSync(other);
+  execFileSync('git', ['init', '-q', other]);
+  execFileSync('git', ['-C', other, '-c', 'user.name=Other', '-c', 'user.email=other@localhost', 'commit', '-q', '--allow-empty', '-m', 'other: root']);
+  const otherHead = gitOut(other, 'rev-parse', 'HEAD');
+  const before = commitCount(home);
+
+  const names = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'];
+  const saved = names.map((name) => process.env[name]);
+  process.env.GIT_DIR = join(other, '.git');
+  process.env.GIT_WORK_TREE = other;
+  process.env.GIT_INDEX_FILE = join(other, '.git', 'index');
+  const created = (() => {
+    try {
+      return createTask(home, 'demo', { title: 'Fuera no' }, 'mcp');
+    } finally {
+      names.forEach((name, i) => (saved[i] === undefined ? delete process.env[name] : (process.env[name] = saved[i])));
+    }
+  })();
+
+  assert.deepEqual(created.warnings, []);
+  assert.equal(commitCount(home), before + 1);
+  assert.equal(gitOut(home, 'show', '--name-only', '--format=', 'HEAD'), created.task.file);
+  assert.equal(gitOut(other, 'rev-parse', 'HEAD'), otherHead);
+  assert.equal(gitOut(other, 'status', '--porcelain'), '');
+});

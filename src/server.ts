@@ -325,7 +325,17 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     send(res, 200, readFileSync(file), MIME[extname(name).toLowerCase()] ?? 'application/octet-stream');
   }
 
+  // WAY-34: one catch for the whole request, so no store error (a reserved slug, a symlink) can
+  // reach the process as an uncaught exception.
   function handle(req: IncomingMessage, res: ServerResponse): void {
+    try {
+      routeRequest(req, res);
+    } catch (error) {
+      fail(res, error);
+    }
+  }
+
+  function routeRequest(req: IncomingMessage, res: ServerResponse): void {
     const hostHeader = (req.headers.host ?? '').toLowerCase();
     if (!allowedHosts().has(hostHeader)) return json(res, 403, { error: t(lang, 'web.forbiddenHost') });
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') return json(res, 405, { error: t(lang, 'web.methodNotAllowed') });
@@ -373,11 +383,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     const parts = pathname.split('/').filter(Boolean);
     if (parts[0] !== 'api') return notFound(res);
     if (parts[1] === 'projects' && parts[3] === 'assets' && parts.length === 5) return serveAsset(res, parts[2], parts[4]);
-    try {
-      handleApi(req, res, parts.slice(1));
-    } catch (error) {
-      fail(res, error);
-    }
+    handleApi(req, res, parts.slice(1));
   }
 
   function fail(res: ServerResponse, error: unknown, field?: string): void {
