@@ -1,6 +1,6 @@
 import { closeSync, copyFileSync, lstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { WayfinderError, type Warning } from './errors.ts';
 import { commitPaths } from './git.ts';
 import { assertNoSecrets } from './log.ts';
@@ -47,15 +47,17 @@ export function attachCapture(
   const requested = resolve(input.path);
   let real: string;
   try {
-    if (lstatSync(requested).isSymbolicLink()) throw new WayfinderError('attach.symlink', { path: input.path });
+    // Look for a link or junction on every segment instead of comparing with the real path:
+    // realpath also expands 8.3 short names (C:\Users\RUNNER~1), which are not links.
+    for (let p = requested; ; p = dirname(p)) {
+      if (lstatSync(p).isSymbolicLink()) throw new WayfinderError('attach.symlink', { path: input.path });
+      if (dirname(p) === p) break;
+    }
     real = realpathSync.native(requested);
   } catch (error) {
     if (error instanceof WayfinderError) throw error;
     throw new WayfinderError('attach.notFound', { path: input.path });
   }
-  const norm = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
-  // A different real path means a link or junction somewhere along the way.
-  if (norm(real) !== norm(requested)) throw new WayfinderError('attach.symlink', { path: input.path });
   if (real.split(sep).some((segment) => DENIED_SEGMENT.test(segment))) throw new WayfinderError('attach.denied', { path: input.path });
   if (isWithin(home, real)) throw new WayfinderError('attach.denied', { path: input.path });
   const roots = input.allowedRoots.filter(Boolean);

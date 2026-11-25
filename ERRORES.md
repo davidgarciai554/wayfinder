@@ -246,11 +246,13 @@
 - **Contexto:** primer CI en GitHub Actions (WAY-26, PR #2), `windows-latest` con Node 22 y 24. En ChinorrisPC estas pruebas pasan.
 - **Reproducción:** `npm test` en el runner con su `TEMP` por defecto (`C:\Users\RUNNER~1\AppData\Local\Temp`, nombre corto 8.3).
 - **Salida observada:** 205/210 en los dos Node. Fallan «data from a newer format is read only…», «a task status from a newer version…», «pre-tool denies direct edits of WAYFINDER_HOME…», «wf_attach only copies real images…» y «WAY-24: the live MCP sees the data format change…», con `attach.symlink` («… is or goes through a symbolic link or junction») sobre rutas bajo `RUNNER~1`, o una aserción `false` en el hook pre-tool.
-- **Causa (hipótesis apoyada en el código):** `src/store/attach.ts:51-58` compara `realpathSync.native(ruta)` con la ruta pedida; `realpath` expande `RUNNER~1` a `runneradmin`, la comparación difiere y se toma por enlace. `src/store/paths.ts:81` usa también `realpathSync.native`, lo que explicaría el fallo del hook pre-tool. Afectaría a cualquier usuario cuya ruta llegue en forma 8.3. No se ha reproducido en ChinorrisPC.
-- **Solución en el CI:** el workflow fija `TEMP` y `TMP` a `RUNNER_TEMP` (ruta larga) con un comentario que remite a esta entrada. El defecto del producto queda sin corregir: necesita su propia tarea.
-- **Archivos modificados:** `.github/workflows/ci.yml`.
-- **Validación:** ver la ejecución del CI del PR #2 tras el cambio.
-- **Resultado:** abierto en el producto; mitigado en el CI.
+- **Causa (confirmada):** `src/store/attach.ts` comparaba `realpathSync.native(ruta)` con la ruta pedida para detectar enlaces; `realpath` expande los nombres cortos 8.3 (`RUNNER~1` → `runneradmin`), así que un archivo normal daba una ruta distinta y se tomaba por enlace. En `src/store/paths.ts`, `isWithin` canonicalizaba con `realpath` y, si la ruta aún no existía (el archivo que un Edit o Write va a crear), dejaba la ruta tal cual: un lado quedaba expandido y el otro en 8.3, y el hook pre-tool no reconocía rutas dentro de `WAYFINDER_HOME`. Afecta a cualquier usuario cuya ruta llegue en forma 8.3.
+- **Reproducción en ChinorrisPC (2026-11-25):** `TEMP`/`TMP` apuntando al nombre corto de una carpeta de nombre largo (`…\Temp\WA42F6~1`) y `npm test`: fallan las mismas 5 pruebas que en el CI, con `attach.symlink` y la aserción del hook pre-tool.
+- **Mitigación previa en el CI:** el workflow fijaba `TEMP` y `TMP` a `RUNNER_TEMP` (ruta larga). Se retira con la corrección.
+- **Solución:** `attachCapture` ya no compara con la ruta real: recorre la ruta pedida segmento a segmento con `lstat` y rechaza cualquier enlace simbólico o junction (también en directorios intermedios); las comprobaciones de carpetas permitidas y denegadas siguen usando la ruta real. `isWithin` canonicaliza una ruta inexistente con la ruta real de su antecesor existente más cercano más el resto, de modo que los dos lados quedan en forma larga.
+- **Archivos modificados:** `src/store/attach.ts`, `src/store/paths.ts`, `plugin/dist/wayfinder.mjs` (reconstruido), `test/store.test.ts` (prueba con ruta 8.3 real, que se salta con motivo si el volumen no tiene nombres 8.3), `.github/workflows/ci.yml` (sin el paso de `TEMP`/`TMP`).
+- **Validación:** la prueba nueva falla con el código anterior (`attach.symlink` sobre `…\WA3B4E~1\shot.png`) y pasa con la corrección, incluido el rechazo de una junction real bajo la ruta 8.3. `npm test` con `TEMP` en 8.3 en ChinorrisPC: 209/211; los dos fallos son `test/server.test.ts:139` (169.254 de Tailscale, conocido) y un `ECONNRESET` intermitente en «errors: list and detail…», que pasa al repetir `test/server.test.ts` (25/26, solo falla la de 169.254). CI del PR sin el paso de `TEMP`.
+- **Resultado:** resuelto.
 
 ## 2026-11-25 · La prueba WAY-23 de `test/server.test.ts` falla a veces con `ECONNRESET`
 
@@ -262,3 +264,4 @@
 - **Archivos modificados:** ninguno.
 - **Validación:** ninguna; queda abierto.
 - **Resultado:** sin resolver. Si se repite en CI (WAY-26), hay que reproducirlo con el PC sin carga y revisar los tiempos de espera del servidor y del cliente `get`.
+- **Recurrencia (2026-11-25, WAYF-8):** el mismo `ECONNRESET` en «errors: list and detail are read-only…» (otra prueba de `test/server.test.ts`) durante un `npm test` completo con `TEMP` en forma 8.3 y el PC cargado por otros hilos; al repetir `node --test test/server.test.ts` pasó. Sigue sin resolver.
