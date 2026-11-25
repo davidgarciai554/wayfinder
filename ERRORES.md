@@ -229,6 +229,7 @@
 - **Archivos modificados:** `plugin/dist/wayfinder.mjs`.
 - **Validación:** en el checkout principal, `npm run check:dist` coincide con un build limpio y `npm test` pasa 191/191 con el bundle reconstruido. Frente a `2a8dbdf`, el bundle cambia 52 líneas y ningún comentario de ruta.
 - **Resultado:** corregido. Mientras el build dependa de la carpeta, el bundle que se confirma hay que construirlo desde un checkout con su propio `node_modules`; desde un worktree, `check:dist` no detecta la diferencia.
+- **Actualización 2026-11-25 (WAY-32):** corregido en `scripts/build.mjs`. El build fija `absWorkingDir` en la raíz del paquete y quita el prefijo `../` delante de `node_modules/` antes de escribir el bundle. La ruta salía en los comentarios y también en las claves de `__commonJS`, que solo identifican el módulo. Validación: una copia del repositorio en una carpeta anidada sin `node_modules` propio genera `dist/` y `plugin/dist/` idénticos byte a byte al build del worktree y al bundle confirmado. El mismo build con el `build.mjs` anterior difería (264 rutas con `../` delante de `node_modules/`). Construido desde `scripts/` como directorio de trabajo, sale igual. `npm run check:dist` pasa en los dos sitios. Ya no hace falta construir el bundle desde el checkout principal.
 
 ## 2026-11-17 · Dos specs e2e fallan si la web espera `/api/projects` antes de pintar al navegar
 

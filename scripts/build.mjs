@@ -27,7 +27,14 @@ export async function buildAll(outRoot = root) {
     define: { __WAYFINDER_VERSION__: JSON.stringify(pkg.version) },
     logLevel: 'warning',
     metafile: true,
+    absWorkingDir: root,
+    write: false,
   });
+  // esbuild writes module paths relative to absWorkingDir (comments and __commonJS keys). A worktree
+  // without its own node_modules resolves them in a parent folder ("../../../node_modules/…"), so the
+  // prefix is dropped to keep the bundle independent of where it is built.
+  await mkdir(primary, { recursive: true });
+  for (const file of result.outputFiles) await writeFile(file.path, file.text.replace(/(?:\.\.\/)+node_modules\//g, 'node_modules/'));
   await writeFile(join(primary, 'THIRD_PARTY_NOTICES.md'), await notices(result.metafile));
 
   const web = join(root, 'web');
