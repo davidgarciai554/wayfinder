@@ -325,3 +325,15 @@
 - **Archivos modificados:** `src/store/resolve.ts`, `test/resolve.test.ts` (nuevo), `plugin/dist/wayfinder.mjs` (bundle).
 - **Validación:** `test/resolve.test.ts` usa un worktree real: la prueba principal falla sin el cambio (`resolve.notRegistered`) y pasa con él; la de los dos proyectos (en los dos órdenes de slug) falla con la primera versión y pasa con la final; las dos pasan con `TEMP` en 8.3. `npm run typecheck`; `npm test` 217/217; `npm run check:dist`.
 - **Resultado:** resuelto. El registro ERR-10 del tablero del usuario no se ha tocado; cerrarlo es cosa suya.
+
+## 2026-11-25 · La prueba ERR-4 de `mcp.integration` falla de forma intermitente cuando otro proceso usa el 4747 a la vez
+
+- **Contexto:** hilo de WAY-37/38/39 en ChinorrisPC (Windows 11, Node 24.12.0), con otros hilos de la tripulación trabajando en el mismo PC.
+- **Reproducción:** `node --test test/mcp.integration.test.ts` mientras otro proceso del mismo equipo toma y suelta `127.0.0.1:4747`. Sin esa coincidencia la prueba pasa.
+- **Salida observada:** `✖ ERR-4: when 4747 is taken, the link for other devices comes with a firewall warning naming both ports` con `AssertionError [ERR_ASSERTION]: Wayfinder web opened (on this PC and on the network). Tell the person to open http://127.0.0.1:4747/ …`: la web se abrió en el 4747 aunque la prueba lo creía ocupado. La repetición inmediata pasó (25/25), y el `npm test` completo anterior también (216/216).
+- **Causa (hipótesis, sin confirmar):** la prueba da el 4747 por ocupado también cuando su propio `listen` falla («if another Wayfinder already holds it»). Si otro proceso lo tenía en ese instante y lo soltó antes de `wf_web start`, la web obtiene el 4747 y la aserción `port !== '4747'` falla. Es una carrera con otro uso del puerto fijo, no un cambio de comportamiento del producto.
+- **Solución o investigación:** ninguna en este cambio (fuera de alcance). Para endurecerla, la prueba podría fallar o saltarse con motivo si no consigue retener el puerto ella misma.
+- **Archivos modificados:** ninguno (solo este registro).
+- **Validación:** repetición de `node --test test/mcp.integration.test.ts` → 25/25.
+- **Resultado:** sin resolver; intermitente y ajeno a WAY-37/38/39.
+>>>>>>> de6090e (docs(errores): record the intermittent ERR-4 port test failure)
