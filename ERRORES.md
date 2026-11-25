@@ -240,3 +240,14 @@
 - **Archivos modificados:** `web/app.js`.
 - **Validación:** `npm run test:e2e` 52/52, incluidas `errors.spec.ts:10`, `write.spec.ts:222` y las cinco de `e2e/format.spec.ts`. `npm test` 205/205 y `npm run typecheck` en verde.
 - **Resultado:** corregido antes de confirmar nada. La navegación de la web no debe esperar peticiones adicionales para pintar.
+
+## 2026-11-25 · En el CI de Windows, `wf_attach` y el hook pre-tool rechazan rutas de la carpeta temporal
+
+- **Contexto:** primer CI en GitHub Actions (WAY-26, PR #2), `windows-latest` con Node 22 y 24. En ChinorrisPC estas pruebas pasan.
+- **Reproducción:** `npm test` en el runner con su `TEMP` por defecto (`C:\Users\RUNNER~1\AppData\Local\Temp`, nombre corto 8.3).
+- **Salida observada:** 205/210 en los dos Node. Fallan «data from a newer format is read only…», «a task status from a newer version…», «pre-tool denies direct edits of WAYFINDER_HOME…», «wf_attach only copies real images…» y «WAY-24: the live MCP sees the data format change…», con `attach.symlink` («… is or goes through a symbolic link or junction») sobre rutas bajo `RUNNER~1`, o una aserción `false` en el hook pre-tool.
+- **Causa (hipótesis apoyada en el código):** `src/store/attach.ts:51-58` compara `realpathSync.native(ruta)` con la ruta pedida; `realpath` expande `RUNNER~1` a `runneradmin`, la comparación difiere y se toma por enlace. `src/store/paths.ts:81` usa también `realpathSync.native`, lo que explicaría el fallo del hook pre-tool. Afectaría a cualquier usuario cuya ruta llegue en forma 8.3. No se ha reproducido en ChinorrisPC.
+- **Solución en el CI:** el workflow fija `TEMP` y `TMP` a `RUNNER_TEMP` (ruta larga) con un comentario que remite a esta entrada. El defecto del producto queda sin corregir: necesita su propia tarea.
+- **Archivos modificados:** `.github/workflows/ci.yml`.
+- **Validación:** ver la ejecución del CI del PR #2 tras el cambio.
+- **Resultado:** abierto en el producto; mitigado en el CI.
