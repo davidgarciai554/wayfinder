@@ -4,8 +4,8 @@ import { E2E_PORTS, type E2ELang } from './paths.ts';
 // WAY-28: fixes of the accessibility audit (WAYF-12), each checked in Spanish and in English.
 const base = (lang: E2ELang) => `http://127.0.0.1:${E2E_PORTS[lang]}`;
 const TEXT = {
-  es: { skip: 'Saltar al contenido' },
-  en: { skip: 'Skip to content' },
+  es: { skip: 'Saltar al contenido', project: 'Proyecto' },
+  en: { skip: 'Skip to content', project: 'Project' },
 } as const;
 
 /** The focused element is the first control inside <main>. */
@@ -35,6 +35,23 @@ for (const lang of ['es', 'en'] as const) {
         await expect(page.locator('#project-select')).toBeVisible();
         await page.keyboard.press('Tab');
         expect(await focusOnFirstControl(page)).toBe(true);
+      }
+    });
+
+    test('A11Y-2: the arrows walk the project picker without losing the focus', async ({ page }) => {
+      await page.goto(`${base(lang)}/#/bloqueos/board`);
+      await expect(page.locator('main h1')).toBeVisible();
+      const picker = page.getByRole('combobox', { name: TEXT[lang].project, exact: true });
+      const slugs = await picker.locator('option').evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value));
+      const start = slugs.indexOf('bloqueos');
+      await picker.focus();
+      for (const step of [1, 2]) {
+        await page.keyboard.press('ArrowDown');
+        const slug = slugs[start + step];
+        await expect(page).toHaveURL(new RegExp(`#/${slug}/board$`));
+        await expect(page.locator('main h1')).toHaveText(await picker.locator(`option[value="${slug}"]`).innerText());
+        await expect(picker).toBeFocused();
+        await expect(picker).toHaveValue(slug);
       }
     });
   });

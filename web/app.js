@@ -21,6 +21,8 @@ let logShown = LOG_PAGE;
 let refreshTimer;
 let pendingChanges = 0;
 let returnFocusTo = null;
+/** The project picker started this navigation: focus stays on it, so the arrows keep walking the list. */
+let fromPicker = false;
 /** This browser holds the key (/api/session). */
 let keyCanWrite = false;
 /** WAY-24: the data folder is from a newer format, so it is read only whatever the key. */
@@ -1005,6 +1007,8 @@ async function doRender(keepFocus, firstPaint, focus) {
   leaving = false;
   const closedTask = taskClosed;
   taskClosed = null;
+  const pickerNavigation = fromPicker;
+  fromPicker = false;
   if (!view.slug && projects.length === 1) {
     location.replace(href(projects[0].slug));
     return;
@@ -1058,6 +1062,7 @@ async function doRender(keepFocus, firstPaint, focus) {
     else if (view.page === 'task') (view.entry && scope.querySelector(`#entry-${view.entry}`) || scope.querySelector('#task-title'))?.focus();
     else if (sameBoard) main.querySelector(`[data-focus="task:${CSS.escape(previous.id)}"]`)?.focus();
     else if (closedTo) closedTo.focus();
+    else if (pickerNavigation) $('project-select').focus();
     else {
       const heading = main.querySelector('h1');
       heading?.setAttribute('tabindex', '-1');
@@ -1196,7 +1201,9 @@ async function start() {
     main.focus();
   });
   $('project-select').addEventListener('change', (e) => {
-    if (e.target.value) location.hash = href(e.target.value);
+    if (!e.target.value) return;
+    fromPicker = true;
+    location.hash = href(e.target.value);
   });
   $('banner-retry').addEventListener('click', () => {
     connect();
