@@ -8,8 +8,8 @@ import { createProject } from '../src/store/project.ts';
 import { makePlanExists, resolveProject, rootKey } from '../src/store/resolve.ts';
 import { makeHome } from './helpers.ts';
 
-test('ERR-10: a session in a linked worktree resolves to the project of its main checkout and checks plans in the worktree', (t) => {
-  const home = makeHome(t);
+/** A real repository with a remote and a linked worktree on its own branch. */
+function makeWorktree(t: { after: (fn: () => void) => void }): { main: string; worktree: string } {
   const base = mkdtempSync(join(tmpdir(), 'wf-worktree-'));
   t.after(() => rmSync(base, { recursive: true, force: true }));
   const main = join(base, 'main');
@@ -23,10 +23,18 @@ test('ERR-10: a session in a linked worktree resolves to the project of its main
   git('add', '-A');
   git('commit', '-q', '-m', 'init');
   git('worktree', 'add', '-q', '-b', 'side', worktree);
+  return { main, worktree };
+}
+
+const slashes = (path: string) => path.replaceAll('\\', '/');
+
+test('ERR-10: a session in a linked worktree resolves to the project of its main checkout and checks plans in the worktree', (t) => {
+  const home = makeHome(t);
+  const { main, worktree } = makeWorktree(t);
   mkdirSync(join(worktree, 'Planes'));
   writeFileSync(join(worktree, 'Planes', '2026-11-25-solo-en-worktree.md'), '# Plan\n');
   // Registered like the real projects: by local path only, without repo.
-  createProject(home, { slug: 'demo', name: 'Demo', idPrefix: 'DEM', localPath: main.replaceAll('\\', '/') });
+  createProject(home, { slug: 'demo', name: 'Demo', idPrefix: 'DEM', localPath: slashes(main) });
   const plan = 'Planes/2026-11-25-solo-en-worktree.md';
 
   for (const project of [undefined, 'demo']) {
@@ -40,4 +48,15 @@ test('ERR-10: a session in a linked worktree resolves to the project of its main
   assert.equal(fromMain.project.slug, 'demo');
   assert.equal(rootKey(fromMain.consumerRoot ?? ''), rootKey(main));
   assert.equal(makePlanExists(fromMain.consumerRoot)?.(plan), false, 'the main checkout does not see the worktree plan');
+});
+
+test('ERR-10: a project registered for the worktree itself wins over the one of its main checkout, whatever the slug order', (t) => {
+  const { main, worktree } = makeWorktree(t);
+  for (const [mainSlug, sideSlug] of [['aaa-main', 'zzz-side'], ['zzz-main', 'aaa-side']]) {
+    const home = makeHome(t);
+    createProject(home, { slug: mainSlug, name: 'Main', idPrefix: 'MAI', localPath: slashes(main) });
+    createProject(home, { slug: sideSlug, name: 'Side', idPrefix: 'SID', localPath: slashes(worktree) });
+    assert.equal(resolveProject(home, { env: { CLAUDE_PROJECT_DIR: worktree } }).project.slug, sideSlug);
+    assert.equal(resolveProject(home, { env: { CLAUDE_PROJECT_DIR: main } }).project.slug, mainSlug);
+  }
 });

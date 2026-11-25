@@ -49808,9 +49808,12 @@ function matchProject(home, root) {
     const byRemote = projects.find((p) => p.repo && normalizeRemote(p.repo) === key);
     if (byRemote) return byRemote;
   }
+  const exact = projects.find(({ localPath }) => localPath && samePath(localPath, root));
+  if (exact) return exact;
   const common = commonGitDir(root);
-  const roots = common && basename2(common) === ".git" ? [root, dirname4(common)] : [root];
-  return projects.find(({ localPath }) => localPath && roots.some((r) => samePath(localPath, r))) ?? null;
+  if (!common || basename2(common) !== ".git") return null;
+  const main2 = dirname4(common);
+  return projects.find(({ localPath }) => localPath && isWithin(localPath, main2) && isWithin(main2, localPath)) ?? null;
 }
 function resolveProject(home, input2 = {}) {
   const env = input2.env ?? process.env;

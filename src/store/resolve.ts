@@ -95,11 +95,16 @@ export function matchProject(home: string, root: string): Project | null {
     const byRemote = projects.find((p) => p.repo && normalizeRemote(p.repo) === key);
     if (byRemote) return byRemote;
   }
+  const exact = projects.find(({ localPath }) => localPath && samePath(localPath, root));
+  if (exact) return exact;
   // ERR-10: a linked worktree shares the project registered for its main checkout. Only the usual
   // layout (`<main>/.git`) is recognised; a bare repository has no main checkout to compare.
   const common = commonGitDir(root);
-  const roots = common && basename(common) === '.git' ? [root, dirname(common)] : [root];
-  return projects.find(({ localPath }) => localPath && roots.some((r) => samePath(localPath, r))) ?? null;
+  if (!common || basename(common) !== '.git') return null;
+  // Both ways through isWithin, which follows real paths: git writes the long form of the folder
+  // and the registered path may be an 8.3 short name (C:\Users\RUNNER~1).
+  const main = dirname(common);
+  return projects.find(({ localPath }) => localPath && isWithin(localPath, main) && isWithin(main, localPath)) ?? null;
 }
 
 /** Order from the plan: explicit `project` > WAYFINDER_PROJECT > CLAUDE_PROJECT_DIR > cwd. */
