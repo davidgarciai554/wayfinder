@@ -67,12 +67,14 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
 
 /**
  * WAY-33: turns Claude Code starts on its own and that nobody forwards: background task and
- * subagent reports, and scheduled prompts when they come wrapped. Claude Code writes these tags at
- * column zero and indents the report inside, so a quoted tag never matches. Messages from another
- * session (`<cross-session-message>`) still count, by the person's decision (plan v2, D1').
- * Limit: in Claude Code 2.1.332 a CronCreate or /loop prompt arrives as plain text and still counts.
+ * subagent reports, and scheduled prompts when they come wrapped. Claude Code opens the whole prompt
+ * with the tag, so only a tag at the very start counts: a person's message that pastes one further
+ * down (in a code block or not) stays the person's, and can still replace or revoke earlier orders.
+ * Messages from another session (`<cross-session-message>`) still count, by the person's decision
+ * (plan v2, D1'). Limit: in Claude Code 2.1.332 a CronCreate or /loop prompt arrives as plain text
+ * and still counts.
  */
-const AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/m;
+const AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/;
 
 export function isAutomatedTurn(prompt: string): boolean {
   return AUTOMATED_TURN.test(prompt);

@@ -8981,7 +8981,7 @@ function extractOrders(prompt, idPrefix) {
   }
   return found.size > MAX_ORDER_IDS ? [] : [...found];
 }
-var AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/m;
+var AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/;
 function isAutomatedTurn(prompt) {
   return AUTOMATED_TURN.test(prompt);
 }

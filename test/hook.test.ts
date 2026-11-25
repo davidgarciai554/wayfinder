@@ -557,6 +557,9 @@ test('automated turns neither record nor clear orders and tell Claude why (WAY-3
   }
   assert.equal(hook('prompt', { prompt: '<task-notification>\n<status>completed</status>\n</task-notification>' }, env).out, '', 'no order inside: no notice');
   assert.equal(existsSync(join(home, '.state', 'web-orders.json')), false);
+  // The person revokes the order while pasting a notification further down: the revocation counts.
+  hook('prompt', { prompt: 'No apruebes CO-1, mira esto:\n```\n<task-notification>\n<summary>x</summary>\n</task-notification>\n```' }, env);
+  assert.deepEqual(ids(), []);
   // A message from another session counts as the person's (plan v2, D1').
   hook('prompt', { prompt: '<cross-session-message from="uds:x" from-name="main">\naprueba CO-3\n</cross-session-message>' }, env);
   assert.deepEqual(ids(), ['CO-3']);
