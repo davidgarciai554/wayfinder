@@ -229,6 +229,7 @@
 - **Archivos modificados:** `plugin/dist/wayfinder.mjs`.
 - **Validación:** en el checkout principal, `npm run check:dist` coincide con un build limpio y `npm test` pasa 191/191 con el bundle reconstruido. Frente a `2a8dbdf`, el bundle cambia 52 líneas y ningún comentario de ruta.
 - **Resultado:** corregido. Mientras el build dependa de la carpeta, el bundle que se confirma hay que construirlo desde un checkout con su propio `node_modules`; desde un worktree, `check:dist` no detecta la diferencia.
+- **Actualización 2026-11-25 (WAY-32):** corregido en `scripts/build.mjs`. El build fija `absWorkingDir` en la raíz del paquete y quita el prefijo `../` delante de `node_modules/` antes de escribir el bundle. La ruta salía en los comentarios y también en las claves de `__commonJS`, que solo identifican el módulo. Validación: una copia del repositorio en una carpeta anidada sin `node_modules` propio genera `dist/` y `plugin/dist/` idénticos byte a byte al build del worktree y al bundle confirmado. El mismo build con el `build.mjs` anterior difería (264 rutas con `../` delante de `node_modules/`). Construido desde `scripts/` como directorio de trabajo, sale igual. `npm run check:dist` pasa en los dos sitios. Ya no hace falta construir el bundle desde el checkout principal.
 
 ## 2026-11-17 · Dos specs e2e fallan si la web espera `/api/projects` antes de pintar al navegar
 
@@ -265,3 +266,26 @@
 - **Validación:** ninguna; queda abierto.
 - **Resultado:** sin resolver. Si se repite en CI (WAY-26), hay que reproducirlo con el PC sin carga y revisar los tiempos de espera del servidor y del cliente `get`.
 - **Recurrencia (2026-11-25, WAYF-8):** el mismo `ECONNRESET` en «errors: list and detail are read-only…» (otra prueba de `test/server.test.ts`) durante un `npm test` completo con `TEMP` en forma 8.3 y el PC cargado por otros hilos; al repetir `node --test test/server.test.ts` pasó. Sigue sin resolver.
+- **Actualización 2026-11-25 (WAYF-4, WAY-32):** causa confirmada y corregida en la entrada siguiente: el agente HTTP reutiliza un socket keep-alive que el servidor ya ha cerrado mientras el git síncrono bloquea el proceso; las peticiones de `test/server.test.ts` pasan a usar `agent: false`.
+
+## 2026-11-25 · `npm test` en rojo en `test/server.test.ts`: segunda dirección en 169.254 y ECONNRESET en sockets reutilizados
+
+- **Contexto:** ChinorrisPC, Windows 11, Node 24.12. Tailscale desconectado deja la interfaz con la IP link-local `169.254.83.107`. Varios hilos ejecutaban pruebas a la vez en el mismo PC, así que la máquina iba cargada. Detectado en la revisión WAYF-2.
+- **Reproducción:** `npm test` completo en ese PC. También se reproduce con el archivo `test/server.test.ts` original de `5c5bae6`.
+- **Salida observada:** (1) «a second address needs the key…» falla con `Error: timeout` 3 de 3 veces. (2) Con la IP corregida aparece otro fallo intermitente, «WAY-23: the task list flags…» (en una pasada fue la propia prueba de la segunda dirección): `Error: read ECONNRESET` a los 10–12 s. Falló en las 3 pasadas completas con la IP corregida y también en una pasada de la base sin cambios. Ejecutado solo, el archivo pasa 26/26.
+- **Causa confirmada:** (1) la prueba tomaba la primera IPv4 no interna, que aquí es la link-local de Tailscale. La primera conexión a esa IP tarda unos 5 s y la prueba corta a 3 s. (2) El agente HTTP de Node 24 reutiliza conexiones keep-alive por defecto. Con trazas temporales (`reusedSocket`), la petición que falla reutiliza un socket que llevaba 20 s inactivo: `createTask` hace llamadas síncronas a git en el mismo proceso y bloquea el bucle de eventos más allá del keep-alive del servidor (5 s), así que el cliente escribe en una conexión que el servidor ya ha cerrado. Un intento aislado con `Atomics.wait` de 5,5 a 8 s no lo reprodujo; la traza de la pasada real sí lo muestra.
+- **Solución:** solo en la prueba, sin cambiar el servidor. (1) Se descartan las direcciones 169.254/16 al elegir la segunda dirección; si no queda ninguna, la prueba se salta con el motivo. (2) Todos los `request()` de `test/server.test.ts` usan `agent: false`, con una conexión nueva por petición.
+- **Archivos modificados:** `test/server.test.ts`.
+- **Validación:** `npm test` completo 210/210, dos pasadas seguidas en ChinorrisPC; la prueba de la segunda dirección se ejecuta (no se salta) contra `192.168.68.50`. `npm run typecheck` en verde.
+- **Resultado:** corregido.
+
+## 2026-11-25 · `concurrency.test.ts` falla con `store.lockTimeout` en una pasada completa con el PC cargado
+
+- **Contexto:** validación de WAY-32 (WAYF-4) tras rebasar sobre `main` (d0e21eb) en ChinorrisPC, Windows 11, Node 24.12. Mientras tanto, otros hilos ejecutaban pruebas en el mismo PC.
+- **Reproducción:** `npm test` completo con el PC cargado. No se reproduce con el archivo solo.
+- **Salida observada:** 211/212. Falla «20 concurrent progress entries and description edits lose nothing» a los 27,8 s con `WayfinderError: store.lockTimeout` (`src/store/sync.ts:70`, desde `logProgress` en `test/fixtures/worker.ts:14`).
+- **Causa (hipótesis):** con la máquina cargada, 20 procesos que confirman cada uno con git no terminan de pasar por el candado dentro de `LOCK_TIMEOUT_MS` (20 s). No se ha medido cuánto tiempo pasa cada proceso con el candado tomado.
+- **Investigación:** `node --test test/concurrency.test.ts` solo: 6/6 dos veces. La pasada completa siguiente da 212/212. El cambio de WAY-32 no toca `src/store`.
+- **Archivos modificados:** ninguno.
+- **Validación:** ninguna; queda abierto.
+- **Resultado:** sin resolver. Si se repite en el CI o sin carga, hay que medir cuánto tiempo se retiene el candado antes de decidir entre subir el tiempo de espera de la prueba o cambiar el candado.

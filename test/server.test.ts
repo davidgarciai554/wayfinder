@@ -16,9 +16,11 @@ import { commitCount, gitOut, makeHome, makeProject, tree } from './helpers.ts';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 
+// Every request opens its own connection (agent: false): the store's synchronous git calls can block this
+// process past the server's keep-alive timeout, and a reused idle socket then fails with ECONNRESET.
 function get(port: number, path: string, host = `127.0.0.1:${port}`): Promise<{ status: number; headers: Record<string, unknown>; body: string }> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, headers: { Host: host } }, (res) => {
+    const req = request({ agent: false, host: '127.0.0.1', port, path, headers: { Host: host } }, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (d) => (body += d));
@@ -31,7 +33,7 @@ function get(port: number, path: string, host = `127.0.0.1:${port}`): Promise<{ 
 
 function waitForChange(port: number, timeoutMs = 4000): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = request({ host: '127.0.0.1', port, path: '/api/events', headers: { Host: `127.0.0.1:${port}` } }, (res) => {
+    const req = request({ agent: false, host: '127.0.0.1', port, path: '/api/events', headers: { Host: `127.0.0.1:${port}` } }, (res) => {
       res.setEncoding('utf8');
       res.on('data', (d: string) => {
         if (d.includes('event: change')) {
@@ -93,10 +95,13 @@ test('refuses a port where another app already listens (even on 0.0.0.0), and se
   assert.match(String(landing.headers['set-cookie']), /HttpOnly/);
 });
 
-/** A non-internal IPv4 of this machine, to exercise the second listener without leaving it. */
+/**
+ * A non-internal IPv4 of this machine, to exercise the second listener without leaving it.
+ * Link-local 169.254/16 is skipped: a disconnected adapter (Tailscale, APIPA) can take seconds to answer.
+ */
 const lanAddress = Object.values(networkInterfaces())
   .flat()
-  .find((i) => i && i.family === 'IPv4' && !i.internal)?.address;
+  .find((i) => i && i.family === 'IPv4' && !i.internal && !i.address.startsWith('169.254.'))?.address;
 
 function at(
   address: string,
@@ -111,7 +116,7 @@ function at(
     if (options.cookie) headers.Cookie = options.cookie;
     if (options.origin) headers.Origin = options.origin;
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-    const req = request({ host: address, port, path, method: options.method ?? 'GET', headers }, (res) => {
+    const req = request({ agent: false, host: address, port, path, method: options.method ?? 'GET', headers }, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (d) => (body += d));
@@ -137,7 +142,7 @@ test('the key is <gen>.<secret> and changes on every start; an earlier key is re
   assert.match((await get(second.port, `/?k=${gen}.${'0'.repeat(48)}`)).body, /not correct/);
 });
 
-test('a second address needs the key for every route; loopback keeps anonymous reads and alone gets the links', { skip: lanAddress ? false : 'no non-internal IPv4 interface' }, async (t) => {
+test('a second address needs the key for every route; loopback keeps anonymous reads and alone gets the links', { skip: lanAddress ? false : 'no non-internal, non-link-local IPv4 interface' }, async (t) => {
   const lan = lanAddress as string;
   const home = makeHome(t);
   makeProject(home);
@@ -308,7 +313,7 @@ test('log days and project page are rendered; unknown routes are 404 and writes 
   assert.equal(i18n.lang, 'es');
   assert.equal(i18n.messages['status.todo'], 'por hacer');
   const post = await new Promise<number>((resolve) => {
-    const req = request({ host: '127.0.0.1', port, path: '/api/projects', method: 'POST', headers: { Host: `127.0.0.1:${port}` } }, (res) => resolve(res.statusCode ?? 0));
+    const req = request({ agent: false, host: '127.0.0.1', port, path: '/api/projects', method: 'POST', headers: { Host: `127.0.0.1:${port}` } }, (res) => resolve(res.statusCode ?? 0));
     req.end();
   });
   assert.equal(post, 405);
@@ -338,7 +343,7 @@ interface Reply {
 function post(port: number, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Reply> {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, method: 'POST', headers: { Host: `127.0.0.1:${port}`, ...headers } }, (res) => {
+    const req = request({ agent: false, host: '127.0.0.1', port, path, method: 'POST', headers: { Host: `127.0.0.1:${port}`, ...headers } }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (d) => (text += d));
@@ -352,7 +357,7 @@ function post(port: number, path: string, body: unknown, headers: Record<string,
 
 function getWithCookie(port: number, path: string, cookie: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, headers: { Host: `127.0.0.1:${port}`, Cookie: cookie } }, (res) => {
+    const req = request({ agent: false, host: '127.0.0.1', port, path, headers: { Host: `127.0.0.1:${port}`, Cookie: cookie } }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (d) => (text += d));
