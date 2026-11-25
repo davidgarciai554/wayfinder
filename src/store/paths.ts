@@ -1,6 +1,6 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { WayfinderError } from './errors.ts';
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -76,15 +76,18 @@ export function safeJoin(home: string, ...parts: string[]): string {
 
 /** True when `target` (resolved through existing links) lives inside `dir`. */
 export function isWithin(dir: string, target: string): boolean {
-  const real = (p: string) => {
+  // A path that does not exist yet keeps its missing tail on the real path of its nearest
+  // existing parent, so both sides end up in the same long form (realpath expands 8.3 names).
+  const real = (p: string): string => {
     try {
       return realpathSync.native(p);
     } catch {
-      return resolve(p);
+      const parent = dirname(p);
+      return parent === p ? p : join(real(parent), basename(p));
     }
   };
-  const a = real(dir);
-  const b = real(target);
+  const a = real(resolve(dir));
+  const b = real(resolve(target));
   return process.platform === 'win32' ? isInside(a.toLowerCase(), b.toLowerCase()) : isInside(a, b);
 }
 

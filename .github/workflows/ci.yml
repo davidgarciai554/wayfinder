@@ -29,11 +29,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      # The runner's TEMP is an 8.3 short path (C:\Users\RUNNER~1\...) and realpath expands it, so the
-      # symlink checks reject temp files (ERRORES.md, 2026-11-25). Use the long-form runner temp until that is fixed.
-      - run: |
-          Add-Content $env:GITHUB_ENV "TEMP=$env:RUNNER_TEMP"
-          Add-Content $env:GITHUB_ENV "TMP=$env:RUNNER_TEMP"
       - run: npm ci
       # npm ci (prepare) and npm test (pretest) rebuild plugin/dist/, so check the committed bundle before anything else.
       - name: Committed plugin bundle matches the build

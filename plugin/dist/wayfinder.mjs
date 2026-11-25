@@ -8823,7 +8823,7 @@ function initHome(home, options = {}) {
 // src/store/paths.ts
 import { lstatSync as lstatSync2, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join as join6, relative as relative2, resolve, sep } from "node:path";
+import { basename, dirname as dirname2, isAbsolute, join as join6, relative as relative2, resolve, sep } from "node:path";
 var SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 var ID_RE = /^[A-Z]{2,6}-[1-9]\d{0,8}$/;
 var ID_PREFIX_RE = /^[A-Z]{2,6}$/;
@@ -8878,11 +8878,12 @@ function isWithin(dir, target) {
     try {
       return realpathSync.native(p);
     } catch {
-      return resolve(p);
+      const parent = dirname2(p);
+      return parent === p ? p : join6(real(parent), basename(p));
     }
   };
-  const a = real(dir);
-  const b = real(target);
+  const a = real(resolve(dir));
+  const b = real(resolve(target));
   return process.platform === "win32" ? isInside(a.toLowerCase(), b.toLowerCase()) : isInside(a, b);
 }
 function projectDir(home, slug) {
@@ -49660,7 +49661,7 @@ ${task.body}`);
 // src/store/attach.ts
 import { closeSync as closeSync2, copyFileSync, lstatSync as lstatSync3, openSync as openSync2, readSync as readSync2, realpathSync as realpathSync2, statSync as statSync4 } from "node:fs";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { isAbsolute as isAbsolute2, resolve as resolve2, sep as sep2 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute2, resolve as resolve2, sep as sep2 } from "node:path";
 var MAX_CAPTURE_BYTES = 10 * 1024 * 1024;
 var MAX_ALT = 300;
 var MAGIC = {
@@ -49680,14 +49681,15 @@ function attachCapture(home, slug, input2, clock = systemClock) {
   const requested = resolve2(input2.path);
   let real;
   try {
-    if (lstatSync3(requested).isSymbolicLink()) throw new WayfinderError("attach.symlink", { path: input2.path });
+    for (let p = requested; ; p = dirname3(p)) {
+      if (lstatSync3(p).isSymbolicLink()) throw new WayfinderError("attach.symlink", { path: input2.path });
+      if (dirname3(p) === p) break;
+    }
     real = realpathSync2.native(requested);
   } catch (error62) {
     if (error62 instanceof WayfinderError) throw error62;
     throw new WayfinderError("attach.notFound", { path: input2.path });
   }
-  const norm = (p) => process.platform === "win32" ? p.toLowerCase() : p;
-  if (norm(real) !== norm(requested)) throw new WayfinderError("attach.symlink", { path: input2.path });
   if (real.split(sep2).some((segment) => DENIED_SEGMENT.test(segment))) throw new WayfinderError("attach.denied", { path: input2.path });
   if (isWithin(home, real)) throw new WayfinderError("attach.denied", { path: input2.path });
   const roots = input2.allowedRoots.filter(Boolean);
@@ -49730,12 +49732,12 @@ ${markdown}
 
 // src/store/resolve.ts
 import { existsSync as existsSync8, readFileSync as readFileSync10, statSync as statSync5 } from "node:fs";
-import { basename, dirname as dirname2, isAbsolute as isAbsolute3, join as join12, resolve as resolve3 } from "node:path";
+import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join12, resolve as resolve3 } from "node:path";
 function findRepoRoot(dir) {
   let current = resolve3(dir);
   for (; ; ) {
     if (existsSync8(join12(current, ".git"))) return current;
-    const parent = dirname2(current);
+    const parent = dirname4(current);
     if (parent === current) return null;
     current = parent;
   }
@@ -49805,7 +49807,7 @@ function resolveProject(home, input2 = {}) {
   throw new WayfinderError("resolve.notRegistered", { projects: known.length ? known.join(", ") : "\u2014" });
 }
 function suggestRegistration(root) {
-  const name = basename(root);
+  const name = basename2(root);
   const slug = slugify(name);
   const letters = slug.replace(/[^a-z]/g, "").toUpperCase();
   const idPrefix = (letters.length >= 2 ? letters.slice(0, 3) : `${letters}WF`.slice(0, 2)).padEnd(2, "X");

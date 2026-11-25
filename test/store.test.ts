@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { attachCapture } from '../src/store/attach.ts';
 import { parseFrontmatter, serializeFrontmatter } from '../src/store/frontmatter.ts';
 import { initHome } from '../src/store/init.ts';
 import { appendLog } from '../src/store/log.ts';
-import { assertSlug, safeJoin } from '../src/store/paths.ts';
+import { assertSlug, isWithin, safeJoin } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
 import { createTask, dependencyStates, isBlocking, listTasks, logProgress, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
 import { parseEntries } from '../src/store/history.ts';
@@ -519,4 +522,43 @@ test('WAY-13: the block lives only on todo and in-progress; closing and reopenin
   assert.equal(readTask(home, 'demo', idea).blocked, '');
   assert.equal(setStatus(home, 'demo', idea, 'todo', 'web', { clock }).task.blocked, '');
   assert.equal(storedBlock(ideaFile), undefined);
+});
+
+/** The 8.3 short form of an existing folder, or null outside Windows or when the volume has no short names. */
+function shortPath(path: string): string | null {
+  if (process.platform !== 'win32') return null;
+  const out = execSync(`for %I in ("${path}") do @echo %~sI`, { encoding: 'utf8', shell: 'cmd.exe' }).trim();
+  return out && out.toLowerCase() !== path.toLowerCase() ? out : null;
+}
+
+test('an 8.3 short path is not taken for a link, and a real junction still is', (t) => {
+  const home = makeHome(t);
+  makeProject(home);
+  const base = mkdtempSync(join(tmpdir(), 'wayfinder long folder name-'));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const short = shortPath(base);
+  if (!short) {
+    t.skip('no 8.3 short name for this folder: not Windows, or 8.3 names are disabled on the volume');
+    return;
+  }
+  writeFileSync(join(base, 'shot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]));
+  for (const [path, root] of [[join(short, 'shot.png'), base], [join(base, 'shot.png'), short]]) {
+    const { asset } = attachCapture(home, 'demo', { path, alt: 'Captura', allowedRoots: [root] });
+    assert.ok(existsSync(join(home, asset)), path);
+  }
+
+  // A file that does not exist yet (an Edit or Write the pre-tool hook checks) compares in the same form.
+  assert.ok(isWithin(base, join(short, 'nuevo', 'nota.md')));
+  assert.ok(isWithin(short, join(base, 'nota.md')));
+  assert.ok(!isWithin(join(base, 'a'), join(short, 'b', 'nota.md')));
+
+  mkdirSync(join(base, 'real'));
+  writeFileSync(join(base, 'real', 'shot.png'), readFileSync(join(base, 'shot.png')));
+  try {
+    symlinkSync(join(base, 'real'), join(base, 'link'), 'junction');
+  } catch {
+    t.diagnostic('junctions not available; the link case is skipped');
+    return;
+  }
+  assert.throws(() => attachCapture(home, 'demo', { path: join(short, 'link', 'shot.png'), alt: 'Captura', allowedRoots: [base] }), isKey('attach.symlink'));
 });
