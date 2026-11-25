@@ -8625,6 +8625,11 @@ function withLock(home, fn) {
   }
   try {
     writeFileSync(ownerFile, token);
+  } catch (error62) {
+    rmSync(lockDir, { recursive: true, force: true });
+    throw error62;
+  }
+  try {
     assertFormatWritable(home);
     return fn();
   } finally {

@@ -81,6 +81,11 @@ export function withLock<T>(home: string, fn: () => T): T {
   }
   try {
     writeFileSync(ownerFile, token);
+  } catch (error) {
+    rmSync(lockDir, { recursive: true, force: true });
+    throw error;
+  }
+  try {
     assertFormatWritable(home);
     return fn();
   } finally {
