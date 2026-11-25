@@ -1190,6 +1190,11 @@ async function start() {
   document.documentElement.lang = lang;
   for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
   $('viewer-close').setAttribute('aria-label', t('web.close'));
+  // The router owns the hash, so "#main" would be read as a project: move the focus instead.
+  document.querySelector('.skip-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    main.focus();
+  });
   $('project-select').addEventListener('change', (e) => {
     if (e.target.value) location.hash = href(e.target.value);
   });
