@@ -1,6 +1,8 @@
 import MarkdownIt from 'markdown-it';
 
-const SAFE_LINK = /^(https?:|mailto:|#|\/(?!\/)|\.{0,2}\/?[\w.-])/i;
+// WAY-37: an allow-list. Relative targets carry no scheme, do not start with // and have no
+// backslash (raw or encoded), which browsers read as a slash and so as another site.
+const SAFE_LINK = /^(?:https?:|mailto:|#|(?![a-z][a-z0-9+.-]*:|\/\/)(?!.*(?:\\|%5c)))/i;
 
 /**
  * Renders untrusted Markdown: raw HTML is escaped (html: false), links only allow
@@ -8,7 +10,7 @@ const SAFE_LINK = /^(https?:|mailto:|#|\/(?!\/)|\.{0,2}\/?[\w.-])/i;
  */
 export function createRenderer(assetBase: string) {
   const md = new MarkdownIt({ html: false, linkify: false, typographer: false });
-  md.validateLink = (url: string) => SAFE_LINK.test(url.trim()) && !/^\s*(javascript|vbscript|data|file):/i.test(url);
+  md.validateLink = (url: string) => SAFE_LINK.test(url.trim());
 
   const defaultImage = md.renderer.rules.image!;
   md.renderer.rules.image = (tokens, idx, options, env, self) => {

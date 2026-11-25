@@ -14143,10 +14143,10 @@ _defineProperty(MarkdownIt, "StateInline", StateInline);
 var MarkdownItCallable = callable(MarkdownIt);
 
 // src/markdown.ts
-var SAFE_LINK = /^(https?:|mailto:|#|\/(?!\/)|\.{0,2}\/?[\w.-])/i;
+var SAFE_LINK = /^(?:https?:|mailto:|#|(?![a-z][a-z0-9+.-]*:|\/\/)(?!.*(?:\\|%5c)))/i;
 function createRenderer(assetBase) {
   const md = new MarkdownItCallable({ html: false, linkify: false, typographer: false });
-  md.validateLink = (url2) => SAFE_LINK.test(url2.trim()) && !/^\s*(javascript|vbscript|data|file):/i.test(url2);
+  md.validateLink = (url2) => SAFE_LINK.test(url2.trim());
   const defaultImage = md.renderer.rules.image;
   md.renderer.rules.image = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
