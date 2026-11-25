@@ -312,3 +312,14 @@
 - **Archivos modificados:** `src/store/sync.ts`, `test/concurrency.test.ts`, `test/fixtures/worker.ts`, `plugin/dist/wayfinder.mjs` (bundle).
 - **Validación:** la prueba nueva falla sin el cambio y pasa con él; `node --test test/format.test.ts test/concurrency.test.ts` 15/15; `npm run typecheck`; `npm run check:dist`; `npm test` completo (ver PR).
 - **Resultado:** resuelto en lo que pide WAY-40 (quien pierde el bloqueo no borra el del nuevo titular).
+
+## 2026-11-25 · Desde un git worktree, `wf_update plan` busca el plan en el checkout principal (ERR-10)
+
+- **Contexto:** ERR-10 del tablero de Wayfinder, registrado el 2026-11-16 en sesiones de WAY-13 y WAY-23 que trabajaban en worktrees de este repositorio. Windows 11, Node 24.
+- **Reproducción:** repositorio con remoto `origin`, `git worktree add` de otra rama, `Planes/<plan>.md` solo en el worktree y el proyecto registrado como los reales: con `localPath` = checkout principal y sin `repo`. `resolveProject` con `CLAUDE_PROJECT_DIR` = worktree. Prueba «ERR-10: a session in a linked worktree…» en `test/resolve.test.ts`.
+- **Salida observada:** sin `project`, `resolve.notRegistered`; con `project` explícito, `consumerRoot` = `localPath` (el checkout principal) y `makePlanExists` → `false`, es decir, «El plan … no existe en el proyecto», como en ERR-10.
+- **Causa (confirmada con la reproducción; la hipótesis original era otra):** `consumerDir` sí resolvía el worktree. El fallo estaba en `matchProject` (`src/store/resolve.ts`): sin `repo` registrado solo compara `localPath` con la carpeta de la sesión, y un worktree vive en otra ruta, así que no casaba. Con `project` explícito, `resolveProject` caía entonces al `localPath` y el plan se buscaba en el checkout principal. Los hooks usan el mismo `matchProject`, así que en un worktree tampoco reconocían el proyecto.
+- **Solución:** `matchProject` compara `localPath` también con el checkout principal del worktree, que se obtiene leyendo `.git` → `gitdir` → `commondir` (sin ejecutar git, como `readOriginUrl`, que ahora comparte esa lectura). `consumerRoot` sigue siendo la carpeta de la sesión, así que el plan se comprueba en el worktree. Límite documentado en el código: solo se reconoce la disposición habitual (`<principal>/.git`); un repositorio bare con worktrees no tiene checkout principal con el que comparar.
+- **Archivos modificados:** `src/store/resolve.ts`, `test/resolve.test.ts` (nuevo), `plugin/dist/wayfinder.mjs` (bundle).
+- **Validación:** la prueba nueva, con un worktree real, falla sin el cambio (`resolve.notRegistered`) y pasa con él; `npm run typecheck`; `npm test` 216/216; `npm run check:dist`.
+- **Resultado:** resuelto. El registro ERR-10 del tablero del usuario no se ha tocado; cerrarlo es cosa suya.
