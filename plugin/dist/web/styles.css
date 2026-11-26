@@ -382,7 +382,7 @@ main:focus { outline: none; }
   .jump a { display: inline-flex; align-items: center; min-height: 44px; }
   /* A11Y-7: the whole card opens the task; its buttons stay above the title's tap area. */
   .card { position: relative; }
-  .card-title::after { content: ''; position: absolute; inset: 0; }
+  .card .card-title::after { content: ''; position: absolute; inset: 0; }
   .card-actions { position: relative; z-index: 1; }
 }
 

@@ -154,6 +154,11 @@ for (const lang of ['es', 'en'] as const) {
       await expect(page).toHaveURL(/#\/wayfinder\/task\/WF-3$/);
       await expect(page.locator('#task-title')).toBeFocused();
 
+      // Error items reuse .card-title but are not cards: each link opens its own error.
+      await page.goto(`${base(lang)}/#/errores/errors`);
+      await page.locator('[data-focus="error:ERR-1"]').click();
+      await expect(page).toHaveURL(/#\/errores\/errors\/ERR-1$/);
+
       // With writing on, the card's buttons stay on top of that area (nothing is clicked here).
       await page.goto(`${base(lang)}/?k=${readFileSync(e2eKeyFile(lang), 'utf8')}`);
       await page.goto(`${base(lang)}/#/wayfinder/board`);
