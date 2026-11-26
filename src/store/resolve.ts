@@ -16,19 +16,31 @@ export function findRepoRoot(dir: string): string | null {
 }
 
 /**
+ * The git folder shared by every checkout of the repository: `.git` itself, or for a linked
+ * worktree the folder its `.git` file points to, followed through `commondir`.
+ */
+function commonGitDir(root: string): string | null {
+  const gitDir = join(root, '.git');
+  try {
+    if (!statSync(gitDir).isFile()) return gitDir;
+    const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(gitDir, 'utf8'));
+    if (!pointer) return null;
+    const own = resolve(root, pointer[1].trim());
+    const common = join(own, 'commondir');
+    return existsSync(common) ? resolve(own, readFileSync(common, 'utf8').trim()) : own;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reads remote.origin.url straight from the git config files. Wayfinder never runs git
  * against the consumer repository (and `remote`/`config` are outside its allow-list).
  */
 export function readOriginUrl(root: string): string | null {
-  let gitDir = join(root, '.git');
+  const gitDir = commonGitDir(root);
+  if (!gitDir) return null;
   try {
-    if (statSync(gitDir).isFile()) {
-      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(gitDir, 'utf8'));
-      if (!pointer) return null;
-      gitDir = resolve(root, pointer[1].trim());
-      const common = join(gitDir, 'commondir');
-      if (existsSync(common)) gitDir = resolve(gitDir, readFileSync(common, 'utf8').trim());
-    }
     const config = readFileSync(join(gitDir, 'config'), 'utf8');
     const section = /\[remote\s+"origin"\]([^[]*)/.exec(config);
     const url = section ? /^\s*url\s*=\s*(.+)$/m.exec(section[1]) : null;
@@ -83,7 +95,16 @@ export function matchProject(home: string, root: string): Project | null {
     const byRemote = projects.find((p) => p.repo && normalizeRemote(p.repo) === key);
     if (byRemote) return byRemote;
   }
-  return projects.find((p) => p.localPath && samePath(p.localPath, root)) ?? null;
+  const exact = projects.find(({ localPath }) => localPath && samePath(localPath, root));
+  if (exact) return exact;
+  // ERR-10: a linked worktree shares the project registered for its main checkout. Only the usual
+  // layout (`<main>/.git`) is recognised; a bare repository has no main checkout to compare.
+  const common = commonGitDir(root);
+  if (!common || basename(common) !== '.git') return null;
+  // Both ways through isWithin, which follows real paths: git writes the long form of the folder
+  // and the registered path may be an 8.3 short name (C:\Users\RUNNER~1).
+  const main = dirname(common);
+  return projects.find(({ localPath }) => localPath && isWithin(localPath, main) && isWithin(main, localPath)) ?? null;
 }
 
 /** Order from the plan: explicit `project` > WAYFINDER_PROJECT > CLAUDE_PROJECT_DIR > cwd. */

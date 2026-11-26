@@ -49776,16 +49776,23 @@ function findRepoRoot(dir) {
     current = parent;
   }
 }
-function readOriginUrl(root) {
-  let gitDir = join12(root, ".git");
+function commonGitDir(root) {
+  const gitDir = join12(root, ".git");
   try {
-    if (statSync5(gitDir).isFile()) {
-      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync11(gitDir, "utf8"));
-      if (!pointer) return null;
-      gitDir = resolve3(root, pointer[1].trim());
-      const common = join12(gitDir, "commondir");
-      if (existsSync8(common)) gitDir = resolve3(gitDir, readFileSync11(common, "utf8").trim());
-    }
+    if (!statSync5(gitDir).isFile()) return gitDir;
+    const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync11(gitDir, "utf8"));
+    if (!pointer) return null;
+    const own2 = resolve3(root, pointer[1].trim());
+    const common = join12(own2, "commondir");
+    return existsSync8(common) ? resolve3(own2, readFileSync11(common, "utf8").trim()) : own2;
+  } catch {
+    return null;
+  }
+}
+function readOriginUrl(root) {
+  const gitDir = commonGitDir(root);
+  if (!gitDir) return null;
+  try {
     const config3 = readFileSync11(join12(gitDir, "config"), "utf8");
     const section = /\[remote\s+"origin"\]([^[]*)/.exec(config3);
     const url2 = section ? /^\s*url\s*=\s*(.+)$/m.exec(section[1]) : null;
@@ -49821,7 +49828,12 @@ function matchProject(home, root) {
     const byRemote = projects.find((p) => p.repo && normalizeRemote(p.repo) === key);
     if (byRemote) return byRemote;
   }
-  return projects.find((p) => p.localPath && samePath(p.localPath, root)) ?? null;
+  const exact = projects.find(({ localPath }) => localPath && samePath(localPath, root));
+  if (exact) return exact;
+  const common = commonGitDir(root);
+  if (!common || basename2(common) !== ".git") return null;
+  const main2 = dirname4(common);
+  return projects.find(({ localPath }) => localPath && isWithin(localPath, main2) && isWithin(main2, localPath)) ?? null;
 }
 function resolveProject(home, input2 = {}) {
   const env = input2.env ?? process.env;
