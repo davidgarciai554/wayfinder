@@ -8,8 +8,8 @@ Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha di
 
 ### Si vienes de una copia anterior
 
-- **Cómo actualizar:** sección «Actualizar el plugin» del [README](README.md). La carpeta de datos (`~/.wayfinder`) no se toca.
-- **Marca de formato:** las copias instaladas antes de la marca `FORMAT` no la leen. Una sesión con un plugin anterior puede seguir escribiendo en una carpeta de formato más nuevo; el aviso y el modo de solo lectura solo protegen desde esta versión (ver «Formato de los datos y actualizaciones» en el README).
+- **Cómo actualizar:** sección «Actualizar el plugin» del [README en español](README.es.md) («Updating the plugin» en el [README en inglés](README.md)). La carpeta de datos (`~/.wayfinder`) no se toca.
+- **Marca de formato:** las copias 0.1.0 instaladas antes de la marca `FORMAT` no la leen. Una sesión con una de esas copias puede seguir escribiendo en una carpeta de formato más nuevo; el aviso y el modo de solo lectura solo protegen desde la 1.0.0 (ver «Formato de los datos y actualizaciones» en el [README en español](README.es.md)).
 - **Errores descartados:** un plugin anterior, sobre la misma carpeta de datos, los muestra como «ilegibles», sin borrarlos ni cambiarlos, hasta que lo actualices.
 - **Bloqueos:** un plugin anterior conserva la clave `blocked` de una tarea, pero no muestra el bloqueo.
 - **Historial:** las tareas creadas antes del historial no se migran; lo muestran vacío hasta su primer avance.
@@ -38,6 +38,7 @@ Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha di
 - Las barreras de la clave de la web y de la carpeta de datos miran también las herramientas del navegador y de la terminal que llevan una dirección, código o un comando, y bloquean la clave escrita en `k=`. Siguen siendo de mejor esfuerzo (WAY-36).
 - Los avisos de tareas y subagentes en segundo plano ya no cuentan como órdenes del chat ni borran la última orden; los mensajes de otra sesión sí cuentan. Una tarea programada todavía no se distingue de un mensaje tuyo (WAY-33).
 - Para aprobar por chat basta «apruebo», sin ID, justo después de que Claude presente una única propuesta (WAY-33).
+- El README pasa a estar en inglés (`README.md`) y en español (`README.es.md`), con secciones nuevas para desinstalar, hacer copia de seguridad y restaurar la carpeta de datos, y la lista de las 14 herramientas MCP. La línea de comandos se instala con `npm pack`, porque `npm install -g github:…` falla con npm 11.17 (WAY-29).
 
 ### Corregido
 
