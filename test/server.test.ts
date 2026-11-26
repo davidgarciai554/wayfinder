@@ -521,7 +521,7 @@ test('the task detail includes its history: the creation entry as data, the rest
   assert.equal(entry.time, '13:40');
   assert.doesNotMatch(entry.html, /<script|href="javascript:|<h1/i);
   assert.match(entry.html, /# no es cabecera/);
-  assert.match(entry.html, /Next: seguir/);
+  assert.match(entry.html, /<span lang="en">Next:<\/span> seguir/);
 });
 
 test('errors: list and detail are read-only, rendered safely, and the task lists its errors', async (t) => {

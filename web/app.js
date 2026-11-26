@@ -1127,7 +1127,10 @@ async function refresh({ announce = true } = {}) {
   }
   await render({ keepFocus: true });
   // Our own write already has its message; do not announce its echo from the file watcher.
-  if (announce && Date.now() - lastOwnWrite > 2000) setLive(t('web.updated', { n: Math.max(pendingChanges, 1) }));
+  if (announce && Date.now() - lastOwnWrite > 2000) {
+    const n = Math.max(pendingChanges, 1);
+    setLive(t(n === 1 ? 'web.updated.one' : 'web.updated', { n }));
+  }
   pendingChanges = 0;
 }
 

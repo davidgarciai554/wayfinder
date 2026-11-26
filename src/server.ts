@@ -260,7 +260,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
     if (parts[2] === 'tasks' && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
       const history = parseEntries(task.history).map((e) =>
-        isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) },
+        isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text, { generated: true }) },
       );
       const errors = errorsForTask(home, slug, task.id).map((e) => ({ id: e.id, title: e.title, status: e.status, kind: e.kind }));
       return json(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history, errors });
@@ -285,7 +285,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
         // The observed output is shown as plain text, exactly as written.
         key === 'output' ? { key, text: unescapeField(error.fields[key]) } : { key, html: error.fields[key] ? md.render(error.fields[key]) : '' },
       );
-      const history = parseEntries(error.history).map((e) => ({ n: e.n, date: e.date, time: e.time, html: md.render(e.text) }));
+      const history = parseEntries(error.history).map((e) => ({ n: e.n, date: e.date, time: e.time, html: md.render(e.text, { generated: true }) }));
       return json(res, 200, { ...errorMeta(error), taskTitle, causeKind: error.causeKind, files: error.files, fields, history });
     }
     if (parts[2] === 'log' && parts.length === 3) {
@@ -298,7 +298,7 @@ export function startServer(options: ServeOptions): Promise<RunningServer> {
       if (!existsSync(file)) return notFound(res);
       // The day file starts with "# YYYY-MM-DD"; the page renders its own heading.
       const text = readFileSync(file, 'utf8').replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n/, '');
-      return json(res, 200, { day: parts[3], html: md.render(text) });
+      return json(res, 200, { day: parts[3], html: md.render(text, { generated: true }) });
     }
     if (parts[2] === 'assets' && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), 'assets');

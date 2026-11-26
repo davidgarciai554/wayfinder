@@ -1,12 +1,30 @@
 import { expect, test, type Page } from '@playwright/test';
-import { E2E_PORTS, type E2ELang } from './paths.ts';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { e2eHome, E2E_PORTS, type E2ELang } from './paths.ts';
 
 // WAY-28: fixes of the accessibility audit (WAYF-12), each checked in Spanish and in English.
 const base = (lang: E2ELang) => `http://127.0.0.1:${E2E_PORTS[lang]}`;
 const TEXT = {
-  es: { skip: 'Saltar al contenido', project: 'Proyecto', board: 'Tablero', errors: 'Errores', done: 'Hechas' },
-  en: { skip: 'Skip to content', project: 'Project', board: 'Board', errors: 'Errors', done: 'Done' },
+  es: { skip: 'Saltar al contenido', project: 'Proyecto', board: 'Tablero', errors: 'Errores', done: 'Hechas', oneChange: 'Actualizado · 1 cambio' },
+  en: { skip: 'Skip to content', project: 'Project', board: 'Board', errors: 'Errors', done: 'Done', oneChange: 'Updated · 1 change' },
 } as const;
+
+/** Generated English text (fixed labels of history, error notes and log) that is not inside lang="en". */
+const unmarkedEnglish = (page: Page, selector: string) => page.locator(selector).evaluateAll((roots) => {
+  const english = /status: \S+ -> |\b(Files|Next|Decisions|Blockers):|\b(Resolved|Updated|Reopened|Discarded)\.|Created \(task:|trivial: true/;
+  const found: string[] = [];
+  let marked = 0;
+  for (const root of roots) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!english.test(node.textContent ?? '')) continue;
+      if (node.parentElement?.closest('[lang="en"]')) marked += 1;
+      else found.push(node.textContent ?? '');
+    }
+  }
+  return { marked, found };
+});
 
 /** The focused element is the first control inside <main>. */
 const focusOnFirstControl = (page: Page) => page.evaluate(() => {
@@ -97,6 +115,23 @@ for (const lang of ['es', 'en'] as const) {
       await expect(page.locator('main').getByText('Gestor de tareas en Markdown.')).toBeVisible();
       const headings = await page.locator('main :is(h1, h2, h3, h4, h5, h6)').evaluateAll((list) => list.map((h) => `${h.tagName}: ${h.textContent}`));
       expect(headings).toEqual(['H1: wayfinder', 'H2: Qué es']);
+    });
+    test('A11Y-4: generated English text carries lang="en", and one change is singular', async ({ page }) => {
+      for (const [route, selector] of [['#/historial/task/HIS-1', '#task-dialog .history'], ['#/errores/errors/ERR-2', '#error-history + .entries'], ['#/wayfinder/log', 'main .days']]) {
+        await page.goto(`${base(lang)}/${route}`);
+        await expect(page.locator(selector).first()).toBeVisible();
+        const { marked, found } = await unmarkedEnglish(page, selector);
+        expect(found, route).toEqual([]);
+        expect(marked, route).toBeGreaterThan(0);
+      }
+
+      await page.goto(`${base(lang)}/#/demo-app/board`);
+      await expect(page.locator('main h1')).toBeVisible();
+      // One external change: the same bytes written again still count as a change of the file.
+      const dir = join(e2eHome(lang), 'projects', 'demo-app');
+      const file = join(dir, readdirSync(dir).find((name) => name.endsWith('.md'))!);
+      writeFileSync(file, readFileSync(file));
+      await expect(page.locator('#live-text')).toHaveText(TEXT[lang].oneChange, { timeout: 5000 });
     });
   });
 }
