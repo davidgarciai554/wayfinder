@@ -299,17 +299,17 @@ El plugin da a Claude estas 14 herramientas. No las usas tú: se lo pides a Clau
 
 ## Línea de comandos sin el plugin
 
-El paquete está publicado en npm como `@davidgarciai554/wayfinder`:
+El paquete está publicado en npm como `@chinorris/wayfinder`:
 
 ```powershell
-npm install -g @davidgarciai554/wayfinder
+npm install -g @chinorris/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- **Actualizar:** `npm install -g @davidgarciai554/wayfinder@latest`.
-- **Desde una copia del repositorio** (por ejemplo, para probar cambios sin publicar): `git clone https://github.com/davidgarciai554/wayfinder.git` y, en esa carpeta, `npm ci`, `npm pack` y `npm install -g .\davidgarciai554-wayfinder-<versión>.tgz`. `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
-- **Desinstalar:** `npm uninstall -g @davidgarciai554/wayfinder`. La carpeta de datos no se toca.
+- **Actualizar:** `npm install -g @chinorris/wayfinder@latest`.
+- **Desde una copia del repositorio** (por ejemplo, para probar cambios sin publicar): `git clone https://github.com/davidgarciai554/wayfinder.git` y, en esa carpeta, `npm ci`, `npm pack` y `npm install -g .\chinorris-wayfinder-<versión>.tgz`. `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
+- **Desinstalar:** `npm uninstall -g @chinorris/wayfinder`. La carpeta de datos no se toca.
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
 

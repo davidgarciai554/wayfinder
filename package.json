@@ -1,5 +1,5 @@
 {
-  "name": "@davidgarciai554/wayfinder",
+  "name": "@chinorris/wayfinder",
   "version": "1.0.0",
   "description": "Personal Markdown task manager that Claude Code uses as a project tracker and memory: MCP server, local web board and Claude Code plugin.",
   "license": "MIT",

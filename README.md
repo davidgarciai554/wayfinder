@@ -299,17 +299,17 @@ The plugin gives Claude these 14 tools. You do not use them: you ask Claude in t
 
 ## Command line without the plugin
 
-The package is published on npm as `@davidgarciai554/wayfinder`:
+The package is published on npm as `@chinorris/wayfinder`:
 
 ```powershell
-npm install -g @davidgarciai554/wayfinder
+npm install -g @chinorris/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- **Update:** `npm install -g @davidgarciai554/wayfinder@latest`.
-- **From a copy of the repository** (for example, to try changes that are not published): `git clone https://github.com/davidgarciai554/wayfinder.git`, then `npm ci`, `npm pack` and `npm install -g .\davidgarciai554-wayfinder-<version>.tgz` in that folder. `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
-- **Uninstall:** `npm uninstall -g @davidgarciai554/wayfinder`. The data folder is not touched.
+- **Update:** `npm install -g @chinorris/wayfinder@latest`.
+- **From a copy of the repository** (for example, to try changes that are not published): `git clone https://github.com/davidgarciai554/wayfinder.git`, then `npm ci`, `npm pack` and `npm install -g .\chinorris-wayfinder-<version>.tgz` in that folder. `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
+- **Uninstall:** `npm uninstall -g @chinorris/wayfinder`. The data folder is not touched.
 
 The package contains a single `dist/wayfinder.mjs` file with no dependencies, the web board and `THIRD_PARTY_NOTICES.md` with the licences of the libraries bundled in it.
 
