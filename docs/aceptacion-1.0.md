@@ -64,7 +64,7 @@ Candidato `1.0.0` (rama `release/1.0.0`) en ChinorrisPC: Windows 11, Node 24.12.
 | 3.11 | Reabrir con conflicto | conforme | con versión antigua, 409 «La tarea DEM-4 cambió mientras la editabas…»; con la actual, 200 y `todo`. El 409 dentro del diálogo lo cubre `e2e/write.spec.ts` («a task changed meanwhile answers 409 inside the dialog») |
 | 3.12 | `wf_web` en red con el 4747 ocupado (ERR-4) | conforme | se abre en otro puerto con el aviso que nombra los dos puertos (red simulada con `webHost` = 127.0.0.2) |
 | 4 | Web en PC (1440 px) y en móvil emulado (390 px, táctil) | conforme | tablero visible, sin errores de consola y sin desbordamiento horizontal |
-| 5 | Paquete npm | conforme | `npm pack` → `davidgarciai554-wayfinder-1.0.0.tgz`, instalado con `npm install -g` en un prefijo temporal: `wayfinder --version` 1.0.0, `init` crea la carpeta con `FORMAT`, la desinstalación quita el binario |
+| 5 | Paquete npm | conforme | `check:dist` y `npm pack --ignore-scripts` (sin reconstruir el `plugin/dist/` versionado) → `davidgarciai554-wayfinder-1.0.0.tgz`, instalado con `npm install -g` en un prefijo temporal: `wayfinder --version` 1.0.0, `init` crea la carpeta con `FORMAT`, la desinstalación quita el binario |
 | 6 | Aislamiento | conforme | mismo HEAD de `~/.wayfinder` y mismo `installed_plugins.json` |
 
 ### Pasos manuales

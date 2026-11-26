@@ -444,7 +444,11 @@ await s.close();
 
 // 5. npm package (WAY-31): pack, install the tarball in a temporary prefix and run the binary.
 await step('5', 'Paquete npm: npm pack, instalación del tarball en un prefijo temporal y binario', () => {
-  const pack = sh(`npm pack --pack-destination ${q(T)}`);
+  // npm pack would run prepare (build) and rewrite the versioned plugin/dist/: check that dist/ matches
+  // a fresh build (written to a temporary folder) and pack it as it is.
+  const fresh = sh('node scripts/check-dist.mjs');
+  expect(fresh.code === 0, fresh.out);
+  const pack = sh(`npm pack --ignore-scripts --pack-destination ${q(T)}`);
   expect(pack.code === 0, pack.out);
   const tgz = readdirSync(T).find((f) => f.endsWith('.tgz'));
   const inst = sh(`npm install -g ${q(join(T, tgz))}`);
