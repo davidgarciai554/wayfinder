@@ -8572,13 +8572,17 @@ var PATTERNS = [
   ["url-credentials", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i],
   ["password-assignment", /\b(?:pass(?:word|wd)?|contrase[ñn]a)\s*[=:]\s*\S+/i]
 ];
-var ASSIGNMENT = /([\w -]{1,64}?)["']?\s*[=:]\s*["']?([\w+/=.-]{20,512})/g;
+var ASSIGNMENT = /((?:[\w-]{1,40} ){0,3}[\w-]{1,40})["']?[ \t]*[=:][ \t]*["']?([\w+/=.-]{20,512})/g;
 var KEY_WORD = /^[\w-]*(?:api[_-]?key|secret|token|access[_-]?key)[\w-]*$/i;
-var KEY_PHRASE = /\bclave[ _-](?:de[ _-])?(?:api|acceso|secreta)\s*$/i;
+var KEY_PHRASE = /\bclave[ _-](?:de[ _-])?(?:api|acceso|secreta)$/i;
+var MAX_VALUE = 512;
 function hasKeyAssignment(text2) {
-  for (const m of text2.matchAll(ASSIGNMENT)) {
-    const name = m[1].trimEnd();
-    if (/\d/.test(m[2]) && (KEY_WORD.test(name.split(" ").pop() ?? "") || KEY_PHRASE.test(name))) return true;
+  ASSIGNMENT.lastIndex = 0;
+  for (let m = ASSIGNMENT.exec(text2); m; m = ASSIGNMENT.exec(text2)) {
+    const [, name, value] = m;
+    const keyName = KEY_WORD.test(name.slice(name.lastIndexOf(" ") + 1)) || KEY_PHRASE.test(name);
+    if (keyName && (/\d/.test(value) || value.length === MAX_VALUE)) return true;
+    ASSIGNMENT.lastIndex = m.index + m[0].length - value.length;
   }
   return false;
 }

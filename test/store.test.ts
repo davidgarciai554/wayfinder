@@ -163,6 +163,8 @@ test('WAY-38: the detector finds Spanish terms, key assignments, common formats 
     [`client_secret: "${'Zx9'.repeat(8)}"`, 'key-assignment'],
     [`GITHUB_TOKEN = ${'b2'.repeat(15)}`, 'key-assignment'],
     [`clave de acceso = ${'k3y'.repeat(8)}`, 'key-assignment'],
+    [`user=token=${'ABCDEFGH'.repeat(2)}1234`, 'key-assignment'],
+    [`secret: ${'q'.repeat(600)}7`, 'key-assignment'],
     [`xox${'b-'}1234567890-abcdefghij`, 'slack-token'],
     [`AI${'za'}${'A1b'.repeat(11)}cd`, 'google-api-key'],
     [`s${'k_live_'}${'a1'.repeat(12)}`, 'stripe-key'],
@@ -187,7 +189,7 @@ test('WAY-38: the detector finds Spanish terms, key assignments, common formats 
   ];
   for (const text of clean) assert.deepEqual(findSecrets(text), [], text);
   // Long text that is almost an assignment is scanned in linear time (it took minutes with backtracking).
-  for (const text of ['token-'.repeat(3000), 'a=b'.repeat(6000), 'x-'.repeat(10000)]) {
+  for (const text of ['token-'.repeat(3000), 'a=b'.repeat(6000), 'x-'.repeat(10000), ' '.repeat(20000), `a${' '.repeat(19999)}`, 'a '.repeat(10000), 'a='.repeat(10000)]) {
     const start = performance.now();
     assert.deepEqual(findSecrets(text), []);
     assert.ok(performance.now() - start < 2000, `${text.slice(0, 12)}… took ${Math.round(performance.now() - start)} ms`);
