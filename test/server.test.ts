@@ -222,6 +222,9 @@ test('lists projects and tasks with flags, and renders task Markdown safely', as
       '<img src=x onerror="alert(2)">',
       '[bad](javascript:alert(3)) [data](data:text/html;base64,AAAA) [ok](https://example.com)',
       '![remote](https://evil.example.com/pixel.png) ![local](../assets/pic.png)',
+      // WAY-37: application schemes and paths that browsers send to another site are not links.
+      '[app](vscode://file/x) [xls](ms-excel:ofe|u|https://e.example) [find](search-ms:query=a) [off](/\\evil.example.org) [proto](//evil.example.org) [enc](/%5Cevil.example.org)',
+      '[doc](docs/plan.md) [up](../README.md) [root](/tasks) [top](#top) [mail](mailto:a@example.com)',
     ].join('\n\n'),
   }, 'mcp');
   const projects = JSON.parse((await get(port, '/api/projects')).body);
@@ -239,6 +242,8 @@ test('lists projects and tasks with flags, and renders task Markdown safely', as
   assert.match(html, /href="https:\/\/example\.com" rel="noopener noreferrer"/);
   assert.doesNotMatch(html, /evil\.example\.com/);
   assert.match(html, /src="\/api\/projects\/demo\/assets\/pic\.png"/);
+  assert.doesNotMatch(html, /href="(vscode|ms-excel|search-ms):|href="[^"]*evil\.example\.org/i);
+  for (const href of ['docs/plan.md', '../README.md', '/tasks', '#top', 'mailto:a@example.com']) assert.ok(html.includes(`href="${href}"`), href);
   assert.equal(task.title, '<img src=x onerror=alert(1)>', 'titles are data; the client renders them with textContent');
 });
 

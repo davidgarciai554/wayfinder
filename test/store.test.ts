@@ -12,6 +12,7 @@ import { assertSlug, isWithin, safeJoin } from '../src/store/paths.ts';
 import { createProject } from '../src/store/project.ts';
 import { createTask, dependencyStates, isBlocking, listTasks, logProgress, readTask, reopenTarget, setStatus, updateTask } from '../src/store/tasks.ts';
 import { parseEntries } from '../src/store/history.ts';
+import { findSecrets } from '../src/store/secrets.ts';
 import { WayfinderError } from '../src/store/errors.ts';
 import { commitCount, fixedClock, gitOut, makeHome, makeProject, sha, tree } from './helpers.ts';
 
@@ -151,6 +152,55 @@ test('secrets are rejected in titles, bodies, notes and log entries', (t) => {
   assert.throws(() => appendLog(home, 'demo', '-----BEGIN RSA PRIVATE KEY-----'), isKey('store.secretRejected'));
   assert.throws(() => appendLog(home, 'demo', 'clone https://user:pass@example.com/repo'), isKey('store.secretRejected'));
   assert.equal(listTasks(home, 'demo').tasks.length, 0);
+});
+
+test('WAY-38: the detector finds Spanish terms, key assignments, common formats and the web key, and lets prose pass', (t) => {
+  // Invented values, built in pieces so that no scanner takes this file for a real leak.
+  const caught: Array<[string, string]> = [
+    ['contraseña = Hunter2-xyz', 'password-assignment'],
+    ['CONTRASENA: abc', 'password-assignment'],
+    [`API_KEY=${'a1'.repeat(12)}`, 'key-assignment'],
+    [`client_secret: "${'Zx9'.repeat(8)}"`, 'key-assignment'],
+    [`GITHUB_TOKEN = ${'b2'.repeat(15)}`, 'key-assignment'],
+    [`clave de acceso = ${'k3y'.repeat(8)}`, 'key-assignment'],
+    [`user=token=${'ABCDEFGH'.repeat(2)}1234`, 'key-assignment'],
+    [`API_KEY:\n${'c4'.repeat(16)}`, 'key-assignment'],
+    [`token\n= ${'d5'.repeat(16)}`, 'key-assignment'],
+    [`TOKEN${'x'.repeat(50)}=${'e6'.repeat(16)}`, 'key-assignment'],
+    [`secret: ${'q'.repeat(600)}7`, 'key-assignment'],
+    [`xox${'b-'}1234567890-abcdefghij`, 'slack-token'],
+    [`AI${'za'}${'A1b'.repeat(11)}cd`, 'google-api-key'],
+    [`s${'k_live_'}${'a1'.repeat(12)}`, 'stripe-key'],
+    [`npm_${'a'.repeat(36)}`, 'npm-token'],
+    [`glpat-${'a'.repeat(20)}`, 'gitlab-token'],
+    [`AS${'IA'}${'A'.repeat(16)}`, 'aws-access-key'],
+    [`eyJ${'hbGciOiJIUzI1NiJ9'}.eyJ${'zdWIiOiIxMjM0NTY3ODkwIn0'}.${'a'.repeat(43)}`, 'jwt'],
+    [`http://192.168.1.20:4747/?k=0a1b2c.${'f0'.repeat(24)}`, 'wayfinder-web-key'],
+    [`clave 0a1b2c.${'9e'.repeat(24)}`, 'wayfinder-web-key'],
+  ];
+  for (const [text, name] of caught) assert.ok(findSecrets(text).includes(name), `${name}: ${text}`);
+  const clean = [
+    'La contraseña se guarda cifrada y nunca se muestra',
+    'token: the session one expires after an hour',
+    'secret: src/store/secrets.ts',
+    'TOKEN_TTL=3600',
+    'access_key: https://example.com/docs/keys-2026',
+    'La clave: revisar el plan WAY-12 antes del 2026-11-25',
+    'cookie_secret_name = session-cookie-name',
+    'Fixed in commit 5a04af1d2c3b4a5968778695a4b3c2d1e0f9a8b7 (WAY-38)',
+    'The web prints /?k=<key> once per start',
+  ];
+  for (const text of clean) assert.deepEqual(findSecrets(text), [], text);
+  // Long text that is almost an assignment is scanned in linear time (it took minutes with backtracking).
+  for (const text of ['token-'.repeat(3000), 'a=b'.repeat(6000), 'x-'.repeat(10000), ' '.repeat(20000), `a${' '.repeat(19999)}`, 'a '.repeat(10000), 'a='.repeat(10000), `a${'\n'.repeat(19999)}`, 'a\n'.repeat(10000)]) {
+    const start = performance.now();
+    assert.deepEqual(findSecrets(text), []);
+    assert.ok(performance.now() - start < 2000, `${text.slice(0, 12)}… took ${Math.round(performance.now() - start)} ms`);
+  }
+  // The detector guards the data folder: a task carrying the web key is rejected.
+  const home = makeHome(t);
+  makeProject(home);
+  assert.throws(() => createTask(home, 'demo', { title: 'ok', body: caught[13][0] }, 'mcp'), isKey('store.secretRejected'));
 });
 
 test('malicious slugs, traversal and links never write outside WAYFINDER_HOME', (t) => {
