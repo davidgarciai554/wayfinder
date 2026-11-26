@@ -52,13 +52,17 @@ Ninguna bloqueante. Solo confirmar dos límites:
 8. Sin cambios respecto a v1 (validación amplia).
 
 ### Criterios de aceptación (sustituyen a los de WAY-33 de v1; los de WAY-36 no cambian)
-- [ ] «aprueba WAY-n», «registra este proyecto» y «abre Wayfinder» escritos por la persona, o reenviados desde otra sesión, siguen funcionando.
-- [ ] «apruebo» solo, tras presentar una única propuesta con `wf_review` en los últimos 15 minutos, la aprueba con las mismas comprobaciones de hoy y guarda la cita tal cual.
-- [ ] «apruebo» ambiguo o sin propuesta revisada no aprueba nada y Claude pide el ID.
+- [x] «aprueba WAY-n», «registra este proyecto» y «abre Wayfinder» escritos por la persona, o reenviados desde otra sesión, siguen funcionando.
+  - Evidencia (WAY-30, 2026-11-26): `test/hook.test.ts` «automated turns neither record nor clear orders and tell Claude why (WAY-33)» (aprobación escrita por la persona intacta y mensaje `<cross-session-message>` con «aprueba CO-3» registra la orden), «the person's «abre Wayfinder» is recorded…»; `test/chat.test.ts` «explicit orders are recognised in Spanish and English»; acceptance 3.2 y 3.4.
+- [x] «apruebo» solo, tras presentar una única propuesta con `wf_review` en los últimos 15 minutos, la aprueba con las mismas comprobaciones de hoy y guarda la cita tal cual.
+  - Evidencia (WAY-30, 2026-11-26): `test/hook.test.ts` «a bare «apruebo» orders the one proposal reviewed in the last 15 minutes (plan v2, D10)», `test/chat.test.ts` «a bare approval needs an order recorded as bare, and quotes the person as written» y «a bare approval is a whole short message that only approves (WAY-33, plan v2 D9)», todas con ✔.
+- [x] «apruebo» ambiguo o sin propuesta revisada no aprueba nada y Claude pide el ID.
+  - Evidencia (WAY-30, 2026-11-26): `test/hook.test.ts` «a bare «apruebo» orders the one proposal reviewed in the last 15 minutes (plan v2, D10)»: sin revisión, con dos, con una de más de 15 minutos o ya no propuesta, ninguna orden y aviso «ask the person for the task ID»; «apruebo el plan v1» tampoco registra nada.
 - [ ] Con R1' o R2': un aviso de tarea o subagente en segundo plano y una tarea programada no registran órdenes, no borran las vigentes y dejan un aviso fijo.
 - [ ] Con R3': el README y la skill dicen el límite observado.
 - [ ] README, skill y CHANGELOG describen el riesgo aceptado de los mensajes entre sesiones.
-- [ ] `plugin/dist/` reconstruido; `npm run typecheck`, `npm test` (salvo la prueba conocida `test/server.test.ts:139`) y `npm run check:dist` en verde.
+- [x] `plugin/dist/` reconstruido; `npm run typecheck`, `npm test` (salvo la prueba conocida `test/server.test.ts:139`) y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): `npm run typecheck` y `npm run check:dist` correctos (quality.txt); `npm test` 230/230 (test.txt), incluida `test/server.test.ts`.
 
 ### Riesgos nuevos
 - Riesgo: una sesión manipulada en este PC aprueba por mensaje. Aceptado por la persona; mitigado por la revisión con hash y la segunda confirmación, y documentado.

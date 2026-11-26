@@ -190,14 +190,19 @@ Cada paso deja el repositorio compilando y con las pruebas en verde. Los pasos 1
 8. **Cierre.** Comparar el resultado con los criterios de aceptación; informar de lo verificado, lo bloqueado y lo trasladado a WAY-30.
 
 ## Criterios de aceptación
-- [ ] Con un número distinto en `plugin.json`, `npm run check:dist` sale con 1 y nombra archivo, campo y valores; igual con cada campo del lockfile por separado.
+- [x] Con un número distinto en `plugin.json`, `npm run check:dist` sale con 1 y nombra archivo, campo y valores; igual con cada campo del lockfile por separado.
+  - Evidencia (WAY-30, 2026-11-26): `test/versions.test.ts` «versionProblems: each file and field that differs is reported with both values» (plugin y los dos campos del lockfile por separado) con ✔; `scripts/check-dist.mjs` añade esos problemas y fija `process.exitCode = 1` (lectura del código; no se ejecutó con un número alterado).
 - [ ] Con los cuatro valores iguales, `check:dist` pasa; un bundle desfasado sigue fallando.
-- [ ] `node --test test/versions.test.ts` cubre los casos del paso 2, incluida la lectura de los manifiestos reales, y `npm test` y `npm run typecheck` pasan.
+- [x] `node --test test/versions.test.ts` cubre los casos del paso 2, incluida la lectura de los manifiestos reales, y `npm test` y `npm run typecheck` pasan.
+  - Evidencia (WAY-30, 2026-11-26): `test/versions.test.ts` (5 pruebas con ✔, incluida «the package, the lockfile and the plugin of this repository declare the same version», que lee los manifiestos reales); `npm test` 230/230 y `npm run typecheck` correcto.
 - [ ] `CHANGELOG.md` existe con el formato de P3; cada ID WAY aparece en el historial; no queda ninguna entrada sin respaldo; incluye que las versiones anteriores no leen `FORMAT`.
-- [ ] El README tiene la sección «Actualizar el plugin» con los dos caminos, el reinicio, la conservación de `~/.wayfinder`, la declaración de P5 y cada paso marcado como verificado o no verificado; la línea 209 la enlaza.
-- [ ] Con P4 autorizado y viable, el ensayo aislado muestra la versión nueva en `list --json`, deja intactas la carpeta de datos de prueba y la instalación real, y el README refleja lo observado.
+- [x] El README tiene la sección «Actualizar el plugin» con los dos caminos, el reinicio, la conservación de `~/.wayfinder`, la declaración de P5 y cada paso marcado como verificado o no verificado; la línea 209 la enlaza.
+  - Evidencia (WAY-30, 2026-11-26): `README.es.md` líneas 57-84 («Actualizar el plugin»: copia local y GitHub, reinicio, conservación de `~/.wayfinder` y de las opciones, cada paso con *Comprobado* o *sin comprobar*) y enlace a ella desde la línea 323; equivalente en `README.md` («Updating the plugin»).
+- [x] Con P4 autorizado y viable, el ensayo aislado muestra la versión nueva en `list --json`, deja intactas la carpeta de datos de prueba y la instalación real, y el README refleja lo observado.
+  - Evidencia (WAY-30, 2026-11-26): `scripts/acceptance.mjs` pasos 2 y 6 (accept2.txt): actualización 0.1.0 → 1.0.0 en un perfil aislado con `CLAUDE_CONFIG_DIR` temporal, opciones y datos conservados, y `~/.wayfinder` e `installed_plugins.json` del usuario sin cambios. El README (líneas 57-84) recoge lo comprobado.
 - [ ] Sin ensayo o con ensayo no viable, el criterio «un plugin instalado pasa a la nueva siguiendo solo el README» queda declarado no verificado y trasladado a WAY-30 (P6).
-- [ ] Sin cambio de número, `git diff` sobre `plugin/dist/` es vacío. Con cambio, el bundle se reconstruye y `check:dist` pasa desde el checkout principal.
+- [x] Sin cambio de número, `git diff` sobre `plugin/dist/` es vacío. Con cambio, el bundle se reconstruye y `check:dist` pasa desde el checkout principal.
+  - Evidencia (WAY-30, 2026-11-26): El número cambió (0.1.0 → 1.0.0) y el bundle se reconstruyó: `npm run check:dist` correcto («dist/ and plugin/dist/ match a fresh build», quality.txt).
 - [ ] Las líneas añadidas no contienen rutas personales, nombres de usuario ni IP.
 
 ## Estrategia de validación

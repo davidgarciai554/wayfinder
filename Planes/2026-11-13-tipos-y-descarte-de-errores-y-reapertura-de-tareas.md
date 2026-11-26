@@ -109,30 +109,45 @@ Uno por tarea, en este orden: WAY-9 se apoya en las secciones de WAY-8; WAY-12 e
 ## Criterios de aceptación
 
 **WAY-8**
-- [ ] `create` y `update` aceptan los 6 tipos; un valor fuera del enum se rechaza sin escribir archivo ni commit.
-- [ ] Un error sin `kind`, o con un `kind` desconocido en disco, se lee igual que antes y aparece como «Sin clasificar»; las claves desconocidas se conservan al reescribir.
-- [ ] La pestaña Errores muestra, dentro de cada estado, un `h3` por tipo con recuento y «Sin clasificar» al final; se mantiene el tope de 10 resueltos.
-- [ ] El detalle del error y «Errores (n)» de la tarea muestran el tipo en texto.
-- [ ] SessionStart: resumen por tipo y tipo por línea, sin pasar de 600 caracteres ni de `MAX_CONTEXT`; con títulos largos y 6 tipos, las tareas nunca se desplazan.
-- [ ] Paridad es/en (`test/i18n.test.ts`).
+- [x] `create` y `update` aceptan los 6 tipos; un valor fuera del enum se rechaza sin escribir archivo ni commit.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «kind: optional, from a closed list, editable, and invalid values write nothing» (✔): un kind fuera del enum (severity, Build) lanza store.invalidKind y tree(home) queda igual; test/hook.test.ts, «session-start never trades an error line for the kind summary» (✔) crea errores con los 6 tipos (build, test, analysis, runtime, behavior, environment); update usa el mismo validador (src/store/error-records.ts:257).
+- [x] Un error sin `kind`, o con un `kind` desconocido en disco, se lee igual que antes y aparece como «Sin clasificar»; las claves desconocidas se conservan al reescribir.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «an unknown kind on disk reads as unclassified and is kept until a valid one replaces it» (✔): kind: security en disco se lee como null, sin ilegibles, sobrevive a una nota y se sustituye al poner runtime; «kind: optional…» comprueba que sin kind no se escribe la clave.
+- [x] La pestaña Errores muestra, dentro de cada estado, un `h3` por tipo con recuento y «Sin clasificar» al final; se mantiene el tope de 10 resueltos.
+  - Evidencia (WAY-30, 2026-11-26): e2e.txt, e2e/errors.spec.ts «each state is split into sections by kind, with counts and unclassified last» y «the Errors tab lists open and resolved errors, resolved limited to 10» (ok): h3 «Pruebas 1», «Entorno 1», «Sin clasificar 8» al final, y tope de 10 resueltos con botón «Ver los 12 resueltos».
+- [x] El detalle del error y «Errores (n)» de la tarea muestran el tipo en texto.
+  - Evidencia (WAY-30, 2026-11-26): e2e.txt, e2e/errors.spec.ts «each state is split into sections by kind…» (ok): dl.meta contiene «TipoCompilación» y «TipoSin clasificar», y «Errores» de la tarea FAL-1 muestra «Compilación» en el listitem.
+- [x] SessionStart: resumen por tipo y tipo por línea, sin pasar de 600 caracteres ni de `MAX_CONTEXT`; con títulos largos y 6 tipos, las tareas nunca se desplazan.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts (✔ todas): «session-start summarises open errors by kind and labels each line, in the session language» («Por tipo: Pruebas 2, Entorno 1, Sin clasificar 1» y «By kind: …»), «session-start never trades an error line for the kind summary» (6 tipos y títulos largos: bloque ≤ 600+2 caracteres) y «session-start never lets open errors push the task list out» (contexto ≤ 4000 y las tareas siguen).
+- [x] Paridad es/en (`test/i18n.test.ts`).
+  - Evidencia (WAY-30, 2026-11-26): test/i18n.test.ts, «es and en dictionaries have exactly the same keys», «no dictionary value is empty», «placeholders match between languages» (✔ en test.txt).
 
 **WAY-9**
-- [ ] `discard` sin nota, con nota vacía, con un secreto o demasiado larga se rechaza sin cambiar el archivo.
-- [ ] Un descartado no aparece en el bloque de abiertos del SessionStart ni en los duplicados, y no se muestra como «Resuelto» en ningún sitio.
-- [ ] La web lo muestra en «Descartados» con la píldora tachada y su texto, y la nota en el detalle.
-- [ ] `update` con `reopen: true` y nota lo devuelve a `open`, igual que con un resuelto.
-- [ ] Un estado desconocido en disco no deja el registro ilegible.
+- [x] `discard` sin nota, con nota vacía, con un secreto o demasiado larga se rechaza sin cambiar el archivo.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «discard needs a reason, keeps it in the notes, is idempotent and can be reopened» (✔): nota vacía, de espacios, de 5000 caracteres y con un token ghp_ lanzan error (store.secretRejected el último) y tree(home) queda idéntico.
+- [x] Un descartado no aparece en el bloque de abiertos del SessionStart ni en los duplicados, y no se muestra como «Resuelto» en ningún sitio.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts, «session-start summarises open errors by kind…» (✔): el descartado ERR-6 no sale en «Open errors» ni en el recuento; test/error-records.test.ts, «a discarded error is not an open duplicate…» (✔); e2e/errors.spec.ts «discarded errors have their own group…» (ok): ERR-14 no aparece en Abiertos ni en Resueltos.
+- [x] La web lo muestra en «Descartados» con la píldora tachada y su texto, y la nota en el detalle.
+  - Evidencia (WAY-30, 2026-11-26): e2e.txt, e2e/errors.spec.ts «discarded errors have their own group, a struck-through pill in text and the reason in the notes» (ok): grupo «Descartados 1», píldora «Descartado» con text-decoration line-through y la nota en «Notas y recurrencias».
+- [x] `update` con `reopen: true` y nota lo devuelve a `open`, igual que con un resuelto.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «discard needs a reason…» (✔): update con reopen sin nota lanza store.errorReopenNeedsNote, y con reopen y nota devuelve el descartado a open; «resolve needs solution and validation, is idempotent and reopen needs a note» cubre el resuelto.
+- [x] Un estado desconocido en disco no deja el registro ilegible.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «an unknown status (a newer version) is listed as it is and cannot be changed here» (✔) y test/mcp.integration.test.ts, «WAY-10: wf_errors lists errors…» (✔): un estado desconocido se lista tal cual y un estado ilegible va a «unreadable» sin romper la lista.
 
 **WAY-12**
-- [ ] Desde la web: `done` → `todo`; `discarded` → `todo` si `origin: user` o hay `approvedVia`; si no, → `proposed`.
+- [x] Desde la web: `done` → `todo`; `discarded` → `todo` si `origin: user` o hay `approvedVia`; si no, → `proposed`.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «reopen (web only): done goes back to todo…» y «reopen never approves: a proposal nobody approved goes back to proposed; yours or approved ones to todo» (✔); test/server.test.ts, «reopen from the web: …the store picks the target» (✔); e2e/write.spec.ts «reopen asks for a reason, says where the task goes…» (ok): REA-1 done→todo y REA-2 descartada de Claude→proposed.
 - [ ] Por MCP y por chat, cualquier transición desde `done` o `discarded` se rechaza con `store.invalidTransition` y el archivo queda igual.
-- [ ] La nota es obligatoria (vacía o con secreto → 400 sin cambios) y queda en el historial de la tarea y en la bitácora, en un solo commit.
+- [x] La nota es obligatoria (vacía o con secreto → 400 sin cambios) y queda en el historial de la tarea y en la bitácora, en un solo commit.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «reopen (web only)…» (✔): sin nota store.noteRequired, secreto ghp_ store.secretRejected, escrito sin cambios (sha idéntico) y con nota 1 solo commit («wf: set-status … done->todo») con la razón en el historial y en la bitácora; test/server.test.ts «reopen from the web…»: sin nota 400 con field note. Nota: el 400 por secreto no se probó a nivel HTTP, solo en el almacén.
 - [ ] La ruta responde 403 sin Origin válido o sin clave, y 409 con un `expectedUpdated` antiguo, sin cambiar nada.
-- [ ] Una propuesta reabierta a `proposed` no se puede aprobar por chat sin una revisión nueva.
+- [x] Una propuesta reabierta a `proposed` no se puede aprobar por chat sin una revisión nueva.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts, «a proposal reopened from the web needs a new review before a chat approval» (✔): tras reabrir a proposed, approveByChat lanza chat.noReview hasta una revisión nueva.
 - [ ] El diálogo funciona con teclado: foco inicial en la nota, Esc devuelve el foco, el error de validación enfoca la nota, el 409 no pierde la nota y, tras el éxito, el foco no se pierde en `body`. Objetivos de 44 px por debajo de 1100 px.
 
 **Comunes**
-- [ ] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+- [x] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: npm run typecheck (TYPECHECK_OK) y npm run check:dist (CHECKDIST_OK) correctos; test.txt: npm test 230/230 en verde; e2e.txt: npm run test:e2e 68 passed (4.9m).
 - [ ] Revisión de la web en ejecución a 1280 y 390 px (también 320 px para el diálogo), en claro y oscuro.
 
 ## Estrategia de pruebas

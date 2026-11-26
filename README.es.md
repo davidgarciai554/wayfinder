@@ -72,8 +72,8 @@ Cada paso dice si está comprobado con Wayfinder o si solo lo dice la documentac
    claude plugin update wayfinder@wayfinder
    ```
 
-   - **Desde una copia local.** *Comprobado, en ese orden.* Sin cambio de número responde «nothing to update» y «already at the latest version». Con cambio de número, por ejemplo «updated from 0.1.0 to 0.1.1», y `version` pasa a ser la nueva.
-   - **Desde GitHub** (copia en caché por versión). Sin cambio de número responde «already at the latest version (0.1.0)» (*comprobado con Claude Code 2.1.332*). Lo que sigue lo dice la documentación de Claude Code y no se ha comprobado con Wayfinder, porque aún no ha cambiado el número: Claude Code solo trae una copia nueva cuando cambia el número de versión del plugin. «already at the latest version» significa que tienes la última versión numerada, no necesariamente los últimos cambios del repositorio: mientras el número siga en `0.1.0`, una copia instalada desde GitHub no cambia.
+   - **Desde una copia local.** *Comprobado, en ese orden.* Sin cambio de número responde «nothing to update» y «already at the latest version». Con cambio de número, por ejemplo «updated from 0.1.0 to 1.0.0», y `version` pasa a ser la nueva (*comprobado de 0.1.0 a 1.0.0 con Claude Code 2.1.332*).
+   - **Desde GitHub** (copia en caché por versión). Sin cambio de número responde «already at the latest version (0.1.0)» (*comprobado con Claude Code 2.1.332*). Lo que sigue lo dice la documentación de Claude Code y aún no se ha comprobado con Wayfinder desde GitHub (el salto de 0.1.0 a 1.0.0 se comprobó desde una copia local): Claude Code solo trae una copia nueva cuando cambia el número de versión del plugin. «already at the latest version» significa que tienes la última versión numerada, no necesariamente los últimos cambios del repositorio: mientras el número no cambie, una copia instalada desde GitHub no cambia.
 4. **Reinicia las sesiones de Claude abiertas.** Una sesión en marcha sigue con el servidor anterior y no muestra las funciones nuevas. `claude plugin update` lo avisa: «Restart to apply changes» (*comprobado*). Claude Code dice que `/reload-plugins` también lo aplica sin cerrar la sesión (*sin comprobar*).
 
 Qué se conserva:
@@ -299,21 +299,16 @@ El plugin da a Claude estas 14 herramientas. No las usas tú: se lo pides a Clau
 
 ## Línea de comandos sin el plugin
 
-El paquete no está publicado en npm. Se instala desde una copia del repositorio de GitHub:
+El paquete está publicado en npm como `@davidgarciai554/wayfinder`:
 
 ```powershell
-git clone https://github.com/davidgarciai554/wayfinder.git
-cd wayfinder
-npm ci
-npm pack
-npm install -g .\davidgarciai554-wayfinder-0.1.0.tgz
+npm install -g @davidgarciai554/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- `npm pack` crea el archivo `davidgarciai554-wayfinder-<versión>.tgz` con el programa ya construido; el nombre lleva la versión de `package.json`.
-- `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
-- **Actualizar:** en la copia, `git pull` y repite `npm ci`, `npm pack` y `npm install -g` con el archivo nuevo.
+- **Actualizar:** `npm install -g @davidgarciai554/wayfinder@latest`.
+- **Desde una copia del repositorio** (por ejemplo, para probar cambios sin publicar): `git clone https://github.com/davidgarciai554/wayfinder.git` y, en esa carpeta, `npm ci`, `npm pack` y `npm install -g .\davidgarciai554-wayfinder-<versión>.tgz`. `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
 - **Desinstalar:** `npm uninstall -g @davidgarciai554/wayfinder`. La carpeta de datos no se toca.
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
@@ -365,6 +360,7 @@ npm test              # unitarios e integración (construye antes)
 npm run test:e2e      # Playwright
 npm run test:docker   # requiere Docker Desktop y la imagen wayfinder:dev
 npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red; una sola versión
+npm run test:acceptance  # recorrido de publicación en carpetas temporales; requiere la CLI claude (docs/aceptacion-1.0.md)
 ```
 
 El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está en `.claude-plugin/marketplace.json`.

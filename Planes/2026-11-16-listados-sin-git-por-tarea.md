@@ -124,12 +124,16 @@ Mesa redonda proporcional (solo lectura): solución mínima, negador, calidad y 
 ## Criterios de aceptación
 
 - [ ] Con 205 tareas, `GET /api/projects/<slug>/tasks` y `wf_list` (200 filas) tardan 2 s o menos de mediana en este PC. Partida: 23,7 s en ambos.
-- [ ] Un listado lanza 2 procesos git, con 5 tareas y con 20 (prueba automática).
-- [ ] La marca del listado coincide con `modifiedOutside` por archivo en todos los casos del paso 1, salvo el merge al revés de D3, que queda marcado de más.
-- [ ] Si el lote falla, el listado responde y marca lo mismo que hoy.
+- [x] Un listado lanza 2 procesos git, con 5 tareas y con 20 (prueba automática).
+  - Evidencia (WAY-30, 2026-11-26): `test/git.test.ts` «WAY-23: the batch runs two git processes whatever the number of files, and none without files» (5 y 20 archivos, 2 procesos) y `test/server.test.ts` «WAY-23: the task list flags the file edited outside Wayfinder with two git processes, whatever the number of tasks»; ambas con ✔ en `npm test` (230/230).
+- [x] La marca del listado coincide con `modifiedOutside` por archivo en todos los casos del paso 1, salvo el merge al revés de D3, que queda marcado de más.
+  - Evidencia (WAY-30, 2026-11-26): `test/git.test.ts` «WAY-23: the batch flags the same files as the per-file check after hand edits, foreign commits, renames and untracked files», «WAY-23: a hand-made merge counts as a change by whoever made it» y «WAY-23: author names and emails that imitate the separators are still another identity», con ✔ en `npm test` (230/230).
+- [x] Si el lote falla, el listado responde y marca lo mismo que hoy.
+  - Evidencia (WAY-30, 2026-11-26): `test/git.test.ts` «WAY-23: when the batch cannot run, the answer is the per-file one and failed output is never read», con ✔ en `npm test` (230/230).
 - [ ] La salida de `wf_list` y la respuesta de la lista web no cambian de formato.
 - [ ] `wf_get`, `wf_review` y el detalle de la web siguen igual.
-- [ ] `npm run typecheck`, `npm test`, `npm run check:dist` y `npm run test:e2e` en verde.
+- [x] `npm run typecheck`, `npm test`, `npm run check:dist` y `npm run test:e2e` en verde.
+  - Evidencia (WAY-30, 2026-11-26): `npm run typecheck` y `npm run check:dist` correctos (quality.txt); `npm test` 230/230 (test.txt); `npm run test:e2e` 68 passed, 0 fallos (e2e.txt).
 
 ## Estrategia de validación
 

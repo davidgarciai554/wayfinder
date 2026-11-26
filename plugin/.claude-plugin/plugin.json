@@ -1,6 +1,6 @@
 {
   "name": "wayfinder",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Personal Markdown task tracker and project memory for Claude Code: MCP tools, session context and a local web board.",
   "author": {
     "name": "davidgarciai554"

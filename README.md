@@ -72,8 +72,8 @@ Each step says whether it was checked with Wayfinder or whether only the Claude 
    claude plugin update wayfinder@wayfinder
    ```
 
-   - **From a local copy.** *Checked, in that order.* Without a version change it answers "nothing to update" and "already at the latest version". With a version change, for example "updated from 0.1.0 to 0.1.1", and `version` becomes the new one.
-   - **From GitHub** (one cached copy per version). Without a version change it answers "already at the latest version (0.1.0)" (*checked with Claude Code 2.1.332*). What follows comes from the Claude Code documentation and has not been checked with Wayfinder, because the number has not changed yet: Claude Code only fetches a new copy when the plugin's version number changes. "already at the latest version" means you have the latest numbered version, not necessarily the latest changes in the repository: while the number stays at `0.1.0`, a copy installed from GitHub does not change.
+   - **From a local copy.** *Checked, in that order.* Without a version change it answers "nothing to update" and "already at the latest version". With a version change, for example "updated from 0.1.0 to 1.0.0", and `version` becomes the new one (*checked from 0.1.0 to 1.0.0 with Claude Code 2.1.332*).
+   - **From GitHub** (one cached copy per version). Without a version change it answers "already at the latest version (0.1.0)" (*checked with Claude Code 2.1.332*). What follows comes from the Claude Code documentation and has not been checked with Wayfinder from GitHub yet (the jump from 0.1.0 to 1.0.0 was checked from a local copy): Claude Code only fetches a new copy when the plugin's version number changes. "already at the latest version" means you have the latest numbered version, not necessarily the latest changes in the repository: while the number does not change, a copy installed from GitHub does not change.
 4. **Restart the open Claude sessions.** A running session keeps the previous server and does not show the new features. `claude plugin update` says so: "Restart to apply changes" (*checked*). Claude Code says `/reload-plugins` also applies it without closing the session (*not checked*).
 
 What is kept:
@@ -299,21 +299,16 @@ The plugin gives Claude these 14 tools. You do not use them: you ask Claude in t
 
 ## Command line without the plugin
 
-The package is not published on npm. It is installed from a copy of the GitHub repository:
+The package is published on npm as `@davidgarciai554/wayfinder`:
 
 ```powershell
-git clone https://github.com/davidgarciai554/wayfinder.git
-cd wayfinder
-npm ci
-npm pack
-npm install -g .\davidgarciai554-wayfinder-0.1.0.tgz
+npm install -g @davidgarciai554/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- `npm pack` creates the file `davidgarciai554-wayfinder-<version>.tgz` with the program already built; the name carries the version in `package.json`.
-- `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
-- **Update:** in the copy, `git pull` and repeat `npm ci`, `npm pack` and `npm install -g` with the new file.
+- **Update:** `npm install -g @davidgarciai554/wayfinder@latest`.
+- **From a copy of the repository** (for example, to try changes that are not published): `git clone https://github.com/davidgarciai554/wayfinder.git`, then `npm ci`, `npm pack` and `npm install -g .\davidgarciai554-wayfinder-<version>.tgz` in that folder. `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
 - **Uninstall:** `npm uninstall -g @davidgarciai554/wayfinder`. The data folder is not touched.
 
 The package contains a single `dist/wayfinder.mjs` file with no dependencies, the web board and `THIRD_PARTY_NOTICES.md` with the licences of the libraries bundled in it.
@@ -365,6 +360,7 @@ npm test              # unit and integration tests (builds first)
 npm run test:e2e      # Playwright
 npm run test:docker   # needs Docker Desktop and the wayfinder:dev image
 npm run check:dist    # dist/ and plugin/dist/ up to date; git without network subcommands; a single version
+npm run test:acceptance  # release walkthrough in temporary folders; needs the claude CLI (docs/aceptacion-1.0.md)
 ```
 
 The plugin lives in `plugin/`, with `plugin/dist/` under version control. The marketplace is in `.claude-plugin/marketplace.json`.

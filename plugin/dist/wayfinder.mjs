@@ -50982,7 +50982,7 @@ async function runMcp(version2, baseEnv = process.env) {
 }
 
 // src/cli.ts
-var VERSION = true ? "0.1.0" : "0.0.0-dev";
+var VERSION = true ? "1.0.0" : "0.0.0-dev";
 var COMMANDS = ["init", "mcp", "serve", "hook"];
 var defaultIo = {
   out: (text2) => process.stdout.write(`${text2}

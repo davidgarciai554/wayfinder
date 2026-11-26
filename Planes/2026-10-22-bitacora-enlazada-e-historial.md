@@ -252,15 +252,23 @@ Cada incremento deja `npm run typecheck` y `npm test` en verde y es revisable po
 
 ## Criterios de aceptación
 
-- [ ] Toda tarea nueva tiene Historial con su entrada de creación; las tareas antiguas se ven con Historial vacío y descripción intacta.
-- [ ] Un avance con `wf_log` y `task_id` añade una entrada fechada al final del Historial del `.md` de la tarea y una línea `[ID · título](#/slug/task/ID/n)` en la bitácora de hoy, en un commit `wf: log ID`.
-- [ ] `wf_update` cambia la descripción sin tocar el Historial; un `wf_update` simultáneo con `wf_log` no pierde entradas; una descripción con la línea `## Historial` se rechaza.
+- [x] Toda tarea nueva tiene Historial con su entrada de creación; las tareas antiguas se ven con Historial vacío y descripción intacta.
+  - Evidencia (WAY-30, 2026-11-26): test/history.test.ts «every new task starts with a creation entry; the description stays separate» y «a task written before the history existed reads with an empty history and an intact description» (✔ en test.txt, test.txt 230/230 en verde).
+- [x] Un avance con `wf_log` y `task_id` añade una entrada fechada al final del Historial del `.md` de la tarea y una línea `[ID · título](#/slug/task/ID/n)` en la bitácora de hoy, en un commit `wf: log ID`.
+  - Evidencia (WAY-30, 2026-11-26): test/history.test.ts «logProgress writes the history entry and a linked log line in one commit»: comprueba el commit «wf: log WF-1», la entrada al final del Historial y la línea «[WF-1 · …](#/demo/task/WF-1/2)» en la bitácora del día (✔ en test.txt).
+- [x] `wf_update` cambia la descripción sin tocar el Historial; un `wf_update` simultáneo con `wf_log` no pierde entradas; una descripción con la línea `## Historial` se rechaza.
+  - Evidencia (WAY-30, 2026-11-26): test/history.test.ts «editing the description never touches the history» y «the history heading is reserved in descriptions (web and MCP)»; test/concurrency.test.ts «20 concurrent progress entries and description edits lose nothing»; test/mcp.integration.test.ts «wf_log records progress in the task history; wf_get shows it as untrusted data» (wf_update con «## Historial» rechazado). Todas ✔ en test.txt.
 - [ ] Tarea inexistente, secretos, tamaño excesivo o Historial lleno: error claro sin escribir; aviso al 80 %. `wf_log` sin `task_id` sigue siendo una entrada libre de bitácora.
-- [ ] En la web: el enlace de la bitácora lleva el foco a la entrada correcta; cada entrada enlaza a su día de la bitácora; «Atrás» vuelve; todo operable con teclado.
-- [ ] Stop: con `in-progress`, sin avance ni entrada libre de hoy, bloquea una vez y dice qué falta; en otro caso no bloquea; registros automáticos y entrada de creación no cuentan.
-- [ ] Sesión nueva con `in-progress`: bloque ≤ 1200 (contexto ≤ 4000) marcado no confiable; sin descripciones ni propuestas; un Historial hostil no altera la estructura.
-- [ ] `wf_history` da índice, detalle y línea temporal; `wf_search` encuentra texto con tarea y entrada o fecha, y da vacío explícito sin coincidencias.
-- [ ] Un texto con `>>>` no cierra el bloque `UNTRUSTED`.
+- [x] En la web: el enlace de la bitácora lleva el foco a la entrada correcta; cada entrada enlaza a su día de la bitácora; «Atrás» vuelve; todo operable con teclado.
+  - Evidencia (WAY-30, 2026-11-26): e2e/history.spec.ts «from a log line to the history entry, and from entry back to its log day» (foco en #entry-n y page.goBack()), «keyboard only: the log link opens the entry» y «closing the task opened from the log goes back to the log»; e2e.txt: 68 passed.
+- [x] Stop: con `in-progress`, sin avance ni entrada libre de hoy, bloquea una vez y dice qué falta; en otro caso no bloquea; registros automáticos y entrada de creación no cuentan.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «stop blocks once when work is in progress and today has no log» y «stop: progress on an in-progress task or a free entry satisfies it; status records, creation and old log entries do not» (el motivo nombra wf_log y task_id); guion de aceptación paso 3.7 conforme (accept2.txt). ✔ en test.txt.
+- [x] Sesión nueva con `in-progress`: bloque ≤ 1200 (contexto ≤ 4000) marcado no confiable; sin descripciones ni propuestas; un Historial hostil no altera la estructura.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «session-start adds the recent history of in-progress tasks, bounded and labelled as untrusted» (bloque ≤ 1200, contexto ≤ 4000, sin descripciones, texto hostil fuera) y «session-start never lets the history push the task list out». ✔ en test.txt.
+- [x] `wf_history` da índice, detalle y línea temporal; `wf_search` encuentra texto con tarea y entrada o fecha, y da vacío explícito sin coincidencias.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «wf_history and wf_search read the memory with bounded, untrusted output» (índice, detalle, línea temporal, búsqueda y «No results for…»); test/memory.test.ts «history index lists the entries and any one can be read in full», «timeline returns the most recent log days, newest first» y «search is literal, case-insensitive, newest first…». ✔ en test.txt; aceptación paso 3.10 conforme.
+- [x] Un texto con `>>>` no cierra el bloque `UNTRUSTED`.
+  - Evidencia (WAY-30, 2026-11-26): test/history.test.ts «flatten removes control, invisible, bidi and tag characters; neutralize defuses block delimiters» y test/mcp.integration.test.ts «wf_log records progress in the task history…» (el «>>>» del cuerpo no cierra el bloque UNTRUSTED). ✔ en test.txt.
 - [ ] 11 herramientas MCP; i18n es/en con paridad; `typecheck`, `test`, `build`, `check:dist` y `test:e2e` en verde; skill, README y `DESIGN.md` coherentes.
 
 ## Estrategia de validación

@@ -96,15 +96,23 @@ En este orden: ERR-5 es independiente y pequeño; WAY-15 es el contrato de datos
 
 ## Criterios de aceptación
 
-- [ ] «aprueba WAY-8, WAY-9 y WAY-12» y «apruebo las tres tareas WAY-8, WAY-9 y WAY-12» registran los tres IDs; con «and» y con «e», igual.
-- [ ] Los casos actuales de no-orden siguen igual. «aprueba WAY-8 pero no WAY-9» registra solo WAY-8. Una negación en el relleno, una pregunta, una cita, el código, un rango, una lista sin separador, un ID de otro prefijo y una lista de 11 IDs no amplían nada.
-- [ ] Tres propuestas pasan a `todo` con una sola orden, cada una con su `wf_review` y su cita.
-- [ ] `wf_update` con `depends_on` válido se guarda. Se rechazan sin escribir nada el ID inexistente, el de otro proyecto, la autodependencia, el repetido, el que pasa de 20 y el ciclo (también uno de 3 tareas).
-- [ ] Una tarea sin `depends_on`, o con un valor inválido escrito a mano, se lee igual y no queda ilegible.
-- [ ] `wf_get` y `wf_list` muestran las dependencias. Pasar a `in-progress` con una abierta avisa sin bloquear.
+- [x] «aprueba WAY-8, WAY-9 y WAY-12» y «apruebo las tres tareas WAY-8, WAY-9 y WAY-12» registran los tres IDs; con «and» y con «e», igual.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts, «ERR-5: one verb orders a whole list of IDs joined by commas, «y», «e» or «and»» (✔): «aprueba WF-8, WF-9 y WF-12», «apruebo las tareas WF-8, WF-9 y WF-12», «approve WF-8, WF-9 and WF-12» y «aprueba wf-8 e wf-9» devuelven todos los IDs.
+- [x] Los casos actuales de no-orden siguen igual. «aprueba WAY-8 pero no WAY-9» registra solo WAY-8. Una negación en el relleno, una pregunta, una cita, el código, un rango, una lista sin separador, un ID de otro prefijo y una lista de 11 IDs no amplían nada.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts, «ERR-5: the list ends at anything that is not a separator, and negations, questions, ranges and long lists order nothing more» (✔): «aprueba WF-8 pero no WF-9» → [WF-8]; negación en el relleno, pregunta, cita «>», bloque de código, rango «WF-8 a WF-12», lista sin separador, otro prefijo (AB-5) y lista de 11 IDs → no amplían nada; «explicit orders are recognised in Spanish and English» (✔).
+- [x] Tres propuestas pasan a `todo` con una sola orden, cada una con su `wf_review` y su cita.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts, «ERR-5 end to end: one message approves three proposals, each with its own review» (✔): tres propuestas pasan a todo con una sola orden, cada una con reviewTask y la cita; una cuarta no nombrada se rechaza. El guion scripts/acceptance.mjs paso 3.4 (accept2.txt): «aprueba DEM-1, DEM-3 y DEM-4» → los tres en todo con approvedVia chat.
+- [x] `wf_update` con `depends_on` válido se guarda. Se rechazan sin escribir nada el ID inexistente, el de otro proyecto, la autodependencia, el repetido, el que pasa de 20 y el ciclo (también uno de 3 tareas).
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «depends_on: validated under the lock, written by wf_update only, [] removes the key» (✔): autodependencia, repetido, inexistente, de otro prefijo (AB-1), 21 IDs y ciclo de 3 tareas (A→B→C→A) se rechazan con tree(home) idéntico, y uno válido se guarda; test/mcp.integration.test.ts «WAY-15: wf_update sets and clears depends_on…» y test/concurrency.test.ts «two concurrent updates that would close a cycle: one is saved, the other is rejected under the lock» (✔).
+- [x] Una tarea sin `depends_on`, o con un valor inválido escrito a mano, se lee igual y no queda ilegible.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «depends_on read tolerantly: a hand-written invalid value reads as none and the task stays readable» (✔): valor inválido escrito a mano se lee como [] y la tarea no queda ilegible.
+- [x] `wf_get` y `wf_list` muestran las dependencias. Pasar a `in-progress` con una abierta avisa sin bloquear.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts, «WAY-15: wf_update sets and clears depends_on…» (✔): wf_get muestra «depends_on: MYA-1 [proposed]» y wf_list «blocked by MYA-1»; test/store.test.ts, «starting a task with open dependencies only warns…» (✔) y accept2.txt paso 3.6 («DEM-3 ahora está en in-progress. Aviso: … depende de tareas que aún no están hechas»).
 - [ ] La web muestra «Depende de» y «Bloqueada por WAY-n» en texto, con teclado y sin desbordar a 320 px.
-- [ ] La skill describe D13-D17. La prueba en Desktop se hace o queda marcada como no verificada.
-- [ ] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+- [x] La skill describe D13-D17. La prueba en Desktop se hace o queda marcada como no verificada.
+  - Evidencia (WAY-30, 2026-11-26): plugin/skills/wayfinder/SKILL.md, secciones «Dependencies» (línea 39) y «Several tasks in one message» (línea 53) cubren D13 a D17 (conjunto con dependencias abiertas, reparto en sesiones/worktrees, el bucle no aprueba, frase de reparto y avance «WAY-2 done (1/2)»); la prueba en Desktop queda marcada como no verificada en el propio plan (Planes/…varios-ids…md, línea 138: «No verificado: la prueba manual en Claude Code Desktop»). Hoy no se ha hecho esa prueba.
+- [x] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: npm run typecheck (TYPECHECK_OK) y npm run check:dist (CHECKDIST_OK) correctos; test.txt: npm test 230/230 en verde; e2e.txt: npm run test:e2e 68 passed (4.9m).
 
 ## Riesgos
 
