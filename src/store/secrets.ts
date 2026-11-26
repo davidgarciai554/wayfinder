@@ -24,7 +24,7 @@ const PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
 // cubically on text such as 'token-'.repeat(3000). The name is up to four words joined by single
 // spaces and never starts with one, so a run of spaces starts no candidate. Limit: the value is
 // read up to 512 characters, and a value that long counts as a key even without a digit.
-const ASSIGNMENT = /((?:[\w-]{1,40} ){0,3}[\w-]{1,40})["']?[ \t]*[=:][ \t]*["']?([\w+/=.-]{20,512})/g;
+const ASSIGNMENT = /((?:[\w-]{1,64} ){0,3}[\w-]{1,64})["']?\s*[=:]\s*["']?([\w+/=.-]{20,512})/g;
 const KEY_WORD = /^[\w-]*(?:api[_-]?key|secret|token|access[_-]?key)[\w-]*$/i;
 const KEY_PHRASE = /\bclave[ _-](?:de[ _-])?(?:api|acceso|secreta)$/i;
 const MAX_VALUE = 512;

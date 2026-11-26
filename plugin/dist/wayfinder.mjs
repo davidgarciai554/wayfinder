@@ -8572,7 +8572,7 @@ var PATTERNS = [
   ["url-credentials", /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i],
   ["password-assignment", /\b(?:pass(?:word|wd)?|contrase[ñn]a)\s*[=:]\s*\S+/i]
 ];
-var ASSIGNMENT = /((?:[\w-]{1,40} ){0,3}[\w-]{1,40})["']?[ \t]*[=:][ \t]*["']?([\w+/=.-]{20,512})/g;
+var ASSIGNMENT = /((?:[\w-]{1,64} ){0,3}[\w-]{1,64})["']?\s*[=:]\s*["']?([\w+/=.-]{20,512})/g;
 var KEY_WORD = /^[\w-]*(?:api[_-]?key|secret|token|access[_-]?key)[\w-]*$/i;
 var KEY_PHRASE = /\bclave[ _-](?:de[ _-])?(?:api|acceso|secreta)$/i;
 var MAX_VALUE = 512;
