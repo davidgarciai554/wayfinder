@@ -336,3 +336,14 @@
 - **Archivos modificados:** ninguno (solo este registro).
 - **Validación:** repetición de `node --test test/mcp.integration.test.ts` → 25/25.
 - **Resultado:** sin resolver; intermitente y ajeno a WAY-37/38/39.
+
+## 2026-11-25 · «Saltar al contenido» lleva a «No existe el proyecto «main»» (A11Y-1, WAY-28)
+
+- **Contexto:** hallazgo A11Y-1 (P1) de la auditoría de accesibilidad WAY-28 (informe WAYF-12). Web, todas las vistas, es y en. Windows 11, Node 24.12.0, Chromium de Playwright 1.64.1.
+- **Reproducción:** abrir `#/wayfinder/board` (o `#/errores/errors/ERR-1`), pulsar Tab (el foco va a «Saltar al contenido») y Enter. Prueba «A11Y-1: the skip link moves focus to the content and keeps the view» en `e2e/a11y.spec.ts`.
+- **Salida observada:** `location.hash` pasa a `#main` y `main` muestra «No existe el proyecto «main»» (en: «Project "main" does not exist.»); desaparece la vista. Sin la corrección, la prueba nueva falla con `Expected: "#/wayfinder/board"` / `Received: "#main"`. La prueba anterior (`e2e/read.spec.ts`) solo comprobaba que el enlace recibía el foco.
+- **Causa (confirmada):** el enlace es `<a href="#main">` y la web usa un router por hash: `parseHash` (`web/app.js`) toma `#main` como el slug de un proyecto.
+- **Solución:** un manejador de `click` en el enlace hace `preventDefault()` y enfoca `main` (que ya tiene `tabindex="-1"`), sin cambiar el hash. El `href` se mantiene para que siga siendo un enlace.
+- **Archivos modificados:** `web/app.js`, `e2e/a11y.spec.ts`, `plugin/dist/web/app.js` (bundle).
+- **Validación:** la prueba nueva activa el enlace desde el tablero y desde el detalle de un error, en es y en: el hash no cambia, el foco está en `main`, el `h1` sigue en la página y el siguiente Tab va al primer control del contenido. Falla sin el cambio y pasa con él (2/2).
+- **Resultado:** resuelto.

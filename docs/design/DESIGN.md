@@ -174,7 +174,8 @@
 - **Compacto (< 720 px):**
   - columnas apiladas con enlaces de salto «Propuestas (2) · …»;
   - el detalle de la tarea como modal a pantalla completa, con su botón de cerrar;
-  - pestañas que pasan a otra línea y objetivos táctiles de 44 px;
+  - pestañas que pasan a otra línea y objetivos táctiles de 44 px, también en los enlaces de salto;
+  - la tarjeta entera abre la tarea (por debajo de 1100 px), sin tapar sus botones (WAY-28, A11Y-7);
   - sin scroll horizontal a 320 px ni con zoom al 200 %.
 - **Intermedio (720–1099 px):** columnas en una rejilla `auto-fit` (2 por fila) y el detalle como modal. Objetivos táctiles de 44 px en botones, pestañas, selectores y campos (tablet; plan 2026-11-11).
 - **Amplio (≥ 1100 px):** cuatro columnas.

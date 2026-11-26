@@ -274,6 +274,7 @@
   "web.reconnected": "Conexión recuperada",
   "web.live": "Actualización automática activa",
   "web.updated": "Actualizado · {n} cambios",
+  "web.updated.one": "Actualizado · {n} cambio",
   "web.time.now": "ahora",
   "web.time.minutes": "hace {n} min",
   "web.time.hours": "hace {n} h",

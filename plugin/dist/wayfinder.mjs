@@ -7891,6 +7891,7 @@ var es_default = {
   "web.reconnected": "Conexi\xF3n recuperada",
   "web.live": "Actualizaci\xF3n autom\xE1tica activa",
   "web.updated": "Actualizado \xB7 {n} cambios",
+  "web.updated.one": "Actualizado \xB7 {n} cambio",
   "web.time.now": "ahora",
   "web.time.minutes": "hace {n} min",
   "web.time.hours": "hace {n} h",
@@ -8301,6 +8302,7 @@ Give it to the person once as a clickable link (for example "[Open Wayfinder on 
   "web.reconnected": "Connection restored",
   "web.live": "Live updates on",
   "web.updated": "Updated \xB7 {n} changes",
+  "web.updated.one": "Updated \xB7 {n} change",
   "web.time.now": "just now",
   "web.time.minutes": "{n} min ago",
   "web.time.hours": "{n} h ago",
@@ -14192,14 +14194,44 @@ function createRenderer(assetBase) {
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
   md.core.ruler.push("shift_headings", (state) => {
-    for (const token of state.tokens) {
-      if ((token.type === "heading_open" || token.type === "heading_close") && /^h[1-5]$/.test(token.tag)) {
-        token.tag = `h${Number(token.tag[1]) + 1}`;
+    const headings = state.tokens.filter((token) => token.type === "heading_open" || token.type === "heading_close");
+    if (headings.length === 0) return;
+    const level = (tag) => Number(tag[1]);
+    const base = state.env?.headingBase;
+    const shift = base ? base - Math.min(...headings.map((token) => level(token.tag))) : 1;
+    for (const token of headings) token.tag = `h${Math.min(level(token.tag) + shift, 6)}`;
+  });
+  md.core.ruler.push("generated_lang", (state) => {
+    if (!state.env?.generated) return;
+    const span = (content) => Object.assign(new state.Token("html_inline", "", 0), { content });
+    const text2 = (content) => Object.assign(new state.Token("text", "", 0), { content });
+    const english = (content) => [span('<span lang="en">'), text2(content), span("</span>")];
+    for (const block2 of state.tokens) {
+      if (block2.type !== "inline" || !block2.children) continue;
+      const out = [];
+      const children = block2.children;
+      for (let i = 0; i < children.length; i++) {
+        const token = children[i];
+        const lineStart = i === 0 || /^(soft|hard)break$/.test(children[i - 1].type);
+        const lineEnd2 = i === children.length - 1 || /^(soft|hard)break$/.test(children[i + 1].type);
+        const label = lineStart && token.type === "text" ? GENERATED_LABEL.exec(token.content) : null;
+        if (lineStart && lineEnd2 && token.type === "text" && GENERATED_LINE.some((re) => re.test(token.content))) out.push(...english(token.content));
+        else if (label) out.push(...english(label[0].trimEnd()), text2(token.content.slice(label[0].length - 1)));
+        else out.push(token);
       }
+      block2.children = out;
     }
   });
   return md;
 }
+var GENERATED_LINE = [
+  /^status: [\w-]+ -> [\w-]+$/,
+  /^(trivial|risk-acknowledged): true$/,
+  /^approved-via: \w+$/,
+  /^review: (clean|suspicious)$/,
+  /^(Created \(task: [A-Z]{2,6}-\d+\)\.|(Resolved|Updated|Reopened|Discarded)\.( Task: \S+ -> \S+\.)?( Fields: [\w, ]+\.)?)$/
+];
+var GENERATED_LABEL = /^(Decisions|Files|Next|Blockers|quote|signals|reasons): /;
 
 // src/store/history.ts
 var HISTORY_HEADING = "## Historial";
@@ -15493,7 +15525,7 @@ function startServer(options) {
     const project = requireProject(home, slug);
     const md = renderFor(slug);
     if (parts.length === 2) {
-      return json2(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body) });
+      return json2(res, 200, { slug, name: project.name, idPrefix: project.idPrefix, repo: project.repo ?? null, html: md.render(project.body, { headingBase: 2 }) });
     }
     if (parts[2] === "tasks" && parts.length === 3) {
       const { tasks, unreadable } = listTasks(home, slug);
@@ -15507,7 +15539,7 @@ function startServer(options) {
     if (parts[2] === "tasks" && parts.length === 4) {
       const task = readTask(home, slug, parts[3]);
       const history = parseEntries(task.history).map(
-        (e) => isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text) }
+        (e) => isCreationEntry(e) ? { n: e.n, date: e.date, time: e.time, created: true } : { n: e.n, date: e.date, time: e.time, html: md.render(e.text, { generated: true }) }
       );
       const errors = errorsForTask(home, slug, task.id).map((e) => ({ id: e.id, title: e.title, status: e.status, kind: e.kind }));
       return json2(res, 200, { ...taskMeta(home, task), html: md.render(task.body), history, errors });
@@ -15533,7 +15565,7 @@ function startServer(options) {
           key === "output" ? { key, text: unescapeField(error62.fields[key]) } : { key, html: error62.fields[key] ? md.render(error62.fields[key]) : "" }
         )
       );
-      const history = parseEntries(error62.history).map((e) => ({ n: e.n, date: e.date, time: e.time, html: md.render(e.text) }));
+      const history = parseEntries(error62.history).map((e) => ({ n: e.n, date: e.date, time: e.time, html: md.render(e.text, { generated: true }) }));
       return json2(res, 200, { ...errorMeta(error62), taskTitle, causeKind: error62.causeKind, files: error62.files, fields, history });
     }
     if (parts[2] === "log" && parts.length === 3) {
@@ -15545,7 +15577,7 @@ function startServer(options) {
       const file2 = safeJoin(projectDir(home, slug), "log", `${parts[3]}.md`);
       if (!existsSync7(file2)) return notFound(res);
       const text2 = readFileSync10(file2, "utf8").replace(/^#\s+\d{4}-\d{2}-\d{2}\s*\n/, "");
-      return json2(res, 200, { day: parts[3], html: md.render(text2) });
+      return json2(res, 200, { day: parts[3], html: md.render(text2, { generated: true }) });
     }
     if (parts[2] === "assets" && parts.length === 3) {
       const dir = safeJoin(projectDir(home, slug), "assets");
