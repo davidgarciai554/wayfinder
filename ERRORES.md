@@ -336,4 +336,3 @@
 - **Archivos modificados:** ninguno (solo este registro).
 - **Validación:** repetición de `node --test test/mcp.integration.test.ts` → 25/25.
 - **Resultado:** sin resolver; intermitente y ajeno a WAY-37/38/39.
->>>>>>> de6090e (docs(errores): record the intermittent ERR-4 port test failure)
