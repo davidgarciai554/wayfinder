@@ -347,3 +347,26 @@
 - **Archivos modificados:** `web/app.js`, `e2e/a11y.spec.ts`, `plugin/dist/web/app.js` (bundle).
 - **Validación:** la prueba nueva activa el enlace desde el tablero y desde el detalle de un error, en es y en: el hash no cambia, el foco está en `main`, el `h1` sigue en la página y el siguiente Tab va al primer control del contenido. Falla sin el cambio y pasa con él (2/2).
 - **Resultado:** resuelto.
+
+## 2026-11-26 · `npm install -g github:davidgarciai554/wayfinder` falla al preparar la dependencia git (WAY-29)
+
+- **Contexto:** recorrido de aceptación de WAY-29 (documentación 1.0) en ChinorrisPC: Windows 11, Node 24.12.0, npm 11.17.0. El README indicaba ese comando para la línea de comandos sin el plugin.
+- **Reproducción:** `npm install -g github:davidgarciai554/wayfinder`, con `--prefix` temporal y también sin él (con `APPDATA` temporal, para no tocar el npm global del usuario). `main` en bb0fdb5.
+- **Salida observada:** `npm error git dep preparation failed` … `npm run build` … `Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'esbuild' imported from …\git-clone…\scripts\build.mjs`.
+- **Causa (hipótesis):** con `-g`, la instalación anidada que npm hace para preparar la dependencia git no deja las dependencias de desarrollo en la carpeta clonada antes de `prepare`. Sin `-g` funciona: `npm install github:davidgarciai554/wayfinder` en una carpeta vacía instala la 0.1.0 con `dist/` y `npx wayfinder --version` imprime `0.1.0`.
+- **Solución:** solo documentación. README (inglés y español): clonar, `npm ci`, `npm pack` y `npm install -g .\davidgarciai554-wayfinder-0.1.0.tgz`; actualizar repitiendo esos pasos; desinstalar con `npm uninstall -g @davidgarciai554/wayfinder`. No se cambia `package.json`.
+- **Archivos modificados:** `README.md`, `README.es.md`, `CHANGELOG.md`.
+- **Validación:** con `APPDATA` temporal: `git clone`, `npm ci`, `npm pack` → `davidgarciai554-wayfinder-0.1.0.tgz`; `npm install -g` del archivo → `wayfinder --version` = `0.1.0`; `wayfinder init --lang en` crea la carpeta con `.git`, `FORMAT`, `config.json` y `projects`; `npm uninstall -g @davidgarciai554/wayfinder` → «removed 1 package». El npm global del usuario no cambia.
+- **Resultado:** rodeado en la documentación; la instalación directa desde GitHub con `-g` sigue sin funcionar con npm 11.17.
+
+## 2026-11-26 · Restaurar la carpeta de datos con `git clone` de un bundle marca todas las tareas como modificadas fuera de Wayfinder (WAY-29)
+
+- **Contexto:** prueba de la copia de seguridad para el README de WAY-29. Windows 11, git de Git for Windows con `core.autocrlf=true` en la configuración del sistema.
+- **Reproducción:** carpeta de datos temporal con un proyecto y una tarea; `git bundle create <archivo> --all`; `git clone <archivo> <carpeta>` y `git remote remove origin`; `wf_list`.
+- **Salida observada:** `DEM-1 [proposed] … modified outside Wayfinder`. `git ls-files --eol` en el clon: `i/lf w/crlf`; en la carpeta original: `i/lf w/lf`. `git -c core.autocrlf=false status --porcelain` lista todos los archivos como `M`.
+- **Causa (confirmada):** el clon escribe los archivos con CRLF por `core.autocrlf` del sistema, y Wayfinder los compara sin esa conversión. El clon además pierde `.state/` (fuera de git).
+- **Solución:** el README solo recomienda copiar la carpeta entera con `Copy-Item -Recurse -Force` y desaconseja `git clone`/`git bundle`. Sin cambios de código.
+- **Archivos modificados:** `README.md`, `README.es.md`.
+- **Validación:** copia con `Copy-Item`, restauración con `Rename-Item` + `Copy-Item`: `git log` igual que el original, `.state` presente, `wf_list` sin la marca y `wf_create` escribe con normalidad.
+- **Resultado:** rodeado en la documentación.
+

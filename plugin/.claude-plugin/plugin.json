@@ -11,7 +11,7 @@
     "home": {
       "type": "directory",
       "title": "Data folder",
-      "description": "Folder that holds the Wayfinder data repository (run \"wayfinder init\" once). Default: ~/.wayfinder",
+      "description": "Folder that holds the Wayfinder data repository. It is created the first time you ask Claude to register a project. Default: ~/.wayfinder",
       "default": "~/.wayfinder"
     },
     "capturesDir": {
