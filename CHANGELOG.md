@@ -2,9 +2,9 @@
 
 Los cambios de Wayfinder que nota quien lo usa, agrupados por tema. El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
-Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha distribuido con el número `0.1.0`. Entre paréntesis va la tarea de Wayfinder de cada cambio.
+La 1.0.0 es la primera versión publicada y etiquetada; las copias anteriores se distribuyeron con el número `0.1.0`. Entre paréntesis va la tarea de Wayfinder de cada cambio.
 
-## [Sin publicar]
+## [1.0.0] - 2026-11-26
 
 ### Si vienes de una copia anterior
 
@@ -20,7 +20,7 @@ Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha di
 - Gestor de tareas en Markdown sobre un repositorio git sin remoto: línea de comandos, servidor MCP, hooks, web local, plugin de Claude Code, imagen Docker (WAY-1) y mensajes en español e inglés.
 - Historial por tarea y bitácora del día enlazada, con `wf_log`, `wf_history` y `wf_search`.
 - Registro de errores ligado a las tareas (`wf_error`), con detector de secretos.
-- Instalación desde GitHub, sin registro de paquetes.
+- Instalación del plugin desde GitHub, y de la línea de comandos desde npm como `@davidgarciai554/wayfinder` (WAY-31).
 - Web desde otros dispositivos de tu red y alta guiada de un repositorio con «registra este proyecto» (WAY-6).
 - Tipos de error, errores descartados y reapertura de tareas desde la web (WAY-8, WAY-9, WAY-12).
 - Listado de errores con filtros, `wf_errors` (WAY-10), y cambio de la tarea de un error (WAY-11).
@@ -38,7 +38,7 @@ Aún no hay ninguna versión publicada ni etiquetada: todo lo que sigue se ha di
 - Las barreras de la clave de la web y de la carpeta de datos miran también las herramientas del navegador y de la terminal que llevan una dirección, código o un comando, y bloquean la clave escrita en `k=`. Siguen siendo de mejor esfuerzo (WAY-36).
 - Los avisos de tareas y subagentes en segundo plano ya no cuentan como órdenes del chat ni borran la última orden; los mensajes de otra sesión sí cuentan. Una tarea programada todavía no se distingue de un mensaje tuyo (WAY-33).
 - Para aprobar por chat basta «apruebo», sin ID, justo después de que Claude presente una única propuesta (WAY-33).
-- El README pasa a estar en inglés (`README.md`) y en español (`README.es.md`), con secciones nuevas para desinstalar, hacer copia de seguridad y restaurar la carpeta de datos, y la lista de las 14 herramientas MCP. La línea de comandos se instala con `npm pack`, porque `npm install -g github:…` falla con npm 11.17 (WAY-29).
+- El README pasa a estar en inglés (`README.md`) y en español (`README.es.md`), con secciones nuevas para desinstalar, hacer copia de seguridad y restaurar la carpeta de datos, y la lista de las 14 herramientas MCP. La línea de comandos se instala desde npm (WAY-31); `npm install -g github:…` sigue sin servir con npm 11.17 (WAY-29).
 
 ### Corregido
 

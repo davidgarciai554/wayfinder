@@ -78,12 +78,18 @@
 
 ## Criterios de aceptación
 
-- [ ] `wf_error update` con `task_id` y `note` mueve el error a otra tarea existente del mismo proyecto, en un solo commit.
-- [ ] El historial del error conserva todo lo anterior y añade «Task: A -> B.» con la nota.
-- [ ] Sin nota, con una tarea inexistente o inválida, o con la misma tarea, da un error claro y no escribe nada.
-- [ ] `wf_get`, `wf_errors task_id` y la web muestran el error en la tarea nueva y no en la anterior.
-- [ ] El título y los campos observados (contexto, reproducción y salida) siguen sin poder cambiarse.
-- [ ] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+- [x] `wf_error update` con `task_id` y `note` mueve el error a otra tarea existente del mismo proyecto, en un solo commit.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «WAY-11: an error moves to another task with a note, in one commit, keeping its history» (✔): mueve el error a la tarea nueva y suma exactamente 1 commit («wf: error update ERR-n»); test/mcp.integration.test.ts, «WAY-11: wf_error update with task_id and a note moves an error…» (✔) lo hace por la herramienta; una tarea de otro proyecto (AB-1) se rechaza con store.taskNotFound.
+- [x] El historial del error conserva todo lo anterior y añade «Task: A -> B.» con la nota.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba de test/error-records.test.ts: el historial tiene 2 entradas, «Created (task: A).» y «Updated. Task: A -> B. Fields: kind.» con la nota debajo; el contexto original sigue intacto. test/mcp.integration.test.ts comprueba «Task: MYA-1 -> MYA-2.» en wf_get.
+- [x] Sin nota, con una tarea inexistente o inválida, o con la misma tarea, da un error claro y no escribe nada.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «WAY-11: an error moves…»: sin nota (store.errorTaskNeedsNote), tarea inexistente (store.taskNotFound), id inválido (store.invalidId) y misma tarea (store.errorNothingToUpdate) lanzan error y tree(home) queda idéntico («rejected moves write nothing»); test/mcp.integration.test.ts lo repite por MCP («needs a note with the reason», «MYA-9 does not exist»).
+- [x] `wf_get`, `wf_errors task_id` y la web muestran el error en la tarea nueva y no en la anterior.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts, «WAY-11: wf_error update…»: wf_get de MYA-1 ya no lista ERR-1, wf_get de MYA-2 sí, y wf_errors task_id MYA-2 lo lista y MYA-1 da «No errors with these filters»; test/server.test.ts, «WAY-11: an error moved to another task is listed in that task and its page links to it» (API de la web; sin prueba e2e de navegador de este caso).
+- [x] El título y los campos observados (contexto, reproducción y salida) siguen sin poder cambiarse.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts, «update changes only editable fields and records which ones» (✔): title, context, reproduction y output lanzan store.errorFieldImmutable.
+- [x] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: npm run typecheck (TYPECHECK_OK) y npm run check:dist (CHECKDIST_OK) correctos; test.txt: npm test 230/230 en verde; e2e.txt: npm run test:e2e 68 passed (4.9m).
 
 ## Estrategia de validación
 

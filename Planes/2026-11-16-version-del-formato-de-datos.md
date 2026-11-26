@@ -181,21 +181,32 @@ Los nombres de los archivos nuevos son provisionales hasta la aprobación. Cada 
     - Validación: `npm run check:dist` ejecutado en el checkout principal.
 
 ## Criterios de aceptación
-- [ ] Una carpeta «0.1.0» (`makeLegacyHome`) abierta con la CLI (`serve`, `init`), MCP (`wf_list`, `wf_get`, `wf_search`), el hook y la web (GET) no muestra aviso, conserva `tree` idéntico y el mismo número de commits, y deja `git status --porcelain` vacío.
-- [ ] Una carpeta nueva contiene la marca en el commit `wf: init`, y abrir una carpeta existente no la escribe (`store.test.ts:30-41` sigue en verde).
-- [ ] Con una marca más nueva y legible, el aviso aparece con su clave i18n (es/en), el formato encontrado, el soportado y la acción, en SessionStart, MCP y web (API y pantalla). Nunca dice «ilegible» por este motivo y las tareas se siguen listando.
-- [ ] Con una marca más nueva, toda ruta de escritura (la lista del paso 4) falla con la misma clave sin modificar ningún archivo (`tree` y `commitCount` iguales). Si P1 no es B, este criterio se ajusta.
-- [ ] Una marca ilegible (vacía, `abc`, `0`, `-1`, `1.5`, enorme) muestra su propio aviso, no bloquea y no se presenta como «más nueva».
-- [ ] Si la marca cambia con un proceso MCP o web vivo, sin reiniciarlo, la siguiente llamada MCP avisa y la siguiente respuesta de `/api/projects` trae el estado; la pantalla lo muestra en el siguiente refresco o navegación.
-- [ ] Una tarea con estado desconocido (`status: snoozed`):
+- [x] Una carpeta «0.1.0» (`makeLegacyHome`) abierta con la CLI (`serve`, `init`), MCP (`wf_list`, `wf_get`, `wf_search`), el hook y la web (GET) no muestra aviso, conserva `tree` idéntico y el mismo número de commits, y deja `git status --porcelain` vacío.
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «a folder written before the mark (0.1.0) opens as format 1 and reading it changes nothing», `test/cli.test.ts` «WAY-24: init on a folder written before the format mark leaves it exactly as it was», `test/hook.test.ts` «WAY-24: on a folder written before the mark the hook adds nothing and writes nothing»; y `scripts/acceptance.mjs` paso 2b (sin aviso en SessionStart, `wf_list` ni `/api/projects`, mismo HEAD, `git status` limpio).
+- [x] Una carpeta nueva contiene la marca en el commit `wf: init`, y abrir una carpeta existente no la escribe (`store.test.ts:30-41` sigue en verde).
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «a new data folder gets the mark in its wf: init commit; an existing one never does» y `test/store.test.ts` «init is idempotent and an existing home is left untouched», ambas con ✔; acceptance paso 5 (`init` creó la carpeta con FORMAT).
+- [x] Con una marca más nueva y legible, el aviso aparece con su clave i18n (es/en), el formato encontrado, el soportado y la acción, en SessionStart, MCP y web (API y pantalla). Nunca dice «ilegible» por este motivo y las tareas se siguen listando.
+  - Evidencia (WAY-30, 2026-11-26): `test/hook.test.ts` «WAY-24: with data from a newer format, every session start opens with the notice…», `test/mcp.integration.test.ts` «WAY-24: the live MCP sees the data format change…», `test/server.test.ts` «WAY-24: /api/projects carries the data format…», `e2e/format.spec.ts` «with data from a newer format the page says so…» (no dice «ilegible») y «English: the notice…»; acceptance paso 2c (aviso en SessionStart, wf_* y web).
+- [x] Con una marca más nueva, toda ruta de escritura (la lista del paso 4) falla con la misma clave sin modificar ningún archivo (`tree` y `commitCount` iguales). Si P1 no es B, este criterio se ajusta.
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «data from a newer format is read only: every write path refuses before touching anything» (19 rutas con la misma clave `store.dataNewer`, `snapshot` idéntico) y «a newer format written while waiting for the lock is refused under the lock, and the lock is released»; acceptance 2c (wf_create rechazado, POST web 409, HEAD intacto).
+- [x] Una marca ilegible (vacía, `abc`, `0`, `-1`, `1.5`, enorme) muestra su propio aviso, no bloquea y no se presenta como «más nueva».
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «checkFormat: no mark is format 1, a bigger integer is newer, anything else is unreadable» (casos vacío, `abc`, `0`, `-1`, `1.5`, `9999999`) y «an unreadable mark is warned about but never blocks»; `e2e/format.spec.ts` «an unreadable mark gets its own notice and does not block».
+- [x] Si la marca cambia con un proceso MCP o web vivo, sin reiniciarlo, la siguiente llamada MCP avisa y la siguiente respuesta de `/api/projects` trae el estado; la pantalla lo muestra en el siguiente refresco o navegación.
+  - Evidencia (WAY-30, 2026-11-26): `test/mcp.integration.test.ts` «WAY-24: the live MCP sees the data format change; a newer one is announced on every tool and every write fails», `test/server.test.ts` «WAY-24: /api/projects carries the data format on every request…» y `e2e/format.spec.ts` «with data from a newer format the page says so…» (el aviso aparece al navegar sin reiniciar y desaparece al volver a 1).
+- [x] Una tarea con estado desconocido (`status: snoozed`):
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «a task status from a newer version is listed and read, never rewritten, and still blocks» (sha idéntico, claves `store.taskUnknownStatus`, dependientes bloqueadas), `test/hook.test.ts` «WAY-24: a status unknown to this version is mentioned by ID and status only…», `test/server.test.ts` «WAY-24: a task status unknown to this version is listed with its literal status…», `e2e/format.spec.ts` «a status only a newer version knows goes to «Otros estados»…»; acceptance 2d.
   - se ve con su estado literal en `wf_list`, `wf_get`, la API y el tablero («Otros estados»), y no cuenta como ilegible;
   - `wf_set_status`, `wf_update`, `wf_log` y los POST web fallan con su clave propia y el archivo queda igual byte a byte (`sha`);
   - las tareas que dependen de ella figuran como bloqueadas.
-- [ ] Ninguna operación permitida con datos más nuevos modifica claves, estados o archivos que la versión no entiende.
+- [x] Ninguna operación permitida con datos más nuevos modifica claves, estados o archivos que la versión no entiende.
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «data from a newer format is read only: every write path refuses…» (`tree` y commits idénticos) y «a task status from a newer version is listed and read, never rewritten…» (archivo igual byte a byte); acceptance 2c/2d.
 - [ ] El aviso web no depende del color, se anuncia como estado sin robar el foco, no añade paradas de tabulación, funciona en es/en y se ve a 320, 768 y 1280 px sin desbordamiento horizontal.
-- [ ] El aviso no incluye rutas ni `WAYFINDER_HOME`; solo interpola el entero ya validado.
-- [ ] El README documenta el aviso, la regla 1.x, la vía de salida y el límite de las versiones anteriores, y DESIGN.md está actualizado.
-- [ ] `plugin/dist` está reconstruido desde el checkout principal y `npm run check:dist` pasa.
+- [x] El aviso no incluye rutas ni `WAYFINDER_HOME`; solo interpola el entero ya validado.
+  - Evidencia (WAY-30, 2026-11-26): `test/format.test.ts` «checkFormat: no mark is format 1…»: `formatWarning` devuelve solo `store.dataNewer` con `found`/`supported` enteros y `store.formatUnreadable` con `supported`, «nothing of the file reaches the warning»; `e2e/format.spec.ts` «an unreadable mark…» (`not.toContainText('basura')`).
+- [x] El README documenta el aviso, la regla 1.x, la vía de salida y el límite de las versiones anteriores, y DESIGN.md está actualizado.
+  - Evidencia (WAY-30, 2026-11-26): `README.md` y `README.es.md` líneas 316-329 («Data format and updates» / «Formato de los datos y actualizaciones»: aviso, salida en 323, regla 1.x y límite de versiones anteriores en 329) y `docs/design/DESIGN.md` líneas 74-76 y 120 con el aviso de formato (WAY-24).
+- [x] `plugin/dist` está reconstruido desde el checkout principal y `npm run check:dist` pasa.
+  - Evidencia (WAY-30, 2026-11-26): `npm run check:dist` correcto: «dist/ and plugin/dist/ match a fresh build» (quality.txt).
 
 ## Estrategia de validación
 - **Pruebas específicas:**

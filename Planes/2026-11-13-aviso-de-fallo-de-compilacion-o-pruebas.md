@@ -78,11 +78,16 @@
 
 ## Criterios de aceptación
 
-- [ ] Un fallo con código distinto de 0 de un comando de la lista, en un proyecto registrado, produce `PostToolUseFailure` con el texto fijo.
-- [ ] Cualquier otro caso (otro comando, código 0, interrupción, proyecto no registrado o entrada rara) no produce salida y sale con 0.
-- [ ] El aviso nunca contiene texto del comando ni de su salida.
-- [ ] El hook no escribe nada y nunca bloquea.
-- [ ] `hooks.json` incluye el evento, y `npm run typecheck`, `npm test` y `npm run check:dist` están en verde.
+- [x] Un fallo con código distinto de 0 de un comando de la lista, en un proyecto registrado, produce `PostToolUseFailure` con el texto fijo.
+  - Evidencia (WAY-30, 2026-11-26): test/post-tool-failure.test.ts «WAY-17: a failed build or test in a registered project gets the fixed reminder, nothing else» (salida PostToolUseFailure con el texto fijo) y «WAY-17: the closed list of build and test commands»; aceptación paso 3.9 conforme. ✔ en test.txt.
+- [x] Cualquier otro caso (otro comando, código 0, interrupción, proyecto no registrado o entrada rara) no produce salida y sale con 0.
+  - Evidencia (WAY-30, 2026-11-26): test/post-tool-failure.test.ts «WAY-17: no reminder for other commands, exit code 0, interruptions, odd input or an unregistered folder» (salida vacía y código 0). ✔ en test.txt.
+- [x] El aviso nunca contiene texto del comando ni de su salida.
+  - Evidencia (WAY-30, 2026-11-26): test/post-tool-failure.test.ts «WAY-17: a failed build or test in a registered project gets the fixed reminder, nothing else» (con comando y salida hostiles el contexto es exactamente el texto fijo). ✔ en test.txt.
+- [x] El hook no escribe nada y nunca bloquea.
+  - Evidencia (WAY-30, 2026-11-26): test/post-tool-failure.test.ts «WAY-17: a failed build or test in a registered project gets the fixed reminder, nothing else» (el árbol y el número de commits no cambian; código de salida 0; solo emite additionalContext, nunca decision). ✔ en test.txt.
+- [x] `hooks.json` incluye el evento, y `npm run typecheck`, `npm test` y `npm run check:dist` están en verde.
+  - Evidencia (WAY-30, 2026-11-26): plugin/hooks/hooks.json incluye «PostToolUseFailure» (matcher «Bash|PowerShell»); test/post-tool-failure.test.ts «WAY-17: the bundle accepts the new event through stdin and stdout»; quality.txt: TYPECHECK_OK y CHECKDIST_OK; test.txt: 230/230.
 - [ ] **Verificación real:** en una sesión de Claude Code en Windows con el plugin actualizado, un `npm test` que falla muestra el aviso (D1). Si no se puede hacer, la tarea se cierra como **no verificada en sesión real**.
 
 ## Estrategia de validación

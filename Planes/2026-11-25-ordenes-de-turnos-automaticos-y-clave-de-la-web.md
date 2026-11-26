@@ -90,15 +90,18 @@ Tres incrementos. El 1 no empieza sin P1. El 2 es independiente y puede ir prime
 8. Validación amplia: `npm run typecheck`, `npm test` (reconstruye `dist/` y `plugin/dist/`) y `npm run check:dist`. `npm run test:e2e` no aplica (no cambia la web); si se ejecuta, con el candado `~/.capy/work/e2e.lock`.
 
 ## Criterios de aceptación
-- [ ] «aprueba WAY-n», «registra este proyecto» y «abre Wayfinder» escritos por la persona siguen funcionando igual.
+- [x] «aprueba WAY-n», «registra este proyecto» y «abre Wayfinder» escritos por la persona siguen funcionando igual.
+  - Evidencia (WAY-30, 2026-11-26): `test/chat.test.ts` «explicit orders are recognised in Spanish and English», `test/hook.test.ts` «the person's «abre Wayfinder» is recorded…» y «in an unregistered repository the person's register order is recorded…»; `scripts/acceptance.mjs` pasos 3.2, 3.4 y 3.12 (registro y aprobación por chat con orden; sin orden, rechazo).
 - [ ] Con R1 o R2: un turno con envoltorio de subagente en segundo plano, de otra sesión o de tarea programada no registra órdenes, no borra las vigentes y deja un aviso fijo para Claude.
 - [ ] Con R3: el README y la skill dicen el límite observado y WAY-33 no cambia código.
 - [ ] `javascript_tool` o `browser_batch` con `/api/share` o `sec-fetch-`, `navigate` o `preview_start` con la clave en `k=`, y `run_in_terminal` con esos patrones o con la carpeta de datos reciben `deny`, en ambos navegadores.
-- [ ] `navigate` a la web local sin clave y el resto de herramientas del navegador siguen permitidos.
+- [x] `navigate` a la web local sin clave y el resto de herramientas del navegador siguen permitidos.
+  - Evidencia (WAY-30, 2026-11-26): `test/hook.test.ts` «pre-tool covers browser and terminal MCP tools…»: `navigate` a `http://127.0.0.1:4747/`, `javascript_tool` con `document.title`, `navigate` a `file:///` y `computer` quedan permitidos (sin decisión), y «the PreToolUse matcher covers the shell, edit, browser and terminal tools and nothing else»; ambas con ✔.
 - [ ] La mediana del hook `pre-tool` queda por debajo del umbral del paso 4, o el matcher se reduce como dice ese paso.
 - [ ] README, skill y CHANGELOG describen el alcance real y lo llaman mejor esfuerzo.
 - [ ] La sonda no toca `~/.wayfinder`, los ajustes de `~/.claude` ni el repositorio.
-- [ ] `plugin/dist/` reconstruido; `npm run typecheck`, `npm test` (salvo la prueba conocida `test/server.test.ts:139`, por la IP 169.254 de Tailscale) y `npm run check:dist` en verde.
+- [x] `plugin/dist/` reconstruido; `npm run typecheck`, `npm test` (salvo la prueba conocida `test/server.test.ts:139`, por la IP 169.254 de Tailscale) y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): `npm run typecheck` y `npm run check:dist` correctos (quality.txt); `npm test` 230/230 (test.txt), incluida `test/server.test.ts`.
 
 ## Estrategia de validación
 - Pruebas específicas: `test/hook.test.ts` (pasos 4 y 6), con `WAYFINDER_HOME` temporal y entradas por stdin.

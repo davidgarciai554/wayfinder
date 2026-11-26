@@ -69,14 +69,19 @@
 6. Validación amplia: `npm run typecheck`, `npm test` y `npm run check:dist`. El e2e no se ejecuta: no hay cambios de código ni de web.
 
 ## Criterios de aceptación
-- [ ] `README.md` (inglés) y `README.es.md` (español) se enlazan en la primera línea y tienen los mismos encabezados en el mismo orden.
+- [x] `README.md` (inglés) y `README.es.md` (español) se enlazan en la primera línea y tienen los mismos encabezados en el mismo orden.
+  - Evidencia (WAY-30, 2026-11-26): Primera línea de `README.md`: «English | [Español](README.es.md)» y de `README.es.md`: «[English](README.md) | Español»; ambos tienen 31 encabezados con la misma secuencia de niveles y las mismas 13 secciones `##` en el mismo orden (Requirements/Requisitos … Docker).
 - [ ] Instalar, actualizar, desinstalar, copia de seguridad y restauración funcionan siguiendo solo el README, en el recorrido del paso 5.
-- [ ] Las 14 herramientas MCP aparecen, con `wf_project`, `wf_web`, `wf_review` y `wf_set_status`.
-- [ ] Ninguna «esta versión» / «this version» sin número (`grep`).
-- [ ] `plugin.json` ya no menciona «wayfinder init».
+- [x] Las 14 herramientas MCP aparecen, con `wf_project`, `wf_web`, `wf_review` y `wf_set_status`.
+  - Evidencia (WAY-30, 2026-11-26): `README.md` y `README.es.md` líneas ~279-298 («MCP tools» / «Herramientas MCP»): tabla con `wf_project`, `wf_web`, `wf_list`, `wf_get`, `wf_create`, `wf_review`, `wf_set_status`, `wf_update`, `wf_log`, `wf_history`, `wf_search`, `wf_error`, `wf_errors` y `wf_attach` (14); `src/mcp.ts` registra 14.
+- [x] Ninguna «esta versión» / «this version» sin número (`grep`).
+  - Evidencia (WAY-30, 2026-11-26): `grep -n -i -E 'esta versión|this version' README.md README.es.md CHANGELOG.md plugin/.claude-plugin/plugin.json` sin coincidencias.
+- [x] `plugin.json` ya no menciona «wayfinder init».
+  - Evidencia (WAY-30, 2026-11-26): `grep -n -i init plugin/.claude-plugin/plugin.json` sin coincidencias.
 - [ ] Los límites de seguridad de #8 están completos en los dos idiomas.
 - [ ] Ningún texto promete publicación en npm.
-- [ ] `npm run typecheck`, `npm test` (salvo la prueba conocida de `test/server.test.ts` si vuelve a fallar) y `npm run check:dist` en verde.
+- [x] `npm run typecheck`, `npm test` (salvo la prueba conocida de `test/server.test.ts` si vuelve a fallar) y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): `npm run typecheck` y `npm run check:dist` correctos (quality.txt); `npm test` 230/230 (test.txt), incluida `test/server.test.ts`.
 
 ## Estrategia de validación
 - Pruebas específicas: recorrido del paso 5 con registro de comandos y salidas.

@@ -648,59 +648,81 @@ Los hooks obtienen `WAYFINDER_HOME` y el idioma de `CLAUDE_PLUGIN_OPTION_HOME` y
 ## Criterios de aceptación
 
 **Funcionales**
-- [ ] `wayfinder init` crea `WAYFINDER_HOME` con `git init`, `.gitignore` (incluido `.state/`) y el commit `wf: init`; una segunda ejecución no cambia nada y lo dice.
-- [ ] Toda tarea tiene los 8 campos obligatorios; `created` no cambia nunca; `updated` cambia en cada escritura.
-- [ ] 20 creaciones concurrentes en procesos distintos producen 20 IDs distintos y 20 commits.
-- [ ] Una transición inválida devuelve error con los valores válidos y deja el archivo con el mismo hash y sin commit.
+- [x] `wayfinder init` crea `WAYFINDER_HOME` con `git init`, `.gitignore` (incluido `.state/`) y el commit `wf: init`; una segunda ejecución no cambia nada y lo dice.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «init is idempotent and an existing home is left untouched» (✔ en test.txt): segunda ejecución con `created === false`, mismo árbol y mismo número de commits, `.gitignore` con `.state/`, último commit `wf: init`; acceptance.mjs paso 5: `wayfinder init --lang es` del tarball instalado crea la carpeta con FORMAT.
+- [x] Toda tarea tiene los 8 campos obligatorios; `created` no cambia nunca; `updated` cambia en cada escritura.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «MCP creates proposed/claude and the web creates todo/user, with all 8 fields» y «created never changes and updated changes on every write» (✔, 230/230).
+- [x] 20 creaciones concurrentes en procesos distintos producen 20 IDs distintos y 20 commits.
+  - Evidencia (WAY-30, 2026-11-26): test/concurrency.test.ts «20 concurrent processes create 20 distinct IDs and 20 commits» (✔).
+- [x] Una transición inválida devuelve error con los valores válidos y deja el archivo con el mismo hash y sin commit.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «an invalid transition is rejected and leaves the file and history intact» (✔): comprueba el mismo sha del archivo y el mismo número de commits; el mensaje `store.invalidTransition` (src/i18n/es.json:98) incluye «Válidas desde {from}: {valid}».
 - [ ] El MCP no crea en `todo`, no hace `proposed→in-progress` y solo hace `proposed→todo` con todas las condiciones de la aprobación por chat; `origin` y `approvedVia` no son modificables por parámetro.
-- [ ] `→in-progress` exige un `plan` existente o `trivial: true` con `note` registrada en la bitácora.
-- [ ] En un repositorio no registrado, ningún hook emite ni escribe nada y el MCP no crea carpetas.
+- [x] `→in-progress` exige un `plan` existente o `trivial: true` con `note` registrada en la bitácora.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «the plan rule guards todo → in-progress» (✔): `planRequired`, `planNotFound`, `trivialNeedsNote`, y con `trivial: true` + nota queda en el log (`trivial: true` y la nota).
+- [x] En un repositorio no registrado, ningún hook emite ni escribe nada y el MCP no crea carpetas.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «an unregistered repository gets no output and nothing is written» (✔: session-start, prompt y stop sin salida y sin `.state`); test/mcp.integration.test.ts «without a data folder the MCP starts, explains how to get one and registers only with the order» (✔).
 - [ ] En Windows, una sesión real muestra los pendientes al inicio y con `--continue`.
-- [ ] Stop bloquea una sola vez con `in-progress` sin bitácora de hoy y nunca con `stop_hook_active: true`.
+- [x] Stop bloquea una sola vez con `in-progress` sin bitácora de hoy y nunca con `stop_hook_active: true`.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «stop blocks once when work is in progress and today has no log» (✔: `decision: block`, y `stop_hook_active: true` no bloquea); acceptance.mjs paso 3.7 conforme (hook `stop` real por stdin: bloquea y, tras `wf_log`, deja terminar).
 - [ ] Un frontmatter corrupto aparece como "ilegible" en el MCP y en la web; el resto funciona.
 - [ ] La web refleja una edición externa en ≤3 s (con `fs.watch` o con `--poll`).
-- [ ] Crear, aprobar y descartar (con `<dialog>`) funcionan desde la web, se ven sin recargar y generan su commit.
-- [ ] Cada escritura genera exactamente un commit con solo sus rutas y el mensaje `wf: <acción> <ID>`; si git falla, la escritura se conserva con aviso.
+- [x] Crear, aprobar y descartar (con `<dialog>`) funcionan desde la web, se ven sin recargar y generan su commit.
+  - Evidencia (WAY-30, 2026-11-26): e2e/write.spec.ts «create a task…», «approve a proposal: it moves to To do without reloading, approvedVia web» y «discard asks first…» (68 passed en e2e.txt); test/server.test.ts «create, approve and discard from the web: one commit each, approvedVia web» (✔).
+- [x] Cada escritura genera exactamente un commit con solo sus rutas y el mensaje `wf: <acción> <ID>`; si git falla, la escritura se conserva con aviso.
+  - Evidencia (WAY-30, 2026-11-26): test/git.test.ts «each write is exactly one commit that contains only its own paths» y «git failures keep the write and only warn; index.lock is never removed» (✔); test/server.test.ts «git missing: the write is kept and answers 201 with a visible warning» (✔).
 - [ ] Instalar el plugin no cambia `git status` del consumidor ni escribe en su `.claude/`, `AGENTS.md` o `CLAUDE.md`.
 - [ ] Los hooks funcionan en Windows sin Git Bash ni PowerShell.
-- [ ] `claude plugin validate` pasa para el plugin y el marketplace.
+- [x] `claude plugin validate` pasa para el plugin y el marketplace.
+  - Evidencia (WAY-30, 2026-11-26): acceptance.mjs paso 1b conforme: `claude plugin validate` del repositorio → «Validation passed» (accept2.txt); el paso 1 instaló el plugin con `claude plugin install` en un perfil vacío (exit 0, versión 1.0.0).
 
 **Seguridad**
 - [ ] `wf_attach` rechaza `.env`, `.ssh`, `.git`, symlinks y junctions, tipos o magic bytes no válidos, sobredimensionados, rutas fuera de `CLAUDE_PROJECT_DIR` y del directorio de capturas, rutas dentro de `WAYFINDER_HOME` y `alt` vacío.
-- [ ] Los slugs maliciosos no escriben fuera de `WAYFINDER_HOME`.
-- [ ] La web escucha en 127.0.0.1 por defecto; Host ajeno → 403; POST sin token, con Origin ajeno o sin JSON → rechazado sin efecto ni commit.
-- [ ] `<script>`, `<img onerror>` y `javascript:` no se ejecutan; CSP presente.
-- [ ] Sin traversal en assets.
+- [x] Los slugs maliciosos no escriben fuera de `WAYFINDER_HOME`.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «malicious slugs, traversal and links never write outside WAYFINDER_HOME» (✔).
+- [x] La web escucha en 127.0.0.1 por defecto; Host ajeno → 403; POST sin token, con Origin ajeno o sin JSON → rechazado sin efecto ni commit.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «binds to 127.0.0.1, sends security headers and rejects foreign Host headers» (✔: Host ajeno → 403) y «writes without the key, from another Origin or without JSON are rejected with no effect» (✔); e2e/write.spec.ts «another local site cannot write, even with the key cookie in the browser» (passed).
+- [x] `<script>`, `<img onerror>` y `javascript:` no se ejecutan; CSP presente.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «lists projects and tasks with flags, and renders task Markdown safely» (✔: sin `<script>`, `<img onerror>` ni `href=javascript:`/`data:`) y cabecera `content-security-policy` con `default-src 'none'; script-src 'self'` en «binds to 127.0.0.1, sends security headers…» (✔). Nota: la ejecución real en navegador no se probó; se demuestra que el HTML servido no los contiene.
+- [x] Sin traversal en assets.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «assets are served only from the project assets folder» (✔) y «WAY-34: an asset under a Windows reserved slug answers 4xx and the server keeps serving» (✔).
 - [ ] `wf_log`, `wf_create`, `wf_update` y `user_quote` rechazan los patrones de secretos; un archivo con secreto no se commitea.
-- [ ] El código no ejecuta `push`, `fetch`, `remote` ni `config --global` (git falso, remoto trampa y lista blanca); un subcomando fuera de la lista lanza error.
-- [ ] La aprobación por chat se rechaza sin mención, con mención caducada o consumida, con una cita copiada de la tarea o para `origin: routine`; queda registrada como `approved-via: chat`.
-- [ ] El hook `prompt` no persiste el texto del prompt y solo registra órdenes explícitas del último mensaje (negaciones y preguntas excluidas).
-- [ ] Sin una revisión `wf_review` con el hash vigente no hay aprobación por chat; con señales o `suspicious`, solo se aprueba con una orden posterior al aviso y queda `riskAcknowledged: true`.
+- [x] El código no ejecuta `push`, `fetch`, `remote` ni `config --global` (git falso, remoto trampa y lista blanca); un subcomando fuera de la lista lanza error.
+  - Evidencia (WAY-30, 2026-11-26): test/git.test.ts «the code never pushes, fetches or touches remotes or global config» (✔): remoto trampa, lista blanca `ALLOWED_SUBCOMMANDS`, `git push`/`git remote` lanzan «not allowed».
+- [x] La aprobación por chat se rechaza sin mención, con mención caducada o consumida, con una cita copiada de la tarea o para `origin: routine`; queda registrada como `approved-via: chat`.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts «a clean approval needs an order, a fresh review and a quote that is not task content», «an expired or consumed order is rejected», «a quote copied from the task body does not count» y «routine and user tasks, and other transitions, are never approved by chat» (✔); acceptance.mjs paso 3.4: sin orden se rechaza y con la orden queda `approvedVia: chat`.
+- [x] El hook `prompt` no persiste el texto del prompt y solo registra órdenes explícitas del último mensaje (negaciones y preguntas excluidas).
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «prompt records only explicit orders and never stores the prompt text» (✔) y test/chat.test.ts «negations, questions, distant verbs, other projects, code and quotes are not orders» (✔).
+- [x] Sin una revisión `wf_review` con el hash vigente no hay aprobación por chat; con señales o `suspicious`, solo se aprueba con una orden posterior al aviso y queda `riskAcknowledged: true`.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts «signals force a second confirmation even when the verdict says clean» y «a suspicious verdict without signals also needs the second confirmation» (✔; `riskAcknowledged` comprobado en chat.test.ts:340); test/mcp.integration.test.ts «chat approval with risk signals needs an order given after the review» (✔).
 - [ ] En una sesión real, ante una tarea con inyección, Claude da un veredicto motivado y pide una segunda confirmación.
 - [ ] El hook `pre-tool` deniega Edit, Write y NotebookEdit dentro de `WAYFINDER_HOME` (también en `acceptEdits`) y los Bash o PowerShell que la mencionan; las rutas ajenas se permiten.
 - [ ] Una tarea editada fuera de Wayfinder aparece marcada en la web, en SessionStart y en `wf_list`.
-- [ ] La config git global y la local no cambian.
+- [x] La config git global y la local no cambian.
+  - Evidencia (WAY-30, 2026-11-26): test/git.test.ts «global and local git config are never modified» (✔).
 - [ ] Los tests nunca usan el `~/.wayfinder` real.
 
 **Accesibilidad**
 - [ ] Todo el flujo se completa solo con teclado, con foco visible y preservado.
 - [ ] Controles nativos con el título en el nombre accesible; arrastre opcional.
 - [ ] Estado, prioridad y "aprobada por chat" se comunican en texto; contraste ≥4.5:1 (texto) y ≥3:1 (bordes y foco) en claro y oscuro.
-- [ ] El `<dialog>` de descarte abre con el foco en Cancelar; Esc cancela y el foco vuelve al control de origen; aprobar no pide confirmación.
+- [x] El `<dialog>` de descarte abre con el foco en Cancelar; Esc cancela y el foco vuelve al control de origen; aprobar no pide confirmación.
+  - Evidencia (WAY-30, 2026-11-26): e2e/write.spec.ts «discard asks first: Esc and Cancel change nothing, Confirm discards» (passed): foco en Cancelar, Esc cancela y devuelve el foco al botón de origen; «approve a proposal: it moves to To do without reloading» (passed) aprueba sin diálogo.
 - [ ] El autorefresco no mueve el foco ni pisa formularios o diálogos y avisa con `aria-live="polite"`.
 - [ ] A 320 px y con zoom al 200 % no hay scroll horizontal; se respeta `prefers-reduced-motion`.
 - [ ] Las capturas tienen `alt` no vacío.
 - [ ] `<html lang>` coincide con el idioma; los mensajes de terminal dan resultado, causa y acción, salen con código ≠0 en error y respetan `NO_COLOR`.
 
 **i18n**
-- [ ] `es.json` y `en.json` tienen las mismas claves y placeholders, sin valores vacíos.
+- [x] `es.json` y `en.json` tienen las mismas claves y placeholders, sin valores vacíos.
+  - Evidencia (WAY-30, 2026-11-26): test/i18n.test.ts «es and en dictionaries have exactly the same keys», «no dictionary value is empty» y «placeholders match between languages» (✔).
 - [ ] Con `WAYFINDER_LANG=en`, CLI, MCP, hooks y web no muestran texto en español ni claves crudas (y viceversa con `es`).
 - [ ] `userConfig.language` pasa `claude plugin validate` y su valor llega a MCP y hooks en una sesión real; `/plugin configure` lo cambia.
 - [ ] La skill responde en el idioma emitido por SessionStart.
 - [ ] Cambiar de idioma no altera los datos ni las marcas de bitácora y commit.
 
 **Empaquetado y Docker**
-- [ ] `npm run check:dist` pasa y `dist/` y `plugin/dist/` vienen del mismo build.
+- [x] `npm run check:dist` pasa y `dist/` y `plugin/dist/` vienen del mismo build.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: `check:dist: dist/ and plugin/dist/ match a fresh build` (CHECKDIST_OK).
 - [ ] `npm pack --dry-run` contiene solo `dist/`, `README.md`, `LICENSE` y `package.json`; licencia MIT; avisos de terceros conservados.
 - [ ] El tarball instalado en una carpeta vacía ejecuta `wayfinder --help` y `serve`.
 - [ ] (Si se autoriza la publicación) `npx` con versión exacta funciona sin el `.npmrc` del usuario y con la forma documentada con él.

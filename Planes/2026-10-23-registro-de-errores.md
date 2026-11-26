@@ -280,18 +280,27 @@ Cada incremento deja `npm run typecheck` y `npm test` en verde y es revisable po
 
 ## Criterios de aceptación
 
-- [ ] `wf_error create` con título, `task_id` existente y contexto crea `errors/ERR-n-….md` con los campos del formato, en un commit `wf: error create ERR-n`; sin `task_id`, con tarea inexistente o con un tope superado, error claro y nada escrito.
-- [ ] Dos creaciones concurrentes producen IDs distintos; `ERR-1` y `ERR-10` no se confunden.
-- [ ] Una recurrencia con `note` añade una entrada fechada al Historial del mismo error y no crea otro archivo; `create` devuelve hasta 3 posibles duplicados abiertos y no los bloquea.
-- [ ] `update` solo modifica campos editables y deja entrada de Historial; los inmutables no cambian. `resolve` sin solución o validación falla; con ellas el estado pasa a `resolved`; reabrir exige una nota y queda registrado.
+- [x] `wf_error create` con título, `task_id` existente y contexto crea `errors/ERR-n-….md` con los campos del formato, en un commit `wf: error create ERR-n`; sin `task_id`, con tarea inexistente o con un tope superado, error claro y nada escrito.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts «creating an error writes its file, one commit and leaves the task file untouched» (commit «wf: error create ERR-1»), «the task is required and must exist; nothing is written otherwise» y «limits: exact limit passes, one more is rejected without writing». ✔ en test.txt.
+- [x] Dos creaciones concurrentes producen IDs distintos; `ERR-1` y `ERR-10` no se confunden.
+  - Evidencia (WAY-30, 2026-11-26): test/concurrency.test.ts «10 concurrent processes create 10 distinct error IDs and 10 commits» y test/error-records.test.ts «ERR-1 and ERR-10 are never confused». ✔ en test.txt.
+- [x] Una recurrencia con `note` añade una entrada fechada al Historial del mismo error y no crea otro archivo; `create` devuelve hasta 3 posibles duplicados abiertos y no los bloquea.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts «a note records a recurrence in the same error and never creates another file» y «create reports up to 3 open possible duplicates without blocking». ✔ en test.txt.
+- [x] `update` solo modifica campos editables y deja entrada de Historial; los inmutables no cambian. `resolve` sin solución o validación falla; con ellas el estado pasa a `resolved`; reabrir exige una nota y queda registrado.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts «update changes only editable fields and records which ones» y «resolve needs solution and validation, is idempotent and reopen needs a note»; test/mcp.integration.test.ts «wf_error records, notes and resolves errors…» («cannot change once recorded»). ✔ en test.txt.
 - [ ] Un secreto en cualquier campo, título o nota se rechaza sin escribir; si el escaneo del commit lo detecta, el archivo creado se borra (o el anterior se restaura) y el mensaje no reproduce el valor.
-- [ ] `files` acepta solo rutas relativas válidas (≤ 20 × 200) y las muestra como texto.
-- [ ] `createProject` rechaza el prefijo `ERR`; los proyectos existentes no cambian.
+- [x] `files` acepta solo rutas relativas válidas (≤ 20 × 200) y las muestra como texto.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts «file paths must be relative to the repository» (rechaza rutas con «..», absolutas, de Windows, vacías, de 201 caracteres y 21 archivos). ✔ en test.txt.
+- [x] `createProject` rechaza el prefijo `ERR`; los proyectos existentes no cambian.
+  - Evidencia (WAY-30, 2026-11-26): test/error-records.test.ts «a project without errors/ lists nothing and the ERR prefix is reserved» (createProject con prefijo ERR falla con store.reservedIdPrefix; el prefijo «ER» sigue valiendo). ✔ en test.txt.
 - [ ] `wf_search` devuelve errores con `kind: 'error'`, ID, estado y fragmento ≤ 200, con cupo de 5, salida ≤ 4000 y orden determinista; en proyectos sin errores el resultado es idéntico al actual.
-- [ ] `wf_get ERR-n` devuelve el error en un bloque `UNTRUSTED`; `wf_get` de una tarea lista sus errores (ID, estado, título) sin modificar el archivo de la tarea; `>>>` no cierra ningún bloque.
-- [ ] SessionStart lista como máximo 5 errores abiertos en ≤ 600 caracteres solo si caben, con ID, tarea y título; no incluye resueltos, salida ni causa; el contexto nunca pasa de 4000 ni desplaza metadatos o historial; sin errores es idéntico al actual.
+- [x] `wf_get ERR-n` devuelve el error en un bloque `UNTRUSTED`; `wf_get` de una tarea lista sus errores (ID, estado, título) sin modificar el archivo de la tarea; `>>>` no cierra ningún bloque.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «wf_error records, notes and resolves errors; wf_get and wf_search show them as untrusted data» (ERR-n en <<<UNTRUSTED ERROR CONTENT, la tarea lista sus errores en <<<UNTRUSTED ERRORS, «>>> fake close» neutralizado, git status limpio). ✔ en test.txt.
+- [x] SessionStart lista como máximo 5 errores abiertos en ≤ 600 caracteres solo si caben, con ID, tarea y título; no incluye resueltos, salida ni causa; el contexto nunca pasa de 4000 ni desplaza metadatos o historial; sin errores es idéntico al actual.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «session-start lists up to 5 open errors after everything else, only while they fit» (≤ 600 caracteres, sin resueltos, salida ni causa; resueltos no cambian el contexto) y «session-start never lets open errors push the task list out» (contexto ≤ 4000). ✔ en test.txt.
 - [ ] La web muestra la pestaña «Errores» con «Abiertos (n)» y «Resueltos (n)» (10 + «Ver todos»), el detalle en `#/<slug>/errors/<ID>`, y estados vacío, cargando, error de red e inexistente. No tiene controles de escritura y los POST/PUT a errores devuelven 404 o 405.
-- [ ] El modal de tarea muestra «Errores (n)»; abrir un error navega y cierra el modal; Atrás reabre la tarea con foco en el enlace; cerrar una tarea abierta desde un error vuelve al error con foco en el enlace; el tablero no se rompe.
+- [x] El modal de tarea muestra «Errores (n)»; abrir un error navega y cierra el modal; Atrás reabre la tarea con foco en el enlace; cerrar una tarea abierta desde un error vuelve al error con foco en el enlace; el tablero no se rompe.
+  - Evidencia (WAY-30, 2026-11-26): e2e/errors.spec.ts «error → task → close returns to the error with focus on the task link» y «task → error → Back reopens the task with focus on the error link» (región «Errores (13)» en el modal); e2e.txt: 68 passed.
 - [ ] Texto hostil (`<script>`, `<img onerror>`, `>>>`) queda inerte; todo es operable con teclado; sin scroll horizontal a 320 px salvo el `<pre>`.
 - [ ] 12 herramientas MCP; i18n es/en con paridad; `DESIGN.md`, SKILL y README coherentes; `plugin/dist/` sincronizado.
 - [ ] `npm run typecheck`, `npm test`, `npm run build`, `npm run check:dist` y `npm run test:e2e` en verde; la verificación real (MCP, sesión de Claude y navegador) hecha o declarada bloqueada con su motivo.

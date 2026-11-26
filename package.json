@@ -1,8 +1,16 @@
 {
   "name": "@davidgarciai554/wayfinder",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Personal Markdown task manager that Claude Code uses as a project tracker and memory: MCP server, local web board and Claude Code plugin.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidgarciai554/wayfinder.git"
+  },
+  "homepage": "https://github.com/davidgarciai554/wayfinder#readme",
+  "bugs": {
+    "url": "https://github.com/davidgarciai554/wayfinder/issues"
+  },
   "type": "module",
   "bin": {
     "wayfinder": "dist/wayfinder.mjs"
@@ -10,6 +18,8 @@
   "files": [
     "dist",
     "README.md",
+    "README.es.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
@@ -27,7 +37,8 @@
     "check:dist": "node scripts/check-dist.mjs",
     "prepare": "npm run build",
     "test:e2e": "playwright test",
-    "test:docker": "node --test \"test/docker/*.docker.ts\""
+    "test:docker": "node --test \"test/docker/*.docker.ts\"",
+    "test:acceptance": "node scripts/acceptance.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",

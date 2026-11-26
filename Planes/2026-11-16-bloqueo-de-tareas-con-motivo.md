@@ -110,24 +110,36 @@ Un solo incremento. Sin commits salvo que los pidas.
 ## Criterios de aceptación
 
 **Compatibilidad**
-- [ ] Con el código sin cambiar, una tarea con `blocked` escrito a mano se lee como tarea normal y conserva la clave al reescribirse.
+- [x] Con el código sin cambiar, una tarea con `blocked` escrito a mano se lee como tarea normal y conserva la clave al reescribirse.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13 compatibility: a hand-written blocked key leaves the task readable and survives update, log and set-status» (✔): la tarea con blocked a mano se lee como todo, sin ilegibles, y la clave se conserva tras updateTask, logProgress y setStatus.
 - [ ] `blocked` con un número, `true`, una lista, un mapa o texto vacío: la tarea se lee, sale sin bloqueo y conserva la clave.
 - [ ] Una tarea sin la clave se comporta como hoy: las pruebas existentes pasan sin tocarlas, incluida la de `status: blocked` como ilegible.
 
 **Bloquear y desbloquear**
-- [ ] `wf_log` con `task_id`, `blockers` y `blocked: true` sobre una tarea `todo` o `in-progress` guarda la marca y la entrada del historial en un commit. Repetirlo con otro motivo lo sustituye.
-- [ ] Se rechaza sin escribir nada: `blocked` sin `task_id`; `blocked: true` sin `blockers`, con más de 200 caracteres, con caracteres invisibles o con algo que parece un secreto; `blocked: true` sobre una tarea `proposed`, `done` o `discarded`; `blocked: false` sobre una tarea sin marca.
-- [ ] `wf_log` con `blocked: false` quita la marca y deja la nota en el historial y en la bitácora.
-- [ ] `wf_log` sin `blocked` no pone, quita ni cambia la marca, aunque lleve `blockers`.
-- [ ] Pasar a `done` o `discarded`, o reabrir, deja el archivo sin la clave. Una tarea `done` con la clave escrita se muestra sin marca.
-- [ ] La marca no impide ningún cambio de estado.
+- [x] `wf_log` con `task_id`, `blockers` y `blocked: true` sobre una tarea `todo` o `in-progress` guarda la marca y la entrada del historial en un commit. Repetirlo con otro motivo lo sustituye.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: wf_log blocks with a reason and unblocks with a note, each in one commit with its history entry» (✔): bloquear suma 1 commit con la entrada «- Blockers: …» en el historial, repetir con otro motivo lo sustituye; test/mcp.integration.test.ts «WAY-13: wf_log blocks and unblocks…» (✔) lo hace por MCP; «the block lives only on todo and in-progress…» lo prueba en in-progress.
+- [x] Se rechaza sin escribir nada: `blocked` sin `task_id`; `blocked: true` sin `blockers`, con más de 200 caracteres, con caracteres invisibles o con algo que parece un secreto; `blocked: true` sobre una tarea `proposed`, `done` o `discarded`; `blocked: false` sobre una tarea sin marca.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: invalid blocks are rejected without writing anything» (✔): sin motivo, vacío, 201 caracteres, caracteres invisibles/bidi/control, secreto ghp_, tareas proposed/done/discarded (store.blockNotAllowed) y blocked:false sin marca (store.notBlocked) lanzan error con tree(home) idéntico (200 caracteres sí pasa); test/mcp.integration.test.ts: blocked sin task_id → «blockers and blocked are only accepted with task_id».
+- [x] `wf_log` con `blocked: false` quita la marca y deja la nota en el historial y en la bitácora.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: wf_log blocks and unblocks…» (✔): quita la clave del archivo (storedBlock undefined) en 1 commit, deja la nota en el historial y en la bitácora (log/*.md contiene «desbloqueada, ya hay aprobación»).
+- [x] `wf_log` sin `blocked` no pone, quita ni cambia la marca, aunque lleve `blockers`.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: wf_log blocks and unblocks…» y test/mcp.integration.test.ts, «WAY-13: wf_log blocks and unblocks…» (✔): un wf_log con blockers pero sin blocked no pone, quita ni cambia la marca (wf_list idéntico).
+- [x] Pasar a `done` o `discarded`, o reabrir, deja el archivo sin la clave. Una tarea `done` con la clave escrita se muestra sin marca.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: the block lives only on todo and in-progress; closing and reopening remove the key» (✔): done y discarded eliminan la clave, reabrir la quita y una tarea done con la clave a mano se lee con blocked vacío.
+- [x] La marca no impide ningún cambio de estado.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts, «WAY-13: wf_log blocks and unblocks…» y «the block lives only on todo and in-progress…» (✔): una tarea bloqueada pasa a in-progress, todo y done; test/mcp.integration.test.ts «WAY-13: wf_log blocks and unblocks…»: wf_set_status a in-progress sin error.
 
 **Dónde se ve**
-- [ ] `wf_list` muestra «bloqueada: motivo» y, si además hay una dependencia abierta, «bloqueada por WAY-n». `wf_get` muestra `blocked: yes` y el motivo en un bloque de dato no confiable.
-- [ ] SessionStart marca la fila con `[bloqueada]`, el texto del motivo no aparece y el contexto no pasa de 4000 caracteres.
-- [ ] La web muestra la etiqueta «Bloqueada» con icono y texto y el motivo en la tarjeta, y el motivo completo en el detalle. Una tarea con bloqueo y dependencia muestra las dos etiquetas. No hay ningún control para bloquear o desbloquear.
-- [ ] Un motivo con HTML se ve como texto, y uno largo no provoca scroll horizontal a 320 px.
-- [ ] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+- [x] `wf_list` muestra «bloqueada: motivo» y, si además hay una dependencia abierta, «bloqueada por WAY-n». `wf_get` muestra `blocked: yes` y el motivo en un bloque de dato no confiable.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts, «WAY-13: wf_log blocks and unblocks; wf_list and wf_get show the reason as untrusted data» (✔): wf_list «— blocked: Waiting for … ; blocked by MYA-1» (motivo manual primero, dependencia después; la prueba usa WAYFINDER_LANG=en), wf_get «blocked: yes» y el motivo dentro de <<<UNTRUSTED BLOCK REASON … >>>.
+- [x] SessionStart marca la fila con `[bloqueada]`, el texto del motivo no aparece y el contexto no pasa de 4000 caracteres.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts, «WAY-13: session-start marks a blocked task with a fixed mark; the reason stays out of the task rows» (✔): fila «[bloqueada]» en es y «[blocked]» en en, y el texto del motivo no aparece; «WAY-13: many blocked tasks keep session-start within its limit, truncated as before» (✔) mantiene ≤ 4000 caracteres; accept2.txt paso 3.8 con hooks reales.
+- [x] La web muestra la etiqueta «Bloqueada» con icono y texto y el motivo en la tarjeta, y el motivo completo en el detalle. Una tarea con bloqueo y dependencia muestra las dos etiquetas. No hay ningún control para bloquear o desbloquear.
+  - Evidencia (WAY-30, 2026-11-26): e2e.txt, e2e/read.spec.ts «WAY-13: a blocked task says «Bloqueada» with its reason on the card and the detail, as text and read-only» (ok): etiqueta «Bloqueada» con svg aria-hidden y texto, motivo en la tarjeta (2 líneas) y completo en el detalle, «Bloqueada» + «Bloqueada por BLO-2» juntas, y ningún botón de bloquear.
+- [x] Un motivo con HTML se ve como texto, y uno largo no provoca scroll horizontal a 320 px.
+  - Evidencia (WAY-30, 2026-11-26): e2e/read.spec.ts «WAY-13: a blocked task says «Bloqueada»…» (ok en e2e.txt): el motivo «<img src=x onerror=…>» se ve como texto y no ejecuta nada, y a 320 px una dirección larga no provoca scroll horizontal (noHorizontalScroll en tablero y detalle).
+- [x] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: npm run typecheck (TYPECHECK_OK) y npm run check:dist (CHECKDIST_OK) correctos; test.txt: npm test 230/230 en verde; e2e.txt: npm run test:e2e 68 passed (4.9m).
 
 ## Estrategia de validación
 

@@ -353,26 +353,36 @@ No quedan preguntas abiertas. Se puede objetar cualquier decisión antes de apro
 ## Criterios de aceptación
 
 **Instalación**
-- [ ] Un único comando instala el plugin en un `CLAUDE_CONFIG_DIR` aislado (código 0, plugin en la lista), sin `init` manual y sin tocar el `~/.claude` real.
+- [x] Un único comando instala el plugin en un `CLAUDE_CONFIG_DIR` aislado (código 0, plugin en la lista), sin `init` manual y sin tocar el `~/.claude` real.
+  - Evidencia (WAY-30, 2026-11-26): accept2.txt paso 1: «install exit 0; plugin list 1.0.0; --version 1.0.0; uninstall exit 0» con CLAUDE_CONFIG_DIR temporal, solo con «claude plugin install» (scripts/acceptance.mjs no ejecuta init en ese paso); paso 6: ~/.claude del usuario sin cambios (mismo installed_plugins.json).
 
 **Alta de proyectos**
-- [ ] En un repo git no registrado, la sesión muestra una pregunta fija (idéntica aunque el nombre o el remoto sean hostiles). No escribe nada: ni PROJECT.md, ni commit, ni `.state`, ni carpeta de datos.
-- [ ] Con la frase de registro de la persona, se crea la carpeta si falta y el proyecto se registra con la sugerencia. `register` sin orden falla sin efectos. La orden caduca a los 15 minutos y solo se puede usar una vez.
-- [ ] Tras un «no», `decline` guarda la raíz y las sesiones siguientes no preguntan, sin PROJECT.md ni commit. Un `register` posterior con orden funciona y quita la raíz de la lista.
-- [ ] En un repo registrado, el comportamiento es el actual. En una carpeta no git, no hay salida. `mcp` arranca sin carpeta de datos.
+- [x] En un repo git no registrado, la sesión muestra una pregunta fija (idéntica aunque el nombre o el remoto sean hostiles). No escribe nada: ni PROJECT.md, ni commit, ni `.state`, ni carpeta de datos.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «session-start in an unregistered git repository asks with a fixed text, even before the data folder exists» (mismo texto con carpeta y remoto hostiles; la carpeta de datos no se crea); aceptación paso 3.1 conforme. ✔ en test.txt.
+- [x] Con la frase de registro de la persona, se crea la carpeta si falta y el proyecto se registra con la sugerencia. `register` sin orden falla sin efectos. La orden caduca a los 15 minutos y solo se puede usar una vez.
+  - Evidencia (WAY-30, 2026-11-26): test/chat.test.ts «registerByOrder needs the order, writes nothing without it and forgets an earlier decline» y «a register order belongs to one repository root, expires, is consumed once and a later message clears it»; test/hook.test.ts «in an unregistered repository the person's register order is recorded, creating the data folder only then»; aceptación paso 3.2 (sin orden se rechaza; con la orden «Proyecto «demo» registrado con prefijo DEM»). ✔ en test.txt.
+- [x] Tras un «no», `decline` guarda la raíz y las sesiones siguientes no preguntan, sin PROJECT.md ni commit. Un `register` posterior con orden funciona y quita la raíz de la lista.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «register needs the person's order; decline remembers a no without committing», test/hook.test.ts «a declined repository (and its subfolders) is not asked again» y test/chat.test.ts «registerByOrder needs the order, writes nothing without it and forgets an earlier decline». ✔ en test.txt.
+- [x] En un repo registrado, el comportamiento es el actual. En una carpeta no git, no hay salida. `mcp` arranca sin carpeta de datos.
+  - Evidencia (WAY-30, 2026-11-26): test/hook.test.ts «session-start injects only metadata of a registered repository» y «session-start in an unregistered git repository asks…» (carpeta fuera de git: salida vacía); test/mcp.integration.test.ts «without a data folder the MCP starts, explains how to get one and registers only with the order»; test/cli.test.ts «serve refuses a data folder that init has not prepared…; mcp starts without one». ✔ en test.txt.
 
 **Web**
 - [ ] `wf_web start` solo abre la web con la orden «abre la web» (este PC) o «abre la web en la red» (también `webHost`). Sin orden, no escucha nada.
 - [ ] El resultado de la herramienta no contiene la clave. El enlace con clave solo aparece en el panel local de copiar.
-- [ ] Cada arranque genera una clave nueva. Con un enlace de otra generación se ve «este enlace ya no es válido, pide uno nuevo»; con la generación actual y otro secreto, «clave incorrecta».
+- [x] Cada arranque genera una clave nueva. Con un enlace de otra generación se ve «este enlace ya no es válido, pide uno nuevo»; con la generación actual y otro secreto, «clave incorrecta».
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «the key is <gen>.<secret> and changes on every start; an earlier key is reported as expired» (enlace de otra generación: «This link is no longer valid»; generación actual con otro secreto: «not correct») y e2e/access.spec.ts «a link of an earlier session or a wrong key gets an accessible access page» (e2e.txt: 68 passed). Los textos reales son «Este enlace ya no es válido: es de una sesión anterior…» y «La clave de este enlace no es correcta…»: mismo sentido, redacción distinta de la del criterio.
 - [ ] Al hacer `stop` o cerrar la sesión, el puerto queda libre y no quedan procesos (probado con el SDK y en sesión real en Windows).
-- [ ] Con la clave, todas las rutas responden desde otro dispositivo. Sin ella, 401 sin datos. Un Host ajeno da 403.
-- [ ] Las escrituras remotas exigen cookie, Host, Origin y JSON, y generan su commit.
-- [ ] En loopback la lectura sigue funcionando sin clave.
+- [x] Con la clave, todas las rutas responden desde otro dispositivo. Sin ella, 401 sin datos. Un Host ajeno da 403.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «a second address needs the key for every route; loopback keeps anonymous reads and alone gets the links» (sin clave 401 sin datos; Host ajeno «evil.example.com» 403) y «binds to 127.0.0.1, sends security headers and rejects foreign Host headers»; e2e/access.spec.ts «copy the link with the keyboard, open it on the other device…». Ojo: la «otra dirección» es la IPv4 de red del propio PC, no un dispositivo físico distinto.
+- [x] Las escrituras remotas exigen cookie, Host, Origin y JSON, y generan su commit.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «writes without the key, from another Origin or without JSON are rejected with no effect» (Origin ajeno, sin Origin, otro puerto local y Host ajeno → 403) y «create, approve and discard from the web: one commit each, approvedVia web». ✔ en test.txt.
+- [x] En loopback la lectura sigue funcionando sin clave.
+  - Evidencia (WAY-30, 2026-11-26): test/server.test.ts «a second address needs the key for every route; loopback keeps anonymous reads and alone gets the links» (en loopback la lectura funciona sin clave). ✔ en test.txt.
 - [ ] Hay una pantalla de acceso accesible y el panel de copiar se usa con teclado. 401 y 403 se distinguen de «sin conexión». No hay scroll horizontal a 320 px y los objetivos miden 44 px también entre 720 y 1099 px.
 
 **Cierre**
-- [ ] El README documenta la instalación, la web por sesión, `webHost`, los riesgos y los límites. DESIGN.md cubre móvil y tablet.
+- [x] El README documenta la instalación, la web por sesión, `webHost`, los riesgos y los límites. DESIGN.md cubre móvil y tablet.
+  - Evidencia (WAY-30, 2026-11-26): Lectura de los archivos actuales: README.md documenta la instalación (l. 23 y 32, «claude plugin install …»), la web por sesión (l. 245-254: «Each time the web board opens there is a new key…», «The web board closes when the Claude session ends»), webHost (l. 40 y 249), los riesgos (l. 254 «Traffic is not encrypted», l. 345) y los límites (l. 263 «Limits:»); docs/design/DESIGN.md cubre móvil y tablet (l. 12 y l. 174-180: «Intermedio (720–1099 px)… objetivos táctiles de 44 px»).
 - [ ] La revisión de seguridad independiente no deja hallazgos abiertos sin decisión.
 - [ ] Los puntos de sesión real y de móvil quedan verificados o declarados **bloqueado/no verificado**, con su forma de reproducirlos.
 

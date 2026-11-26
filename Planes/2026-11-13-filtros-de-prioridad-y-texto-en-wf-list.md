@@ -67,10 +67,14 @@ Mesa redonda proporcional (solo lectura), común a WAY-16, WAY-14, WAY-11 y WAY-
 
 ## Criterios de aceptación
 
-- [ ] `wf_list` filtra por `priority` y por `query` (título, literal, sin distinguir mayúsculas), combinados con Y y con `status`.
-- [ ] Con más de 200 coincidencias aparece «… y N más» con N exacto.
-- [ ] Sin parámetros nuevos, la salida es la misma de antes.
-- [ ] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+- [x] `wf_list` filtra por `priority` y por `query` (título, literal, sin distinguir mayúsculas), combinados con Y y con `status`.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «WAY-16: wf_list filters by priority and title text, combined with status, and says how many were cut» (priority, query sin distinguir mayúsculas y literal «.*», combinado con status). ✔ en test.txt.
+- [x] Con más de 200 coincidencias aparece «… y N más» con N exacto.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «WAY-16: wf_list filters…» (con 201 coincidencias: 200 líneas y «… and 1 more tasks; narrow them…»; N exacto probado solo con N = 1). ✔ en test.txt.
+- [x] Sin parámetros nuevos, la salida es la misma de antes.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «WAY-16: wf_list filters…» («Without the new parameters the output is the same as before»). ✔ en test.txt.
+- [x] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: TYPECHECK_OK y CHECKDIST_OK; test.txt: «npm test» 230/230.
 
 ## Estrategia de validación
 

@@ -370,3 +370,13 @@
 - **Validación:** copia con `Copy-Item`, restauración con `Rename-Item` + `Copy-Item`: `git log` igual que el original, `.state` presente, `wf_list` sin la marca y `wf_create` escribe con normalidad.
 - **Resultado:** rodeado en la documentación.
 
+## 2026-11-26 · `npm publish --dry-run` del paquete con scope apunta a GitHub Packages en lugar de npmjs (WAY-31)
+
+- **Contexto:** preparación de la publicación 1.0.0 en ChinorrisPC (Windows 11, npm 11.17.0). `package.json` declara `publishConfig.registry: https://registry.npmjs.org/`.
+- **Reproducción:** `npm publish --dry-run` en la raíz del repositorio.
+- **Salida observada:** `npm notice Publishing to https://npm.pkg.github.com/ with tag latest and public access (dry-run)`.
+- **Causa (confirmada):** el `~/.npmrc` del usuario tiene `@davidgarciai554:registry = "https://npm.pkg.github.com/"`, y para un paquete con scope npm usa el registro del scope antes que `publishConfig.registry` (`npm config list` muestra los dos). El mismo ajuste haría que `npm install -g @davidgarciai554/wayfinder` busque en GitHub Packages en este PC.
+- **Solución:** sin cambios de código. Publicar y comprobar con el registro del scope explícito: `npm publish --@davidgarciai554:registry=https://registry.npmjs.org/` (y lo mismo en `npm view`/`npm install` en este PC). Otra persona sin ese ajuste no se ve afectada.
+- **Archivos modificados:** ninguno (solo este registro).
+- **Validación:** `npm publish --dry-run --@davidgarciai554:registry=https://registry.npmjs.org/` → `Publishing to https://registry.npmjs.org/ … (dry-run)`; `npm view @davidgarciai554/wayfinder` en npmjs → 404 (nombre libre).
+- **Resultado:** rodeado en los comandos de publicación; pendiente de que el usuario decida si conserva ese ajuste en su `~/.npmrc`.

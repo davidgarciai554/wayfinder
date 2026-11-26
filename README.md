@@ -299,21 +299,16 @@ The plugin gives Claude these 14 tools. You do not use them: you ask Claude in t
 
 ## Command line without the plugin
 
-The package is not published on npm. It is installed from a copy of the GitHub repository:
+The package is published on npm as `@davidgarciai554/wayfinder`:
 
 ```powershell
-git clone https://github.com/davidgarciai554/wayfinder.git
-cd wayfinder
-npm ci
-npm pack
-npm install -g .\davidgarciai554-wayfinder-0.1.0.tgz
+npm install -g @davidgarciai554/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- `npm pack` creates the file `davidgarciai554-wayfinder-<version>.tgz` with the program already built; the name carries the version in `package.json`.
-- `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
-- **Update:** in the copy, `git pull` and repeat `npm ci`, `npm pack` and `npm install -g` with the new file.
+- **Update:** `npm install -g @davidgarciai554/wayfinder@latest`.
+- **From a copy of the repository** (for example, to try changes that are not published): `git clone https://github.com/davidgarciai554/wayfinder.git`, then `npm ci`, `npm pack` and `npm install -g .\davidgarciai554-wayfinder-<version>.tgz` in that folder. `npm install -g github:davidgarciai554/wayfinder` does not work: with npm 11.17 it fails while building the package ("Cannot find package 'esbuild'").
 - **Uninstall:** `npm uninstall -g @davidgarciai554/wayfinder`. The data folder is not touched.
 
 The package contains a single `dist/wayfinder.mjs` file with no dependencies, the web board and `THIRD_PARTY_NOTICES.md` with the licences of the libraries bundled in it.
@@ -365,6 +360,7 @@ npm test              # unit and integration tests (builds first)
 npm run test:e2e      # Playwright
 npm run test:docker   # needs Docker Desktop and the wayfinder:dev image
 npm run check:dist    # dist/ and plugin/dist/ up to date; git without network subcommands; a single version
+npm run test:acceptance  # release walkthrough in temporary folders; needs the claude CLI (docs/aceptacion-1.0.md)
 ```
 
 The plugin lives in `plugin/`, with `plugin/dist/` under version control. The marketplace is in `.claude-plugin/marketplace.json`.

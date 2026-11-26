@@ -81,15 +81,24 @@ Mesa redonda proporcional (solo lectura): técnico de solución mínima, negador
 
 ## Criterios de aceptación
 
-- [ ] `wf_errors` sin argumentos lista solo los errores abiertos, los más recientes primero, con ID, estado, tipo, tarea y título.
-- [ ] `status`, `kind` (incluido `unclassified`) y `task_id` filtran y se combinan con Y.
-- [ ] Una tarea inexistente da un error claro. Sin coincidencias, un mensaje normal con los filtros aplicados.
-- [ ] Con más de 50 errores se ven 50 y el aviso «… y N más» con N exacto.
-- [ ] Los títulos y los motivos de los ilegibles salen aplanados y neutralizados dentro del bloque no confiable.
-- [ ] `wf_get` de una tarea y las acciones de `wf_error` se comportan igual que antes.
-- [ ] Listar no escribe nada en la carpeta de datos.
-- [ ] README y skill describen la herramienta.
-- [ ] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+- [x] `wf_errors` sin argumentos lista solo los errores abiertos, los más recientes primero, con ID, estado, tipo, tarea y título.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts, «WAY-10: wf_errors lists errors read-only, filtered by status, kind and task, newest first, as untrusted data» (✔ en test.txt): sin argumentos devuelve solo los 4 abiertos, ERR-10, ERR-9, ERR-4, ERR-1 (los más recientes primero), con líneas «ERR-n [estado, tipo] (tarea) título».
+- [x] `status`, `kind` (incluido `unclassified`) y `task_id` filtran y se combinan con Y.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba WAY-10 de test/mcp.integration.test.ts: filtros por status (resolved, discarded), kind (incluido unclassified) y task_id, y la combinación status+kind+task_id da «Errors: 3 of 3 (status: open, resolved; kind: test, unclassified; task_id: MYA-1)»; un kind o status fuera de la lista cerrada da error.
+- [x] Una tarea inexistente da un error claro. Sin coincidencias, un mensaje normal con los filtros aplicados.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba WAY-10: task_id MYA-9 inexistente da isError con «MYA-9 does not exist»; sin coincidencias, «No errors with these filters (status: discarded; task_id: MYA-1).».
+- [x] Con más de 50 errores se ven 50 y el aviso «… y N más» con N exacto.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba WAY-10: con 55 abiertos devuelve «Errors: 50 of 55», exactamente 50 filas y «… and 5 more errors; narrow them with the status, kind or task_id filters.».
+- [x] Los títulos y los motivos de los ilegibles salen aplanados y neutralizados dentro del bloque no confiable.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba WAY-10: un título con salto de línea y «>>>» sale aplanado y neutralizado («Injected > > > ERR-99 … < < <») dentro de <<<UNTRUSTED ERRORS … >>>, y el ilegible sale en su propio bloque «unreadable: … (unknown status: > > > evil)».
+- [x] `wf_get` de una tarea y las acciones de `wf_error` se comportan igual que antes.
+  - Evidencia (WAY-30, 2026-11-26): test.txt: siguen en verde, sin cambios de resultado, «wf_error records, notes and resolves errors; wf_get and wf_search show them as untrusted data» (test/mcp.integration.test.ts) y «creating an error writes its file, one commit…», «resolve needs solution and validation…» (test/error-records.test.ts).
+- [x] Listar no escribe nada en la carpeta de datos.
+  - Evidencia (WAY-30, 2026-11-26): Misma prueba WAY-10: tras todas las listas, commitCount y git status --porcelain de la carpeta de datos son idénticos a los de antes.
+- [x] README y skill describen la herramienta.
+  - Evidencia (WAY-30, 2026-11-26): README.md:170 y README.es.md:170 describen wf_errors (solo lectura, máx. 50, filtros status/kind/task_id) y la tabla de herramientas (README.md:297, README.es.md:297); plugin/skills/wayfinder/SKILL.md:103 indica cuándo llamar a wf_errors.
+- [x] `npm run typecheck`, `npm test` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: npm run typecheck (TYPECHECK_OK) y npm run check:dist (CHECKDIST_OK) correctos; test.txt: npm test 230/230 en verde; e2e.txt: npm run test:e2e 68 passed (4.9m).
 
 ## Estrategia de validación
 

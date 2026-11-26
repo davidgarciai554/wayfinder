@@ -299,21 +299,16 @@ El plugin da a Claude estas 14 herramientas. No las usas tú: se lo pides a Clau
 
 ## Línea de comandos sin el plugin
 
-El paquete no está publicado en npm. Se instala desde una copia del repositorio de GitHub:
+El paquete está publicado en npm como `@davidgarciai554/wayfinder`:
 
 ```powershell
-git clone https://github.com/davidgarciai554/wayfinder.git
-cd wayfinder
-npm ci
-npm pack
-npm install -g .\davidgarciai554-wayfinder-0.1.0.tgz
+npm install -g @davidgarciai554/wayfinder
 wayfinder init
 wayfinder serve
 ```
 
-- `npm pack` crea el archivo `davidgarciai554-wayfinder-<versión>.tgz` con el programa ya construido; el nombre lleva la versión de `package.json`.
-- `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
-- **Actualizar:** en la copia, `git pull` y repite `npm ci`, `npm pack` y `npm install -g` con el archivo nuevo.
+- **Actualizar:** `npm install -g @davidgarciai554/wayfinder@latest`.
+- **Desde una copia del repositorio** (por ejemplo, para probar cambios sin publicar): `git clone https://github.com/davidgarciai554/wayfinder.git` y, en esa carpeta, `npm ci`, `npm pack` y `npm install -g .\davidgarciai554-wayfinder-<versión>.tgz`. `npm install -g github:davidgarciai554/wayfinder` no sirve: con npm 11.17 falla al construir el paquete («Cannot find package 'esbuild'»).
 - **Desinstalar:** `npm uninstall -g @davidgarciai554/wayfinder`. La carpeta de datos no se toca.
 
 El paquete incluye un único archivo `dist/wayfinder.mjs` sin dependencias, la web y `THIRD_PARTY_NOTICES.md` con las licencias de las bibliotecas que lleva dentro.
@@ -365,6 +360,7 @@ npm test              # unitarios e integración (construye antes)
 npm run test:e2e      # Playwright
 npm run test:docker   # requiere Docker Desktop y la imagen wayfinder:dev
 npm run check:dist    # dist/ y plugin/dist/ al día; git sin subcomandos de red; una sola versión
+npm run test:acceptance  # recorrido de publicación en carpetas temporales; requiere la CLI claude (docs/aceptacion-1.0.md)
 ```
 
 El plugin vive en `plugin/`, con `plugin/dist/` versionado. El marketplace está en `.claude-plugin/marketplace.json`.

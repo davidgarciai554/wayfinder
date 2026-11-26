@@ -102,14 +102,22 @@
 
 ## Criterios de aceptación
 
-- [ ] `wf_create` y `wf_update` aceptan `tags` válidas y rechazan las inválidas con un error claro; `[]` borra.
-- [ ] Una etiqueta inválida en un archivo no rompe la lectura, y una edición sin `tags` no la toca.
-- [ ] `wf_get` y `wf_list` muestran las etiquetas solo cuando existen; sin etiquetas, la salida no cambia.
-- [ ] El filtro `tag` de `wf_list` usa «alguna» y se combina con Y con el resto de filtros.
-- [ ] En el tablero, las etiquetas se ven en la tarjeta y en el detalle, y el `<select>` filtra con teclado, foco visible y estado anunciado en texto.
-- [ ] El filtro sobrevive a una recarga, y una etiqueta que ya no existe vuelve a «Todas».
-- [ ] A 320 px no hay scroll horizontal, y la interfaz funciona en inglés.
-- [ ] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+- [x] `wf_create` y `wf_update` aceptan `tags` válidas y rechazan las inválidas con un error claro; `[]` borra.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «WAY-14: tags are validated (rejected, never normalised), written by create and update, [] removes the key» y test/mcp.integration.test.ts «WAY-14: tags through wf_create and wf_update…» (error «Invalid tag: "Web UI"…»). ✔ en test.txt.
+- [x] Una etiqueta inválida en un archivo no rompe la lectura, y una edición sin `tags` no la toca.
+  - Evidencia (WAY-30, 2026-11-26): test/store.test.ts «WAY-14: tags read tolerantly; values this version cannot read survive an update without tags». ✔ en test.txt.
+- [x] `wf_get` y `wf_list` muestran las etiquetas solo cuando existen; sin etiquetas, la salida no cambia.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «WAY-14: tags through wf_create and wf_update, shown in wf_get and wf_list…» (la tarea sin etiquetas no tiene línea «tags:» ni «#etiqueta»; la salida de wf_list no cambia). ✔ en test.txt.
+- [x] El filtro `tag` de `wf_list` usa «alguna» y se combina con Y con el resto de filtros.
+  - Evidencia (WAY-30, 2026-11-26): test/mcp.integration.test.ts «WAY-14: tags through wf_create and wf_update, shown in wf_get and wf_list, filter tag matches any» (tag [web, mcp] → MYA-1 y MYA-2; con priority [high] → MYA-1; con query «board» y tag hooks → vacío). ✔ en test.txt.
+- [x] En el tablero, las etiquetas se ven en la tarjeta y en el detalle, y el `<select>` filtra con teclado, foco visible y estado anunciado en texto.
+  - Evidencia (WAY-30, 2026-11-26): e2e/read.spec.ts «WAY-14: tags show as a named list on the card and the detail; the tag filter works by keyboard and says it is on» (lista «Etiquetas» en tarjeta y detalle, <select> con foco, «Filtro activo: etiqueta «mcp». Tareas visibles: 1.» en role=status); e2e.txt: 68 passed. Contrastes de foco ≥ 3:1 en test/contrast.test.ts.
+- [x] El filtro sobrevive a una recarga, y una etiqueta que ya no existe vuelve a «Todas».
+  - Evidencia (WAY-30, 2026-11-26): e2e/read.spec.ts «WAY-14: tags show as a named list…» (tras page.reload() el filtro sigue en «mcp»; un valor guardado que no es etiqueta vuelve a «Todas»); e2e.txt: 68 passed.
+- [x] A 320 px no hay scroll horizontal, y la interfaz funciona en inglés.
+  - Evidencia (WAY-30, 2026-11-26): e2e/read.spec.ts «WAY-14: tags show as a named list…» (a 320 px sin scroll horizontal y controles de 44 px; versión inglesa con «Filter on: tag "web". Tasks shown: 1.»); e2e.txt: 68 passed.
+- [x] `npm run typecheck`, `npm test`, `npm run test:e2e` y `npm run check:dist` en verde.
+  - Evidencia (WAY-30, 2026-11-26): quality.txt: «npm run typecheck» (TYPECHECK_OK) y «npm run check:dist» (CHECKDIST_OK); test.txt: «npm test» 230/230; e2e.txt: «npm run test:e2e» 68 passed (4.9m).
 
 ## Estrategia de validación
 
