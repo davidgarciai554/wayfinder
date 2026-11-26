@@ -460,7 +460,7 @@ await step('5', 'Paquete npm: npm pack, instalación del tarball en un prefijo t
   const cliHome = join(T, 'data-cli');
   const init = sh(`${q(bin)} init --lang es`, { ...isolated, WAYFINDER_HOME: cliHome });
   expect(init.code === 0 && existsSync(join(cliHome, 'FORMAT')), `init: ${init.out}`);
-  const un = sh('npm uninstall -g @davidgarciai554/wayfinder');
+  const un = sh('npm uninstall -g @chinorris/wayfinder');
   expect(un.code === 0 && !existsSync(bin), `uninstall: ${un.out}`);
   return `${tgz}; --version ${v}; init created the data folder with FORMAT; uninstall removed the binary`;
 });

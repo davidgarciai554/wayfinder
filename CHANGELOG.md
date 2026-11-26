@@ -20,7 +20,7 @@ La 1.0.0 es la primera versión publicada y etiquetada; las copias anteriores se
 - Gestor de tareas en Markdown sobre un repositorio git sin remoto: línea de comandos, servidor MCP, hooks, web local, plugin de Claude Code, imagen Docker (WAY-1) y mensajes en español e inglés.
 - Historial por tarea y bitácora del día enlazada, con `wf_log`, `wf_history` y `wf_search`.
 - Registro de errores ligado a las tareas (`wf_error`), con detector de secretos.
-- Instalación del plugin desde GitHub, y de la línea de comandos desde npm como `@davidgarciai554/wayfinder` (WAY-31).
+- Instalación del plugin desde GitHub, y de la línea de comandos desde npm como `@chinorris/wayfinder` (WAY-31).
 - Web desde otros dispositivos de tu red y alta guiada de un repositorio con «registra este proyecto» (WAY-6).
 - Tipos de error, errores descartados y reapertura de tareas desde la web (WAY-8, WAY-9, WAY-12).
 - Listado de errores con filtros, `wf_errors` (WAY-10), y cambio de la tarea de un error (WAY-11).
