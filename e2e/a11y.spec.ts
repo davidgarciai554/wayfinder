@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { e2eHome, E2E_PORTS, type E2ELang } from './paths.ts';
+import { e2eHome, e2eKeyFile, E2E_PORTS, type E2ELang } from './paths.ts';
 
 // WAY-28: fixes of the accessibility audit (WAYF-12), each checked in Spanish and in English.
 const base = (lang: E2ELang) => `http://127.0.0.1:${E2E_PORTS[lang]}`;
@@ -132,6 +132,37 @@ for (const lang of ['es', 'en'] as const) {
       const file = join(dir, readdirSync(dir).find((name) => name.endsWith('.md'))!);
       writeFileSync(file, readFileSync(file));
       await expect(page.locator('#live-text')).toHaveText(TEXT[lang].oneChange, { timeout: 5000 });
+    });
+    test('A11Y-7: on a phone the jump links are 44 px high and the whole card opens its task', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`${base(lang)}/#/wayfinder/board`);
+      const jumps = page.locator('.jump a');
+      await expect(jumps).toHaveCount(4);
+      for (const box of await jumps.evaluateAll((links) => links.map((a) => a.getBoundingClientRect().height))) expect(box).toBeGreaterThanOrEqual(44);
+
+      // The tap area of the title link is the whole card.
+      const card = page.locator('.card').filter({ has: page.getByRole('link', { name: 'Añadir filtro por prioridad al tablero' }) });
+      const [cardBox, area] = await card.evaluate((node) => {
+        const after = getComputedStyle(node.querySelector('.card-title')!, '::after');
+        return [node.getBoundingClientRect().height, after.position];
+      });
+      expect(cardBox).toBeGreaterThanOrEqual(44);
+      expect(area).toBe('absolute');
+      await card.scrollIntoViewIfNeeded();
+      const box = (await card.boundingBox())!;
+      await page.mouse.click(box.x + box.width - 8, box.y + box.height - 6);
+      await expect(page).toHaveURL(/#\/wayfinder\/task\/WF-3$/);
+      await expect(page.locator('#task-title')).toBeFocused();
+
+      // With writing on, the card's buttons stay on top of that area (nothing is clicked here).
+      await page.goto(`${base(lang)}/?k=${readFileSync(e2eKeyFile(lang), 'utf8')}`);
+      await page.goto(`${base(lang)}/#/wayfinder/board`);
+      const button = page.locator('.card-actions button').first();
+      await button.scrollIntoViewIfNeeded();
+      expect(await button.evaluate((node) => {
+        const r = node.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === node;
+      })).toBe(true);
     });
   });
 }

@@ -379,6 +379,11 @@ main:focus { outline: none; }
 @media (max-width: 1099px) {
   .button, .tabs a, select, input[type='text'], .share summary { min-height: 44px; }
   .tabs a { display: inline-flex; align-items: center; }
+  .jump a { display: inline-flex; align-items: center; min-height: 44px; }
+  /* A11Y-7: the whole card opens the task; its buttons stay above the title's tap area. */
+  .card { position: relative; }
+  .card-title::after { content: ''; position: absolute; inset: 0; }
+  .card-actions { position: relative; z-index: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
