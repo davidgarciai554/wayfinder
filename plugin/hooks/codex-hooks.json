@@ -1,0 +1,50 @@
+{
+  "description": "Wayfinder hooks for Codex. They call the global `wayfinder` command from `npm install -g @chinorris/wayfinder` (WAY-7).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wayfinder hook session-start",
+            "commandWindows": "wayfinder.cmd hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wayfinder hook prompt",
+            "commandWindows": "wayfinder.cmd hook prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|mcp__.+__(navigate|preview_start|javascript_tool|browser_batch|run_in_terminal))$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wayfinder hook pre-tool",
+            "commandWindows": "wayfinder.cmd hook pre-tool"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "wayfinder hook stop",
+            "commandWindows": "wayfinder.cmd hook stop"
+          }
+        ]
+      }
+    ]
+  }
+}

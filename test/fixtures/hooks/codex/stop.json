@@ -1,0 +1,11 @@
+{
+  "session_id": "<SESSION>",
+  "turn_id": "<TURN>",
+  "transcript_path": "<TRANSCRIPT>",
+  "cwd": "<CWD>",
+  "hook_event_name": "Stop",
+  "model": "gpt-6-luna",
+  "permission_mode": "bypassPermissions",
+  "stop_hook_active": false,
+  "last_assistant_message": "listo"
+}

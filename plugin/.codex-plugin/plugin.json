@@ -1,0 +1,6 @@
+{
+  "name": "wayfinder",
+  "description": "Personal Markdown task tracker and project memory: MCP tools, session context and a local web board. Requires the global `wayfinder` command (npm install -g @chinorris/wayfinder).",
+  "hooks": "./hooks/codex-hooks.json",
+  "mcpServers": "./codex-mcp.json"
+}
