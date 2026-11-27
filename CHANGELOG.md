@@ -4,6 +4,21 @@ Los cambios de Wayfinder que nota quien lo usa, agrupados por tema. El formato s
 
 La 1.0.0 es la primera versión publicada y etiquetada; las copias anteriores se distribuyeron con el número `0.1.0`. Entre paréntesis va la tarea de Wayfinder de cada cambio.
 
+## [Sin publicar]
+
+### Añadido
+
+- Plugin para Codex CLI, en versión preliminar: los hooks y el servidor MCP usan el comando global `wayfinder`. Ver «Uso desde Codex» en el [README en español](README.es.md) (WAY-7).
+
+### Cambiado
+
+- El motivo del hook Stop empieza por `[wayfinder-stop]`. Si un agente lo reenvía como mensaje de la persona, ese turno no da órdenes ni borra las pendientes (WAY-7).
+
+### Seguridad
+
+- Ahora se deniega editar la carpeta de datos con `apply_patch` de Codex, como ya pasaba con Edit/Write (WAY-7).
+- Una carpeta de datos configurada con un `${…}` sin expandir ya no crea una carpeta con ese nombre literal; se usa `~/.wayfinder` (WAY-7).
+
 ## [1.0.0] - 2026-11-26
 
 ### Si vienes de una copia anterior

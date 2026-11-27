@@ -54,6 +54,35 @@ You can change them later with `/plugin` or with `claude plugin configure wayfin
    - Before finishing, if there are tasks in progress and no progress has been recorded today, Claude records it.
    - Non-trivial tasks need a plan in `Planes/` before they move to "In progress".
 
+## Using it from Codex (preview)
+
+Wayfinder also works in OpenAI's Codex CLI (WAY-7). It is a preview: installing the plugin and recording the chat orders were checked with Codex CLI 0.172.0 on Windows 11, using temporary folders. The full flow is still being tested by hand ([docs/prueba-codex.md](docs/prueba-codex.md), in Spanish).
+
+Codex does not expand variables in a plugin's MCP configuration, so here the plugin calls the global `wayfinder` command for both the MCP server and the hooks. Install it first. The protection of `apply_patch` described below needs the first npm version published after 1.0.0.
+
+```powershell
+npm install -g @chinorris/wayfinder
+codex plugin marketplace add davidgarciai554/wayfinder
+codex plugin add wayfinder@wayfinder
+```
+
+Then open `codex`, run `/hooks`, review the four Wayfinder hooks and trust them. Codex skips hooks nobody has reviewed, and asks again after every plugin update. Until you trust them, the chat orders («registra este proyecto», "approve WAY-n») are rejected, and you can approve from the web board instead.
+
+- **Options:** Codex has no plugin options. The data folder is `~/.wayfinder` unless you set the `WAYFINDER_HOME` environment variable before starting Codex. The language comes from `WAYFINDER_LANG` (`es` or `en`), or else from the data folder's `config.json`. `WAYFINDER_CAPTURES_DIR` and `WAYFINDER_WEB_HOST` work the same way.
+- **Uninstall:** `codex plugin remove wayfinder@wayfinder`, `codex plugin marketplace remove wayfinder` and, if you no longer want the command, `npm uninstall -g @chinorris/wayfinder`. The data folder is not touched.
+
+What Wayfinder guarantees in Codex compared with Claude Code:
+
+| Guarantee | Codex |
+| --- | --- |
+| Only you approve ideas, register a project or open the web from the chat | Yes, once the hooks are trusted. Otherwise chat approval is rejected. |
+| Progress recorded before finishing | Yes: the Stop hook asks once, and its text cannot give or clear orders. |
+| No direct edits of the data folder | Yes for the shell and `apply_patch`, as a best-effort check (like in Claude Code). |
+| Session context | Yes. |
+| Reminder after a failed build or test | No: Codex has no hook for failed tools. Record the error with `wf_error` yourself or ask for it. |
+
+Codex Desktop and the IDE extension have not been tested.
+
 ## Updating the plugin
 
 Each step says whether it was checked with Wayfinder or whether only the Claude Code documentation says so. The checked steps were tested with Claude Code 2.1.322 and the plugin installed from a local copy of the repository, unless another version is named.

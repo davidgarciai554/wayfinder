@@ -223,9 +223,18 @@ function inspectableText(input: Record<string, unknown>): string | null {
 /** Backslashes become slashes and runs of them collapse, so JSON-escaped Windows paths compare like plain ones. */
 const normalizeSlashes = (s: string) => s.replace(/[\\/]+/g, '/').toLowerCase();
 
+/** Codex apply_patch (WAY-7): the files named by the patch headers, as in `*** Update File: src/a.ts`. */
+function patchTargets(patch: string): string[] {
+  return [...patch.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)].map((m) => m[1]!.trim());
+}
+
 function denyReason(home: string, input: Record<string, unknown>): string | null {
   const tool = String(input.tool_name ?? '');
   const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  if (tool === 'apply_patch') {
+    const patch = typeof toolInput.command === 'string' ? toolInput.command : '';
+    return patchTargets(patch).find((target) => isWithin(home, resolve(String(input.cwd ?? '.'), target))) ?? null;
+  }
   if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') {
     const target = toolInput.file_path ?? toolInput.notebook_path;
     if (typeof target === 'string' && target && isWithin(home, resolve(String(input.cwd ?? '.'), target))) return target;

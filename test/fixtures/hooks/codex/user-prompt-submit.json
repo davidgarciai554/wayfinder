@@ -1,0 +1,10 @@
+{
+  "session_id": "<SESSION>",
+  "turn_id": "<TURN>",
+  "transcript_path": "<TRANSCRIPT>",
+  "cwd": "<CWD>",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-6-luna",
+  "permission_mode": "bypassPermissions",
+  "prompt": "Ejecuta el comando de shell: echo hola. Después crea el archivo nota.txt con el texto hi usando apply_patch. Por último responde solo: listo."
+}

@@ -1,0 +1,9 @@
+{
+  "session_id": "<SESSION>",
+  "transcript_path": "<TRANSCRIPT>",
+  "cwd": "<CWD>",
+  "model": "gpt-6-luna",
+  "permission_mode": "bypassPermissions",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}

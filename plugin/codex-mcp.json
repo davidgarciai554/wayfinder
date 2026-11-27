@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "wayfinder": {
+      "command": "wayfinder",
+      "args": [
+        "mcp"
+      ],
+      "env_vars": [
+        "WAYFINDER_HOME",
+        "WAYFINDER_LANG",
+        "WAYFINDER_CAPTURES_DIR",
+        "WAYFINDER_WEB_HOST"
+      ]
+    }
+  }
+}

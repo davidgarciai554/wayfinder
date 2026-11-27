@@ -72,9 +72,10 @@ export function extractOrders(prompt: string, idPrefix: string): string[] {
  * down (in a code block or not) stays the person's, and can still replace or revoke earlier orders.
  * Messages from another session (`<cross-session-message>`) still count, by the person's decision
  * (plan v2, D1'). Limit: in Claude Code 2.1.332 a CronCreate or /loop prompt arrives as plain text
- * and still counts.
+ * and still counts. Codex and Cursor can send the Stop hook's reason back as a user prompt (WAY-7):
+ * it opens with the fixed [wayfinder-stop] mark, so that turn neither gives nor clears orders.
  */
-const AUTOMATED_TURN = /^<(?:task-notification|agent-message|scheduled-task)[\s>]/;
+const AUTOMATED_TURN = /^(?:<(?:task-notification|agent-message|scheduled-task)[\s>]|\[wayfinder-stop\])/;
 
 export function isAutomatedTurn(prompt: string): boolean {
   return AUTOMATED_TURN.test(prompt);

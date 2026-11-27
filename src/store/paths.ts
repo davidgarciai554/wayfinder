@@ -13,7 +13,8 @@ const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 
 export function getHome(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.WAYFINDER_HOME?.trim();
-  if (!configured) return join(homedir(), '.wayfinder');
+  // An agent that does not expand ${user_config.home} would otherwise create a literal folder (WAY-7).
+  if (!configured || configured.includes('${')) return join(homedir(), '.wayfinder');
   // Plugin options may hold "~/.wayfinder"; expand it like a shell would.
   return resolve(configured.replace(/^~(?=$|[\\/])/, homedir()));
 }
